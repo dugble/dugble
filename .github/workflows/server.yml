@@ -1,0 +1,105 @@
+name: Server CI
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/server.yml"
+      - ".golangci.yml"
+      - "server/go.mod"
+      - "server/go.sum"
+      - "server/migrations/**"
+      - "server/sqlc.yaml"
+      - "server/**/*.go"
+      - "server/**/*.sql"
+  pull_request:
+    paths:
+      - ".github/workflows/server.yml"
+      - ".golangci.yml"
+      - "server/go.mod"
+      - "server/go.sum"
+      - "server/migrations/**"
+      - "server/sqlc.yaml"
+      - "server/**/*.go"
+      - "server/**/*.sql"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: server-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: Go quality gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: dugble_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d dugble_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/dugble_test?sslmode=disable
+    defaults:
+      run:
+        working-directory: server
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: server/go.mod
+          cache: true
+          cache-dependency-path: server/go.sum
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Install golangci-lint
+        run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2
+
+      - name: Verify formatting
+        run: |
+          formatting_diff="$(golangci-lint fmt --config ../.golangci.yml --diff ./...)"
+          if [[ -n "$formatting_diff" ]]; then
+            printf '%s\n' "$formatting_diff"
+            exit 1
+          fi
+
+      - name: Verify module files
+        run: |
+          go mod tidy
+          git diff --exit-code -- go.mod go.sum
+
+      - name: Verify sqlc generated code
+        run: |
+          go run github.com/sqlc-dev/sqlc/cmd/sqlc@v1.31.1 generate
+          git diff --exit-code -- internal/database/sqlc
+
+      - name: Verify golangci-lint config
+        run: golangci-lint config verify --config ../.golangci.yml
+
+      - name: Run golangci-lint
+        run: golangci-lint run --config ../.golangci.yml ./...
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test with race detector
+        run: go test -race ./...

@@ -1,0 +1,41 @@
+name: Go Dependency Security
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/vuln.yml"
+      - "server/go.mod"
+      - "server/go.sum"
+      - "server/**/*.go"
+  pull_request:
+    paths:
+      - ".github/workflows/vuln.yml"
+      - "server/go.mod"
+      - "server/go.sum"
+      - "server/**/*.go"
+  schedule:
+    - cron: "0 10 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  govulncheck:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: server/go.mod
+          cache: true
+          cache-dependency-path: server/go.sum
+      - name: Install scanner
+        run: go install golang.org/x/vuln/cmd/govulncheck@latest
+      - name: Scan Go code and tests
+        run: govulncheck -test ./...

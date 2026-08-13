@@ -1,0 +1,131 @@
+package contact
+
+import (
+	"encoding/json"
+	"strconv"
+
+	"github.com/labstack/echo/v5"
+
+	apperrors "github.com/coffeyvidzro/dugble/server/pkg/errors"
+	"github.com/coffeyvidzro/dugble/server/pkg/httputil"
+)
+
+type Handler struct{ service *Service }
+
+func NewHandler(service *Service) *Handler { return &Handler{service: service} }
+
+func (h *Handler) Create(c *echo.Context) error {
+	var req CreateRequest
+	if err := decodeJSON(c, &req); err != nil {
+		return err
+	}
+	value, err := h.service.Create(c.Request().Context(), req)
+	if err != nil {
+		return httputil.Error(c, err)
+	}
+	return httputil.Created(c, value)
+}
+
+func (h *Handler) List(c *echo.Context) error {
+	value, err := h.service.List(c.Request().Context(), ListRequest{
+		Limit:  parseInt32(c.QueryParam("limit")),
+		Offset: parseInt32(c.QueryParam("offset")),
+	})
+	if err != nil {
+		return httputil.Error(c, err)
+	}
+	return httputil.OK(c, value)
+}
+
+func (h *Handler) Get(c *echo.Context) error {
+	value, err := h.service.Get(c.Request().Context(), c.Param("contact_id"))
+	if err != nil {
+		return httputil.Error(c, err)
+	}
+	return httputil.OK(c, value)
+}
+
+func (h *Handler) Update(c *echo.Context) error {
+	var req UpdateRequest
+	if err := decodeJSON(c, &req); err != nil {
+		return err
+	}
+	value, err := h.service.Update(c.Request().Context(), c.Param("contact_id"), req)
+	if err != nil {
+		return httputil.Error(c, err)
+	}
+	return httputil.OK(c, value)
+}
+
+func (h *Handler) Delete(c *echo.Context) error {
+	value, err := h.service.Delete(c.Request().Context(), c.Param("contact_id"))
+	if err != nil {
+		return httputil.Error(c, err)
+	}
+	return httputil.OK(c, value)
+}
+
+func (h *Handler) ListSegments(c *echo.Context) error {
+	value, err := h.service.ListSegments(c.Request().Context(), c.Param("contact_id"))
+	if err != nil {
+		return httputil.Error(c, err)
+	}
+	return httputil.OK(c, value)
+}
+
+func (h *Handler) AddSegment(c *echo.Context) error {
+	value, created, err := h.service.AddSegment(c.Request().Context(), c.Param("contact_id"), c.Param("segment_id"))
+	if err != nil {
+		return httputil.Error(c, err)
+	}
+	if created {
+		return httputil.Created(c, value)
+	}
+	return httputil.OK(c, value)
+}
+
+func (h *Handler) RemoveSegment(c *echo.Context) error {
+	if err := h.service.RemoveSegment(c.Request().Context(), c.Param("contact_id"), c.Param("segment_id")); err != nil {
+		return httputil.Error(c, err)
+	}
+	return httputil.NoContent(c)
+}
+
+func (h *Handler) ListTopics(c *echo.Context) error {
+	response, err := h.service.ListTopics(c.Request().Context(), c.Param("contact_id"), ListContactTopicsRequest{
+		Limit:  httputil.QueryInt32(c, "limit"),
+		After:  c.QueryParam("after"),
+		Before: c.QueryParam("before"),
+	})
+	if err != nil {
+		return httputil.Error(c, err)
+	}
+	return httputil.OK(c, response)
+}
+
+func (h *Handler) UpdateTopics(c *echo.Context) error {
+	var request UpdateContactTopicsRequest
+	if err := httputil.DecodeJSON(c, &request, httputil.DefaultMaxRequestBodyBytes); err != nil {
+		return httputil.Error(c, err)
+	}
+	response, err := h.service.UpdateTopics(c.Request().Context(), c.Param("contact_id"), request)
+	if err != nil {
+		return httputil.Error(c, err)
+	}
+	return httputil.OK(c, response)
+}
+
+func decodeJSON(c *echo.Context, dst any) error {
+	if err := json.NewDecoder(c.Request().Body).Decode(dst); err != nil {
+		return httputil.Error(c, apperrors.NewBadRequest("Invalid JSON request body"))
+	}
+	return nil
+}
+
+func parseInt32(value string) int32 {
+	parsed, err := strconv.ParseInt(value, 10, 32)
+	if err != nil {
+		return 0
+	}
+	return int32(parsed)
+}
