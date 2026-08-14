@@ -15,10 +15,7 @@ func (registry *Registry) registerRoutes(router *echo.Echo) error {
 	if registry.providerSNS != nil {
 		providersns.RegisterRoutes(router, registry.providerSNS)
 	}
-
-	middleware := registry.moduleMiddleware()
-	registerCSRFRoute(router, middleware.csrf)
-	return registry.registerModulesWithMiddleware(router, middleware)
+	return registry.registerModules(router)
 }
 
 func registerCSRFRoute(router *echo.Echo, csrfMiddleware echo.MiddlewareFunc) {
