@@ -92,6 +92,16 @@ type SendWalletBalanceAlertInput struct {
 	Level        string
 }
 
+type SendWalletTopUpResultInput struct {
+	ToEmail         string
+	Name            string
+	TeamName        string
+	Currency        string
+	AmountUnits     int64
+	ClientReference string
+	Status          string
+}
+
 type EmailSender = platformemail.Sender
 
 type TransactionalEmailSender interface {

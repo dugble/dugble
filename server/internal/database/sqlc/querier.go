@@ -320,6 +320,7 @@ type Querier interface {
 	MarkEmailTenantFailed(ctx context.Context, arg MarkEmailTenantFailedParams) (EmailTenant, error)
 	MarkEmailTenantPaused(ctx context.Context, arg MarkEmailTenantPausedParams) (EmailTenant, error)
 	MarkEmailTenantProvisioning(ctx context.Context, arg MarkEmailTenantProvisioningParams) (EmailTenant, error)
+	MarkPaymentTransactionFailed(ctx context.Context, arg MarkPaymentTransactionFailedParams) (PaymentTransaction, error)
 	MarkPaymentTransactionPaid(ctx context.Context, arg MarkPaymentTransactionPaidParams) (PaymentTransaction, error)
 	MarkSMSMessageDeliveryUnknown(ctx context.Context, arg MarkSMSMessageDeliveryUnknownParams) (SmsMessage, error)
 	MarkSMSMessageFailed(ctx context.Context, arg MarkSMSMessageFailedParams) (SmsMessage, error)

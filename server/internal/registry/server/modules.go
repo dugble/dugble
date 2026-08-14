@@ -59,6 +59,9 @@ func (registry *Registry) registerModules(router *echo.Echo) error {
 		return fmt.Errorf("initialize system email renderer: %w", err)
 	}
 	notificationEmailService := systemmail.NewEmailService(newSystemEmailQueue(cfg, registry.outbox), renderer, cfg.FrontendURL, cfg.AWS.FromEmail)
+	if registry.hubtelPayments != nil {
+		registry.hubtelPayments.WithNotifier(notificationEmailService)
+	}
 
 	auditRepository := audit.NewRepository(db)
 	audit.SetSink(auditRepository)

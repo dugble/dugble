@@ -1,0 +1,6 @@
+{{template "email.header" .}}
+    <p>Hi {{.Name}},</p>
+    <p><strong>{{.Amount}}</strong> was successfully added to the wallet for <strong>{{.Team}}</strong>.</p>
+    <p>Reference: <strong>{{.Reference}}</strong></p>
+    <p><a href="{{.BillingURL}}">View wallet transactions</a></p>
+{{template "email.footer" .}}

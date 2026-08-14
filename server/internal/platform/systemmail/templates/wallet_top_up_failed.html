@@ -1,0 +1,7 @@
+{{template "email.header" .}}
+    <p>Hi {{.Name}},</p>
+    <p>We could not complete the <strong>{{.Amount}}</strong> wallet top-up for <strong>{{.Team}}</strong>.</p>
+    <p>Reference: <strong>{{.Reference}}</strong></p>
+    <p>No funds were added. You can review the transaction and try again.</p>
+    <p><a href="{{.BillingURL}}">Review wallet transactions</a></p>
+{{template "email.footer" .}}

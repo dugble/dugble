@@ -32,6 +32,8 @@ const (
 	teamInvitationTemplate        = "team_invitation.html"
 	subscriptionPastDueTemplate   = "subscription_past_due.html"
 	walletBalanceAlertTemplate    = "wallet_balance_alert.html"
+	walletTopUpSucceededTemplate  = "wallet_top_up_succeeded.html"
+	walletTopUpFailedTemplate     = "wallet_top_up_failed.html"
 )
 
 type EmailService struct {
@@ -133,6 +135,24 @@ func (s *EmailService) SendWalletBalanceAlert(ctx context.Context, input SendWal
 		"Message": message, "BillingURL": s.frontendURL + "/settings/billing",
 	}
 	return s.SendTemplateEmail(ctx, SendTemplateEmailInput{To: input.ToEmail, Subject: subject, TemplateName: walletBalanceAlertTemplate, Data: data})
+}
+
+func (s *EmailService) SendWalletTopUpResult(ctx context.Context, input SendWalletTopUpResultInput) error {
+	succeeded := strings.EqualFold(strings.TrimSpace(input.Status), "paid")
+	subject := "Your Dugble wallet top-up failed"
+	templateName := walletTopUpFailedTemplate
+	preview := "Your Dugble wallet top-up was not completed."
+	if succeeded {
+		subject = "Your Dugble wallet top-up succeeded"
+		templateName = walletTopUpSucceededTemplate
+		preview = "Funds were added to your Dugble wallet."
+	}
+	data := map[string]string{
+		"Name": displayName(input.Name), "PreviewText": preview,
+		"Team": displayName(input.TeamName), "Amount": formatMoney(input.Currency, input.AmountUnits),
+		"Reference": displayValue(input.ClientReference), "BillingURL": s.frontendURL + "/dashboard/billing/transactions",
+	}
+	return s.SendTemplateEmail(ctx, SendTemplateEmailInput{To: input.ToEmail, Subject: subject, TemplateName: templateName, Data: data})
 }
 
 func (s *EmailService) SendEmailVerification(ctx context.Context, input SendEmailVerificationInput) error {
