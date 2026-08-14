@@ -347,25 +347,36 @@ func (r *Repository) Redrive(ctx context.Context, eventID uuid.UUID) error {
 	var previousPublishFailures int
 	var redriveCount int
 	if err := tx.QueryRow(ctx, `
-		UPDATE outbox_events
-		SET quarantined_at = NULL,
-			quarantine_code = NULL,
-			quarantine_reason = NULL,
-			publish_failures = 0,
-			redrive_count = redrive_count + 1,
-			available_at = now(),
-			locked_at = NULL,
-			locked_by = NULL,
-			last_error = NULL,
-			updated_at = now()
-		WHERE id = $1
-		  AND published_at IS NULL
-		  AND quarantined_at IS NOT NULL
-		RETURNING
-			COALESCE(quarantine_code, ''),
-			COALESCE(quarantine_reason, ''),
-			publish_failures,
-			redrive_count
+		WITH quarantined AS (
+			SELECT quarantine_code, quarantine_reason, publish_failures
+			FROM outbox_events
+			WHERE id = $1
+			  AND published_at IS NULL
+			  AND quarantined_at IS NOT NULL
+			FOR UPDATE
+		), redriven AS (
+			UPDATE outbox_events
+			SET quarantined_at = NULL,
+				quarantine_code = NULL,
+				quarantine_reason = NULL,
+				publish_failures = 0,
+				redrive_count = redrive_count + 1,
+				available_at = now(),
+				locked_at = NULL,
+				locked_by = NULL,
+				last_error = NULL,
+				updated_at = now()
+			WHERE id = $1
+			  AND EXISTS (SELECT 1 FROM quarantined)
+			RETURNING redrive_count
+		)
+		SELECT
+			COALESCE(quarantined.quarantine_code, ''),
+			COALESCE(quarantined.quarantine_reason, ''),
+			quarantined.publish_failures,
+			redriven.redrive_count
+		FROM quarantined
+		CROSS JOIN redriven
 	`, eventID).Scan(&previousCode, &previousReason, &previousPublishFailures, &redriveCount); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return ErrNotQuarantined
