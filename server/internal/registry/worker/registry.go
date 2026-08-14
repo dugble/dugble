@@ -11,8 +11,8 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	natsadapter "github.com/dugble/dugble/server/internal/adapters/nats"
 	sentrymonitoring "github.com/dugble/dugble/server/internal/adapters/monitoring/sentry"
+	natsadapter "github.com/dugble/dugble/server/internal/adapters/nats"
 	"github.com/dugble/dugble/server/internal/adapters/postgres"
 	"github.com/dugble/dugble/server/internal/config"
 	"github.com/dugble/dugble/server/internal/platform/outbox"

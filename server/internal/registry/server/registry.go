@@ -19,10 +19,10 @@ import (
 	leamoutsms "github.com/dugble/dugble/server/internal/adapters/leamout/sms"
 	mnotifyadapter "github.com/dugble/dugble/server/internal/adapters/mnotify"
 	mnotifysms "github.com/dugble/dugble/server/internal/adapters/mnotify/sms"
-	"github.com/dugble/dugble/server/internal/adapters/moolre"
-	moolresms "github.com/dugble/dugble/server/internal/adapters/moolre/sms"
 	newrelicmonitoring "github.com/dugble/dugble/server/internal/adapters/monitoring/newrelic"
 	sentrymonitoring "github.com/dugble/dugble/server/internal/adapters/monitoring/sentry"
+	"github.com/dugble/dugble/server/internal/adapters/moolre"
+	moolresms "github.com/dugble/dugble/server/internal/adapters/moolre/sms"
 	"github.com/dugble/dugble/server/internal/adapters/postgres"
 	redisadapter "github.com/dugble/dugble/server/internal/adapters/redis"
 	runnagesms "github.com/dugble/dugble/server/internal/adapters/runnage/sms"
@@ -42,18 +42,18 @@ import (
 
 // Registry owns the server's long-lived infrastructure and HTTP lifecycle.
 type Registry struct {
-	config          *config.Config
-	postgres        *pgxpool.Pool
-	redis           *redis.Client
-	arcjet           *arcjet.Client
-	emailClient      *awsses.Client
-	smsSender        *platformsms.Service
-	outbox           *outbox.Repository
-	providerSNS      *providersns.Handler
-	hubtelProvider   *hubtel.Provider
-	hubtelPayments   *paymentmodule.Service
-	server           *httptransport.Server
-	cleanups         cleanupStack
+	config         *config.Config
+	postgres       *pgxpool.Pool
+	redis          *redis.Client
+	arcjet         *arcjet.Client
+	emailClient    *awsses.Client
+	smsSender      *platformsms.Service
+	outbox         *outbox.Repository
+	providerSNS    *providersns.Handler
+	hubtelProvider *hubtel.Provider
+	hubtelPayments *paymentmodule.Service
+	server         *httptransport.Server
+	cleanups       cleanupStack
 }
 
 // Start wires and runs the server until an interrupt or termination signal.
