@@ -265,11 +265,27 @@ func (r *Repository) Quarantine(
 	code string,
 	reason string,
 ) error {
+	if r == nil || r.pool == nil {
+		return errors.New("outbox repository is not configured")
+	}
 	code = strings.TrimSpace(code)
 	if code == "" {
 		code = "unknown"
 	}
-	result, err := r.pool.Exec(ctx, `
+	reason = strings.TrimSpace(reason)
+	if reason == "" {
+		reason = "outbox publication failed"
+	}
+
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin quarantine outbox event %s: %w", eventID, err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	var publishFailures int
+	var redriveCount int
+	if err := tx.QueryRow(ctx, `
 		UPDATE outbox_events
 		SET quarantined_at = now(),
 			quarantine_code = $3,
@@ -283,12 +299,31 @@ func (r *Repository) Quarantine(
 		  AND published_at IS NULL
 		  AND quarantined_at IS NULL
 		  AND locked_by = $2
-	`, eventID, workerID, code, reason)
-	if err != nil {
+		RETURNING publish_failures, redrive_count
+	`, eventID, workerID, code, reason).Scan(&publishFailures, &redriveCount); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrClaimLost
+		}
 		return fmt.Errorf("quarantine outbox event %s: %w", eventID, err)
 	}
-	if result.RowsAffected() != 1 {
-		return ErrClaimLost
+
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO outbox_event_actions (
+			event_id,
+			action,
+			reason_code,
+			reason,
+			publish_failures,
+			redrive_count,
+			actor_type
+		)
+		VALUES ($1, 'quarantined', $2, $3, $4, $5, 'relay')
+	`, eventID, code, reason, publishFailures, redriveCount); err != nil {
+		return fmt.Errorf("record quarantine action for outbox event %s: %w", eventID, err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit quarantine outbox event %s: %w", eventID, err)
 	}
 	return nil
 }
@@ -300,12 +335,24 @@ func (r *Repository) Redrive(ctx context.Context, eventID uuid.UUID) error {
 	if eventID == uuid.Nil {
 		return errors.New("outbox event ID is required")
 	}
-	result, err := r.pool.Exec(ctx, `
+
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin redrive outbox event %s: %w", eventID, err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	var previousCode string
+	var previousReason string
+	var previousPublishFailures int
+	var redriveCount int
+	if err := tx.QueryRow(ctx, `
 		UPDATE outbox_events
 		SET quarantined_at = NULL,
 			quarantine_code = NULL,
 			quarantine_reason = NULL,
 			publish_failures = 0,
+			redrive_count = redrive_count + 1,
 			available_at = now(),
 			locked_at = NULL,
 			locked_by = NULL,
@@ -314,12 +361,35 @@ func (r *Repository) Redrive(ctx context.Context, eventID uuid.UUID) error {
 		WHERE id = $1
 		  AND published_at IS NULL
 		  AND quarantined_at IS NOT NULL
-	`, eventID)
-	if err != nil {
+		RETURNING
+			COALESCE(quarantine_code, ''),
+			COALESCE(quarantine_reason, ''),
+			publish_failures,
+			redrive_count
+	`, eventID).Scan(&previousCode, &previousReason, &previousPublishFailures, &redriveCount); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrNotQuarantined
+		}
 		return fmt.Errorf("redrive outbox event %s: %w", eventID, err)
 	}
-	if result.RowsAffected() != 1 {
-		return ErrNotQuarantined
+
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO outbox_event_actions (
+			event_id,
+			action,
+			reason_code,
+			reason,
+			publish_failures,
+			redrive_count,
+			actor_type
+		)
+		VALUES ($1, 'redriven', NULLIF($2, ''), NULLIF($3, ''), $4, $5, 'operator')
+	`, eventID, previousCode, previousReason, previousPublishFailures, redriveCount); err != nil {
+		return fmt.Errorf("record redrive action for outbox event %s: %w", eventID, err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit redrive outbox event %s: %w", eventID, err)
 	}
 	return nil
 }
