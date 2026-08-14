@@ -30,3 +30,24 @@ func TestAuthorizedTeamIDRequiresEstablishedAccess(t *testing.T) {
 		}
 	}
 }
+
+func TestActorUserIDPtr(t *testing.T) {
+	t.Parallel()
+
+	userID := uuid.New()
+	user := Actor{Type: ActorTypeUser, UserID: userID}
+	got := user.UserIDPtr()
+	if got == nil || *got != userID {
+		t.Fatalf("user.UserIDPtr() = %v, want %s", got, userID)
+	}
+
+	teamToken := Actor{Type: ActorTypeTeamToken, TokenID: uuid.New()}
+	if got := teamToken.UserIDPtr(); got != nil {
+		t.Fatalf("teamToken.UserIDPtr() = %v, want nil", got)
+	}
+
+	invalidUser := Actor{Type: ActorTypeUser}
+	if got := invalidUser.UserIDPtr(); got != nil {
+		t.Fatalf("invalidUser.UserIDPtr() = %v, want nil", got)
+	}
+}
