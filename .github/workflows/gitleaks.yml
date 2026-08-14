@@ -11,7 +11,6 @@ on:
 
 permissions:
   contents: read
-  pull-requests: read
 
 concurrency:
   group: gitleaks-${{ github.workflow }}-${{ github.ref }}
@@ -27,7 +26,10 @@ jobs:
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      - name: Run Gitleaks
-        uses: gitleaks/gitleaks-action@v3
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Run Gitleaks CLI
+        run: |
+          docker run --rm \
+            --volume "$PWD:/repo:ro" \
+            --workdir /repo \
+            ghcr.io/gitleaks/gitleaks:v8.30.1 \
+            git --redact --verbose .
