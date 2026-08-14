@@ -5,11 +5,11 @@ import (
 
 	sentrymonitoring "github.com/dugble/dugble/server/internal/adapters/monitoring/sentry"
 
-	dugbleserver "github.com/dugble/dugble/server/internal/dugble/server"
+	serverregistry "github.com/dugble/dugble/server/internal/registry/server"
 )
 
 func main() {
-	if err := dugbleserver.Start(); err != nil {
+	if err := serverregistry.Start(); err != nil {
 		sentrymonitoring.Error("server stopped", "error", err)
 		os.Exit(1)
 	}
