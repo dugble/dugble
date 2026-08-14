@@ -25,7 +25,7 @@ Dugble is designed to give applications a consistent communication layer while k
 - Docker with Docker Compose
 - `make`
 
-For local backend development, the server currently targets Go 1.26.5. Node.js 24 is pinned in [`.nvmrc`](.nvmrc) for JavaScript tooling.
+For local backend development, the server currently targets Go 1.26.6. Node.js 24 is pinned in [`.nvmrc`](.nvmrc) for JavaScript tooling.
 
 ### Run with Docker
 
