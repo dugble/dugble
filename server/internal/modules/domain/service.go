@@ -332,6 +332,24 @@ func (s *Service) Check(ctx context.Context, domain SenderDomain) (Reconciliatio
 			records[index].Status = platformemail.RecordStatusVerified
 		}
 	}
+	if providerStatus.IdentityVerified && !providerStatus.MailFromConfigured {
+		configurator, ok := s.provider.(platformemail.DomainMailFromConfigurator)
+		if !ok {
+			return ReconciliationResult{}, errors.New("sender domain provider does not support MAIL FROM configuration")
+		}
+		if configureErr := configurator.ConfigureDomainMailFrom(
+			ctx,
+			domain.Domain,
+			domain.ProviderRegion,
+			domain.CustomReturnPath,
+		); configureErr != nil {
+			return ReconciliationResult{}, configureErr
+		}
+		return ReconciliationResult{
+			Status:              StatusPending,
+			VerificationRecords: records,
+		}, nil
+	}
 	status := verificationStatus(records, providerStatus)
 	if status == StatusVerified {
 		associator, ok := s.provider.(platformemail.DomainTenantAssociator)
@@ -388,6 +406,23 @@ func (s *Service) Delete(ctx context.Context, domainID string) (SenderDomain, er
 	domain, err := s.repository.Disable(ctx, id, tc.Scope.TeamID)
 	if err != nil {
 		return SenderDomain{}, apperrors.NewNotFound("Sender domain not found")
+	}
+	if disassociator, ok := s.provider.(platformemail.DomainTenantDisassociator); ok {
+		teamID, parseErr := uuid.Parse(domain.TeamID)
+		if parseErr != nil {
+			return domain, apperrors.NewInternal("Unable to resolve sender domain tenant for provider deletion", parseErr)
+		}
+		if disassociateErr := disassociator.DisassociateDomainFromTenant(
+			ctx,
+			domain.Domain,
+			domain.ProviderRegion,
+			emailtenant.AWSExternalName(teamID),
+		); disassociateErr != nil {
+			return domain, apperrors.NewInternal(
+				"Unable to detach sender domain from provider tenant; the domain has been disabled",
+				disassociateErr,
+			)
+		}
 	}
 	if err := s.provider.DeleteDomain(ctx, domain.Domain, domain.ProviderRegion); err != nil {
 		return domain, apperrors.NewInternal(
