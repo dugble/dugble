@@ -81,9 +81,10 @@ type DomainProvisionRequest struct {
 }
 
 type DomainStatus struct {
-	IdentityVerified bool
-	DKIMVerified     bool
-	MailFromVerified bool
+	IdentityVerified   bool
+	DKIMVerified       bool
+	MailFromConfigured bool
+	MailFromVerified   bool
 }
 
 type DomainProvider interface {
@@ -92,10 +93,22 @@ type DomainProvider interface {
 	DeleteDomain(context.Context, string, string) error
 }
 
+// DomainMailFromConfigurator is implemented by providers that require a
+// verified identity before custom MAIL FROM attributes can be configured.
+type DomainMailFromConfigurator interface {
+	ConfigureDomainMailFrom(context.Context, string, string, string) error
+}
+
 // DomainTenantAssociator is implemented by providers that require a verified
 // sender identity to be explicitly associated with the customer's tenant.
 type DomainTenantAssociator interface {
 	AssociateDomainWithTenant(context.Context, string, string, string) error
+}
+
+// DomainTenantDisassociator is implemented by providers that require tenant
+// resource associations to be removed before the sender identity is deleted.
+type DomainTenantDisassociator interface {
+	DisassociateDomainFromTenant(context.Context, string, string, string) error
 }
 
 type SendError struct {
