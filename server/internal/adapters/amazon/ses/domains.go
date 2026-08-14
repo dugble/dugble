@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/sesv2"
@@ -41,19 +42,26 @@ func (c *Client) ProvisionDomain(ctx context.Context, req platformemail.DomainPr
 	if err != nil {
 		return nil, fmt.Errorf("create SES email identity: %w", err)
 	}
+	return mapVerificationRecords(req, selector, publicKey), nil
+}
+
+// ConfigureDomainMailFrom configures the custom MAIL FROM domain after SES has
+// verified the sender identity. SES documents this operation against a verified
+// identity, so it must not run synchronously with CreateEmailIdentity.
+func (c *Client) ConfigureDomainMailFrom(ctx context.Context, domainName, region, customReturnPath string) error {
+	client, err := c.identityClient(region)
+	if err != nil {
+		return err
+	}
 	_, err = client.PutEmailIdentityMailFromAttributes(ctx, &sesv2.PutEmailIdentityMailFromAttributesInput{
-		EmailIdentity:       aws.String(req.Domain),
-		MailFromDomain:      aws.String(req.CustomReturnPath + "." + req.Domain),
+		EmailIdentity:       aws.String(strings.TrimSpace(domainName)),
+		MailFromDomain:      aws.String(strings.TrimSpace(customReturnPath) + "." + strings.TrimSpace(domainName)),
 		BehaviorOnMxFailure: sesv2types.BehaviorOnMxFailureRejectMessage,
 	})
 	if err != nil {
-		cleanupErr := c.deleteDomainWithClient(ctx, client, req.Domain)
-		if cleanupErr != nil {
-			return nil, errors.Join(fmt.Errorf("configure SES MAIL FROM domain: %w", err), fmt.Errorf("roll back SES email identity: %w", cleanupErr))
-		}
-		return nil, fmt.Errorf("configure SES MAIL FROM domain: %w", err)
+		return fmt.Errorf("configure SES MAIL FROM domain: %w", err)
 	}
-	return mapVerificationRecords(req, selector, publicKey), nil
+	return nil
 }
 
 // AssociateDomainWithTenant associates a verified sender identity with the
@@ -69,14 +77,7 @@ func (c *Client) AssociateDomainWithTenant(ctx context.Context, domainName, regi
 	if tenantName == "" {
 		return errors.New("SES tenant name is required for sender identity association")
 	}
-	output, err := client.GetTenant(ctx, &sesv2.GetTenantInput{TenantName: aws.String(tenantName)})
-	if err != nil {
-		return fmt.Errorf("get SES tenant for sender identity: %w", err)
-	}
-	if output.Tenant == nil || output.Tenant.TenantArn == nil {
-		return errors.New("SES returned an incomplete tenant for sender identity association")
-	}
-	resourceARN, err := identityARN(strings.TrimSpace(*output.Tenant.TenantArn), domainName)
+	resourceARN, err := c.tenantIdentityARN(ctx, client, tenantName, domainName)
 	if err != nil {
 		return err
 	}
@@ -88,6 +89,46 @@ func (c *Client) AssociateDomainWithTenant(ctx context.Context, domainName, regi
 		return fmt.Errorf("associate SES sender identity with tenant: %w", err)
 	}
 	return nil
+}
+
+// DisassociateDomainFromTenant removes a tenant-resource association before the
+// underlying SES identity is deleted. SES rejects deletion of associated
+// identities, so this cleanup is part of the provider deletion lifecycle.
+func (c *Client) DisassociateDomainFromTenant(ctx context.Context, domainName, region, tenantName string) error {
+	client, err := c.tenantClient(region)
+	if err != nil {
+		return err
+	}
+	tenantName = strings.TrimSpace(tenantName)
+	if tenantName == "" {
+		return errors.New("SES tenant name is required for sender identity disassociation")
+	}
+	resourceARN, err := c.tenantIdentityARN(ctx, client, tenantName, domainName)
+	if err != nil {
+		if isSESNotFound(err) {
+			return nil
+		}
+		return err
+	}
+	_, err = client.DeleteTenantResourceAssociation(ctx, &sesv2.DeleteTenantResourceAssociationInput{
+		TenantName:  aws.String(tenantName),
+		ResourceArn: aws.String(resourceARN),
+	})
+	if err != nil && !isSESNotFound(err) {
+		return fmt.Errorf("disassociate SES sender identity from tenant: %w", err)
+	}
+	return nil
+}
+
+func (c *Client) tenantIdentityARN(ctx context.Context, client sesTenantAPI, tenantName, domainName string) (string, error) {
+	output, err := client.GetTenant(ctx, &sesv2.GetTenantInput{TenantName: aws.String(strings.TrimSpace(tenantName))})
+	if err != nil {
+		return "", fmt.Errorf("get SES tenant for sender identity: %w", err)
+	}
+	if output.Tenant == nil || output.Tenant.TenantArn == nil {
+		return "", errors.New("SES returned an incomplete tenant for sender identity association")
+	}
+	return identityARN(strings.TrimSpace(*output.Tenant.TenantArn), domainName)
 }
 
 func identityARN(tenantARN, identity string) (string, error) {
@@ -116,6 +157,7 @@ func (c *Client) GetDomainStatus(ctx context.Context, domainName, region string)
 		status.DKIMVerified = output.DkimAttributes.SigningEnabled && output.DkimAttributes.Status == sesv2types.DkimStatusSuccess
 	}
 	if output.MailFromAttributes != nil {
+		status.MailFromConfigured = strings.TrimSpace(aws.ToString(output.MailFromAttributes.MailFromDomain)) != ""
 		status.MailFromVerified = output.MailFromAttributes.MailFromDomainStatus == sesv2types.MailFromDomainStatusSuccess
 	}
 	return status, nil
@@ -133,16 +175,41 @@ func (c *Client) DeleteDomain(ctx context.Context, domainName, region string) er
 }
 
 func (c *Client) deleteDomainWithClient(ctx context.Context, client sesIdentityAPI, domainName string) error {
-	_, err := client.DeleteEmailIdentity(ctx, &sesv2.DeleteEmailIdentityInput{EmailIdentity: aws.String(strings.TrimSpace(domainName))})
-	if err == nil || isSESIdentityNotFound(err) {
-		return nil
+	var lastErr error
+	for attempt := 0; attempt < 4; attempt++ {
+		_, err := client.DeleteEmailIdentity(ctx, &sesv2.DeleteEmailIdentityInput{EmailIdentity: aws.String(strings.TrimSpace(domainName))})
+		if err == nil || isSESNotFound(err) {
+			return nil
+		}
+		lastErr = err
+		if !isSESTransientMutation(err) || attempt == 3 {
+			break
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(time.Duration(attempt+1) * 150 * time.Millisecond):
+		}
 	}
-	return err
+	return lastErr
 }
 
-func isSESIdentityNotFound(err error) bool {
+func isSESNotFound(err error) bool {
 	var apiError smithy.APIError
 	return errors.As(err, &apiError) && strings.EqualFold(strings.TrimSpace(apiError.ErrorCode()), "NotFoundException")
+}
+
+func isSESTransientMutation(err error) bool {
+	var apiError smithy.APIError
+	if !errors.As(err, &apiError) {
+		return false
+	}
+	switch strings.ToLower(strings.TrimSpace(apiError.ErrorCode())) {
+	case "concurrentmodificationexception", "toomanyrequestsexception":
+		return true
+	default:
+		return false
+	}
 }
 
 func mapVerificationRecords(req platformemail.DomainProvisionRequest, selector, publicKey string) []platformemail.VerificationRecord {

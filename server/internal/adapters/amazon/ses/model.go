@@ -36,6 +36,7 @@ type sesTenantAPI interface {
 	GetTenant(context.Context, *sesv2.GetTenantInput, ...func(*sesv2.Options)) (*sesv2.GetTenantOutput, error)
 	PutTenantSuppressionAttributes(context.Context, *sesv2.PutTenantSuppressionAttributesInput, ...func(*sesv2.Options)) (*sesv2.PutTenantSuppressionAttributesOutput, error)
 	CreateTenantResourceAssociation(context.Context, *sesv2.CreateTenantResourceAssociationInput, ...func(*sesv2.Options)) (*sesv2.CreateTenantResourceAssociationOutput, error)
+	DeleteTenantResourceAssociation(context.Context, *sesv2.DeleteTenantResourceAssociationInput, ...func(*sesv2.Options)) (*sesv2.DeleteTenantResourceAssociationOutput, error)
 	UpdateReputationEntityPolicy(context.Context, *sesv2.UpdateReputationEntityPolicyInput, ...func(*sesv2.Options)) (*sesv2.UpdateReputationEntityPolicyOutput, error)
 }
 

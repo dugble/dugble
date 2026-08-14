@@ -12,6 +12,11 @@ import (
 
 type checkProvider struct {
 	status             platformemail.DomainStatus
+	mailFromCalls      int
+	mailFromDomain     string
+	mailFromRegion     string
+	mailFromReturnPath string
+	mailFromFailure    error
 	associationCalls   int
 	associatedDomain   string
 	associatedRegion   string
@@ -29,6 +34,14 @@ func (p *checkProvider) GetDomainStatus(context.Context, string, string) (platfo
 
 func (p *checkProvider) DeleteDomain(context.Context, string, string) error { return nil }
 
+func (p *checkProvider) ConfigureDomainMailFrom(_ context.Context, domainName, region, returnPath string) error {
+	p.mailFromCalls++
+	p.mailFromDomain = domainName
+	p.mailFromRegion = region
+	p.mailFromReturnPath = returnPath
+	return p.mailFromFailure
+}
+
 func (p *checkProvider) AssociateDomainWithTenant(_ context.Context, domainName, region, tenantName string) error {
 	p.associationCalls++
 	p.associatedDomain = domainName
@@ -43,12 +56,48 @@ func (verifiedDNS) Verify(context.Context, string, platformemail.VerificationRec
 	return true
 }
 
-func TestCheckAssociatesVerifiedDomainWithTenant(t *testing.T) {
-	teamID := uuid.New()
+func TestCheckConfiguresMailFromAfterIdentityVerification(t *testing.T) {
 	provider := &checkProvider{status: platformemail.DomainStatus{
 		IdentityVerified: true,
 		DKIMVerified:     true,
-		MailFromVerified: true,
+	}}
+	service := NewService(nil, provider, verifiedDNS{})
+	domain := SenderDomain{
+		TeamID:           uuid.NewString(),
+		Domain:           "mail.example.com",
+		ProviderRegion:   "us-east-1",
+		CustomReturnPath: "send",
+		VerificationRecords: []VerificationRecord{
+			{Record: platformemail.RecordDKIM, Name: "selector._domainkey", Type: platformemail.RecordTypeTXT},
+			{Record: platformemail.RecordSPF, Name: "send", Type: platformemail.RecordTypeMX},
+		},
+	}
+
+	result, err := service.Check(context.Background(), domain)
+	if err != nil {
+		t.Fatalf("Check returned error: %v", err)
+	}
+	if result.Status != StatusPending {
+		t.Fatalf("expected status %q while MAIL FROM converges, got %q", StatusPending, result.Status)
+	}
+	if provider.mailFromCalls != 1 {
+		t.Fatalf("expected one MAIL FROM configuration, got %d", provider.mailFromCalls)
+	}
+	if provider.mailFromDomain != domain.Domain || provider.mailFromRegion != domain.ProviderRegion || provider.mailFromReturnPath != domain.CustomReturnPath {
+		t.Fatalf("unexpected MAIL FROM configuration: domain=%q region=%q return_path=%q", provider.mailFromDomain, provider.mailFromRegion, provider.mailFromReturnPath)
+	}
+	if provider.associationCalls != 0 {
+		t.Fatalf("expected no tenant association before MAIL FROM verification, got %d", provider.associationCalls)
+	}
+}
+
+func TestCheckAssociatesVerifiedDomainWithTenant(t *testing.T) {
+	teamID := uuid.New()
+	provider := &checkProvider{status: platformemail.DomainStatus{
+		IdentityVerified:   true,
+		DKIMVerified:       true,
+		MailFromConfigured: true,
+		MailFromVerified:   true,
 	}}
 	service := NewService(nil, provider, verifiedDNS{})
 	domain := SenderDomain{
@@ -68,6 +117,9 @@ func TestCheckAssociatesVerifiedDomainWithTenant(t *testing.T) {
 	if result.Status != StatusVerified {
 		t.Fatalf("expected status %q, got %q", StatusVerified, result.Status)
 	}
+	if provider.mailFromCalls != 0 {
+		t.Fatalf("expected no MAIL FROM reconfiguration, got %d", provider.mailFromCalls)
+	}
 	if provider.associationCalls != 1 {
 		t.Fatalf("expected one tenant association, got %d", provider.associationCalls)
 	}
@@ -83,7 +135,7 @@ func TestCheckAssociatesVerifiedDomainWithTenant(t *testing.T) {
 	}
 }
 
-func TestCheckDoesNotAssociatePendingDomain(t *testing.T) {
+func TestCheckDoesNotConfigureOrAssociatePendingIdentity(t *testing.T) {
 	provider := &checkProvider{status: platformemail.DomainStatus{
 		IdentityVerified: false,
 		DKIMVerified:     false,
@@ -105,6 +157,9 @@ func TestCheckDoesNotAssociatePendingDomain(t *testing.T) {
 	}
 	if result.Status != StatusPending {
 		t.Fatalf("expected status %q, got %q", StatusPending, result.Status)
+	}
+	if provider.mailFromCalls != 0 {
+		t.Fatalf("expected no MAIL FROM configuration, got %d", provider.mailFromCalls)
 	}
 	if provider.associationCalls != 0 {
 		t.Fatalf("expected no tenant association, got %d", provider.associationCalls)
