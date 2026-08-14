@@ -108,7 +108,7 @@ func (s *Service) Create(ctx context.Context, req CreateRequest) (CreateResult, 
 		ProviderAccount:     DefaultProviderAccount,
 		ProviderRegion:      region,
 		CustomReturnPath:    configuration.CustomReturnPath,
-		CreatedBy:           tc.Actor.UserID,
+		CreatedBy:           tc.Actor.UserIDPtr(),
 		Configuration:       configuration,
 		VerificationRecords: []VerificationRecord{},
 	})
