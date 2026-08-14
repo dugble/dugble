@@ -10,8 +10,8 @@ import (
 	"unicode/utf16"
 	"unicode/utf8"
 
-	smsapi "github.com/coffeyvidzro/dugble/server/internal/platform/sms"
-	apperrors "github.com/coffeyvidzro/dugble/server/pkg/errors"
+	smsapi "github.com/dugble/dugble/server/internal/platform/sms"
+	apperrors "github.com/dugble/dugble/server/pkg/errors"
 )
 
 const (

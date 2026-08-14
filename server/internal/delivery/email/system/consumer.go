@@ -6,13 +6,13 @@ import (
 	"fmt"
 	"time"
 
-	sentrymonitoring "github.com/coffeyvidzro/dugble/server/internal/adapters/monitoring/sentry"
+	sentrymonitoring "github.com/dugble/dugble/server/internal/adapters/monitoring/sentry"
 
 	"github.com/google/uuid"
 	natsjs "github.com/nats-io/nats.go/jetstream"
 
-	jetstreammessaging "github.com/coffeyvidzro/dugble/server/internal/adapters/nats"
-	platformemail "github.com/coffeyvidzro/dugble/server/internal/platform/awsses"
+	jetstreammessaging "github.com/dugble/dugble/server/internal/adapters/nats"
+	platformemail "github.com/dugble/dugble/server/internal/platform/awsses"
 )
 
 type processedEventStore interface {

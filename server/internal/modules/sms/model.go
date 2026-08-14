@@ -7,7 +7,7 @@ import (
 
 	"github.com/google/uuid"
 
-	platformbilling "github.com/coffeyvidzro/dugble/server/internal/billing/charge/usage"
+	platformbilling "github.com/dugble/dugble/server/internal/billing/charge/usage"
 )
 
 const (

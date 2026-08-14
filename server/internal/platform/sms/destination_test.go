@@ -4,7 +4,7 @@ import (
 	"errors"
 	"testing"
 
-	platformsms "github.com/coffeyvidzro/dugble/server/internal/platform/sms"
+	platformsms "github.com/dugble/dugble/server/internal/platform/sms"
 )
 
 func TestSupportedDestinationCountryUsesResolutionCatalog(t *testing.T) {

@@ -8,10 +8,10 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/coffeyvidzro/dugble/server/internal/authn"
-	"github.com/coffeyvidzro/dugble/server/internal/authz"
-	"github.com/coffeyvidzro/dugble/server/internal/modules/session"
-	"github.com/coffeyvidzro/dugble/server/internal/modules/teamtoken"
+	"github.com/dugble/dugble/server/internal/authn"
+	"github.com/dugble/dugble/server/internal/authz"
+	"github.com/dugble/dugble/server/internal/modules/session"
+	"github.com/dugble/dugble/server/internal/modules/teamtoken"
 )
 
 type resolverSessionStore struct {

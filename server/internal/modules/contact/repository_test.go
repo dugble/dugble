@@ -6,7 +6,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/coffeyvidzro/dugble/server/internal/authz"
+	"github.com/dugble/dugble/server/internal/authz"
 )
 
 func TestRepositoryRejectsUnscopedContactAccess(t *testing.T) {

@@ -5,9 +5,9 @@ import (
 	"errors"
 	"net/http"
 
-	platformevent "github.com/coffeyvidzro/dugble/server/internal/platform/event"
-	platformwebhook "github.com/coffeyvidzro/dugble/server/internal/platform/webhook"
-	httptransport "github.com/coffeyvidzro/dugble/server/internal/transport"
+	platformevent "github.com/dugble/dugble/server/internal/platform/event"
+	platformwebhook "github.com/dugble/dugble/server/internal/platform/webhook"
+	httptransport "github.com/dugble/dugble/server/internal/transport"
 )
 
 type Dependencies struct {

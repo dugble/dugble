@@ -3,7 +3,7 @@ package renewal
 import (
 	"time"
 
-	charges "github.com/coffeyvidzro/dugble/server/internal/billing/charge/subscription"
+	charges "github.com/dugble/dugble/server/internal/billing/charge/subscription"
 	"github.com/google/uuid"
 )
 

@@ -5,17 +5,17 @@ import (
 	"errors"
 	"time"
 
-	sentrymonitoring "github.com/coffeyvidzro/dugble/server/internal/adapters/monitoring/sentry"
+	sentrymonitoring "github.com/dugble/dugble/server/internal/adapters/monitoring/sentry"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
-	"github.com/coffeyvidzro/dugble/server/internal/authn"
-	"github.com/coffeyvidzro/dugble/server/internal/modules/session"
-	"github.com/coffeyvidzro/dugble/server/internal/platform/audit"
-	notifications "github.com/coffeyvidzro/dugble/server/internal/platform/systemmail"
-	"github.com/coffeyvidzro/dugble/server/internal/security"
-	apperrors "github.com/coffeyvidzro/dugble/server/pkg/errors"
+	"github.com/dugble/dugble/server/internal/authn"
+	"github.com/dugble/dugble/server/internal/modules/session"
+	"github.com/dugble/dugble/server/internal/platform/audit"
+	notifications "github.com/dugble/dugble/server/internal/platform/systemmail"
+	"github.com/dugble/dugble/server/internal/security"
+	apperrors "github.com/dugble/dugble/server/pkg/errors"
 )
 
 const (

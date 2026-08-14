@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	db "github.com/coffeyvidzro/dugble/server/internal/database/sqlc"
-	"github.com/coffeyvidzro/dugble/server/internal/security"
+	db "github.com/dugble/dugble/server/internal/database/sqlc"
+	"github.com/dugble/dugble/server/internal/security"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 

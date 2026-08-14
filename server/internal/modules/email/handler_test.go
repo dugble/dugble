@@ -9,8 +9,8 @@ import (
 
 	"github.com/labstack/echo/v5"
 
-	"github.com/coffeyvidzro/dugble/server/internal/authz"
-	"github.com/coffeyvidzro/dugble/server/internal/platform/idempotency"
+	"github.com/dugble/dugble/server/internal/authz"
+	"github.com/dugble/dugble/server/internal/platform/idempotency"
 )
 
 func TestRegisteredEmailRoutesRejectRemovedStreamField(t *testing.T) {

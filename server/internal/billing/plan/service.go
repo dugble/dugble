@@ -5,8 +5,8 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/coffeyvidzro/dugble/server/internal/authz"
-	apperrors "github.com/coffeyvidzro/dugble/server/pkg/errors"
+	"github.com/dugble/dugble/server/internal/authz"
+	apperrors "github.com/dugble/dugble/server/pkg/errors"
 )
 
 type store interface {

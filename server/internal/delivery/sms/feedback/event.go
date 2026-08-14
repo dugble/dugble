@@ -7,10 +7,10 @@ import (
 	"strings"
 	"time"
 
-	attempt "github.com/coffeyvidzro/dugble/server/internal/delivery/attempt"
-	feedback "github.com/coffeyvidzro/dugble/server/internal/delivery/feedback"
+	attempt "github.com/dugble/dugble/server/internal/delivery/attempt"
+	feedback "github.com/dugble/dugble/server/internal/delivery/feedback"
 
-	smsapi "github.com/coffeyvidzro/dugble/server/internal/platform/sms"
+	smsapi "github.com/dugble/dugble/server/internal/platform/sms"
 )
 
 const providerStatusEventType = "delivery_status"

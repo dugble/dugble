@@ -7,7 +7,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/coffeyvidzro/dugble/server/internal/delivery/attempt"
+	"github.com/dugble/dugble/server/internal/delivery/attempt"
 )
 
 type repositoryStub struct {

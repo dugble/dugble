@@ -3,7 +3,7 @@ package authn
 import (
 	"time"
 
-	"github.com/coffeyvidzro/dugble/server/internal/authz"
+	"github.com/dugble/dugble/server/internal/authz"
 	"github.com/google/uuid"
 )
 

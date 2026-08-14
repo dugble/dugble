@@ -5,8 +5,8 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"github.com/coffeyvidzro/dugble/server/internal/security"
-	apperrors "github.com/coffeyvidzro/dugble/server/pkg/errors"
+	"github.com/dugble/dugble/server/internal/security"
+	apperrors "github.com/dugble/dugble/server/pkg/errors"
 )
 
 func normalizeAuthenticationCode(value string) string { return strings.TrimSpace(value) }

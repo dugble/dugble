@@ -3,7 +3,7 @@ package senderid
 import (
 	"github.com/labstack/echo/v5"
 
-	"github.com/coffeyvidzro/dugble/server/internal/authz"
+	"github.com/dugble/dugble/server/internal/authz"
 )
 
 type AccessMiddleware func(permission authz.Permission) echo.MiddlewareFunc

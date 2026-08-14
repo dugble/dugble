@@ -3,12 +3,12 @@ package user
 import (
 	"context"
 
-	sentrymonitoring "github.com/coffeyvidzro/dugble/server/internal/adapters/monitoring/sentry"
+	sentrymonitoring "github.com/dugble/dugble/server/internal/adapters/monitoring/sentry"
 
-	"github.com/coffeyvidzro/dugble/server/internal/authn"
-	notifications "github.com/coffeyvidzro/dugble/server/internal/platform/systemmail"
-	"github.com/coffeyvidzro/dugble/server/internal/security"
-	apperrors "github.com/coffeyvidzro/dugble/server/pkg/errors"
+	"github.com/dugble/dugble/server/internal/authn"
+	notifications "github.com/dugble/dugble/server/internal/platform/systemmail"
+	"github.com/dugble/dugble/server/internal/security"
+	apperrors "github.com/dugble/dugble/server/pkg/errors"
 )
 
 type Service struct {

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/coffeyvidzro/dugble/server/internal/authz"
+	"github.com/dugble/dugble/server/internal/authz"
 	"github.com/labstack/echo/v5"
 )
 

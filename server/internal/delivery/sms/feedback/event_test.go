@@ -4,11 +4,11 @@ import (
 	"testing"
 	"time"
 
-	attempt "github.com/coffeyvidzro/dugble/server/internal/delivery/attempt"
+	attempt "github.com/dugble/dugble/server/internal/delivery/attempt"
 
 	"github.com/google/uuid"
 
-	smsapi "github.com/coffeyvidzro/dugble/server/internal/platform/sms"
+	smsapi "github.com/dugble/dugble/server/internal/platform/sms"
 )
 
 func TestStatusEventMapsProviderStates(t *testing.T) {

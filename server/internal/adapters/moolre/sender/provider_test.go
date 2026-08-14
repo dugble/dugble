@@ -8,7 +8,7 @@ import (
 	"net/url"
 	"testing"
 
-	"github.com/coffeyvidzro/dugble/server/internal/adapters/moolre"
+	"github.com/dugble/dugble/server/internal/adapters/moolre"
 )
 
 func TestProviderCreatesAndChecksSenderID(t *testing.T) {

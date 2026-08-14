@@ -3,8 +3,8 @@ package session
 import (
 	"context"
 
-	"github.com/coffeyvidzro/dugble/server/internal/authn"
-	apperrors "github.com/coffeyvidzro/dugble/server/pkg/errors"
+	"github.com/dugble/dugble/server/internal/authn"
+	apperrors "github.com/dugble/dugble/server/pkg/errors"
 )
 
 type Service struct {

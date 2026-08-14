@@ -5,10 +5,10 @@ import (
 	"errors"
 	"testing"
 
-	leamoutsms "github.com/coffeyvidzro/dugble/server/internal/adapters/leamout/sms"
-	runnagesms "github.com/coffeyvidzro/dugble/server/internal/adapters/runnage/sms"
-	platformsms "github.com/coffeyvidzro/dugble/server/internal/platform/sms"
-	"github.com/coffeyvidzro/dugble/server/internal/platform/sms/routing"
+	leamoutsms "github.com/dugble/dugble/server/internal/adapters/leamout/sms"
+	runnagesms "github.com/dugble/dugble/server/internal/adapters/runnage/sms"
+	platformsms "github.com/dugble/dugble/server/internal/platform/sms"
+	"github.com/dugble/dugble/server/internal/platform/sms/routing"
 )
 
 func TestServiceOrdersProvidersByPriority(t *testing.T) {

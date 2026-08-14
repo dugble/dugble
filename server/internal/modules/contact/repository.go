@@ -13,9 +13,9 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/coffeyvidzro/dugble/server/internal/authz"
-	dbsqlc "github.com/coffeyvidzro/dugble/server/internal/database/sqlc"
-	platformevent "github.com/coffeyvidzro/dugble/server/internal/platform/event"
+	"github.com/dugble/dugble/server/internal/authz"
+	dbsqlc "github.com/dugble/dugble/server/internal/database/sqlc"
+	platformevent "github.com/dugble/dugble/server/internal/platform/event"
 )
 
 var (

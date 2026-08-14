@@ -7,9 +7,9 @@ import (
 
 	"github.com/labstack/echo/v5"
 
-	hubteladapter "github.com/coffeyvidzro/dugble/server/internal/adapters/hubtel"
-	apperrors "github.com/coffeyvidzro/dugble/server/pkg/errors"
-	"github.com/coffeyvidzro/dugble/server/pkg/httputil"
+	hubteladapter "github.com/dugble/dugble/server/internal/adapters/hubtel"
+	apperrors "github.com/dugble/dugble/server/pkg/errors"
+	"github.com/dugble/dugble/server/pkg/httputil"
 )
 
 type Handler struct {

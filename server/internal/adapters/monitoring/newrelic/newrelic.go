@@ -8,7 +8,7 @@ import (
 
 	newrelicagent "github.com/newrelic/go-agent/v3/newrelic"
 
-	"github.com/coffeyvidzro/dugble/server/internal/config"
+	"github.com/dugble/dugble/server/internal/config"
 )
 
 var ignoredHTTPPaths = map[string]struct{}{

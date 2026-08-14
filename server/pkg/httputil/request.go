@@ -9,7 +9,7 @@ import (
 
 	"github.com/labstack/echo/v5"
 
-	apperrors "github.com/coffeyvidzro/dugble/server/pkg/errors"
+	apperrors "github.com/dugble/dugble/server/pkg/errors"
 )
 
 const DefaultMaxRequestBodyBytes int64 = 1 << 20

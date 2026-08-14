@@ -10,7 +10,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/coffeyvidzro/dugble/server/internal/delivery/attempt"
+	"github.com/dugble/dugble/server/internal/delivery/attempt"
 )
 
 // Event is a normalized provider delivery-status or engagement event.

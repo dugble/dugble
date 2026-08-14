@@ -12,10 +12,10 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/nyaruka/phonenumbers"
 
-	"github.com/coffeyvidzro/dugble/server/internal/authz"
-	"github.com/coffeyvidzro/dugble/server/internal/modules/sms"
-	apperrors "github.com/coffeyvidzro/dugble/server/pkg/errors"
-	"github.com/coffeyvidzro/dugble/server/pkg/pgconv"
+	"github.com/dugble/dugble/server/internal/authz"
+	"github.com/dugble/dugble/server/internal/modules/sms"
+	apperrors "github.com/dugble/dugble/server/pkg/errors"
+	"github.com/dugble/dugble/server/pkg/pgconv"
 )
 
 const maxBodyCharacters = 1600

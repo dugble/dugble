@@ -11,8 +11,8 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 
-	"github.com/coffeyvidzro/dugble/server/internal/delivery/attempt"
-	"github.com/coffeyvidzro/dugble/server/pkg/pgconv"
+	"github.com/dugble/dugble/server/internal/delivery/attempt"
+	"github.com/dugble/dugble/server/pkg/pgconv"
 )
 
 const processedConsumerName = "messaging-feedback-v1"

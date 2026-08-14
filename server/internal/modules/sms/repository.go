@@ -12,10 +12,10 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/coffeyvidzro/dugble/server/internal/adapters/postgres"
-	dbsqlc "github.com/coffeyvidzro/dugble/server/internal/database/sqlc"
-	platformwebhook "github.com/coffeyvidzro/dugble/server/internal/platform/webhook"
-	"github.com/coffeyvidzro/dugble/server/pkg/pgconv"
+	"github.com/dugble/dugble/server/internal/adapters/postgres"
+	dbsqlc "github.com/dugble/dugble/server/internal/database/sqlc"
+	platformwebhook "github.com/dugble/dugble/server/internal/platform/webhook"
+	"github.com/dugble/dugble/server/pkg/pgconv"
 )
 
 var ErrMessageNotFound = errors.New("sms message not found")

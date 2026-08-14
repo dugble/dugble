@@ -6,7 +6,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	platformevent "github.com/coffeyvidzro/dugble/server/internal/platform/event"
+	platformevent "github.com/dugble/dugble/server/internal/platform/event"
 )
 
 // EventSink adapts webhook persistence to the canonical platform event sink.

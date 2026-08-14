@@ -1,6 +1,6 @@
 package systemmail
 
-import platformemail "github.com/coffeyvidzro/dugble/server/internal/platform/awsses"
+import platformemail "github.com/dugble/dugble/server/internal/platform/awsses"
 
 type Recipient struct {
 	Name  string

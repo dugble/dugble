@@ -6,16 +6,16 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/labstack/echo/v5"
 
-	"github.com/coffeyvidzro/dugble/server/internal/authz"
-	"github.com/coffeyvidzro/dugble/server/internal/config"
-	authmodule "github.com/coffeyvidzro/dugble/server/internal/modules/auth"
-	sessionmodule "github.com/coffeyvidzro/dugble/server/internal/modules/session"
-	teammodule "github.com/coffeyvidzro/dugble/server/internal/modules/team"
-	teamtokenmodule "github.com/coffeyvidzro/dugble/server/internal/modules/teamtoken"
-	platformemail "github.com/coffeyvidzro/dugble/server/internal/platform/awsses"
-	"github.com/coffeyvidzro/dugble/server/internal/platform/idempotency"
-	httptransport "github.com/coffeyvidzro/dugble/server/internal/transport"
-	httpmiddleware "github.com/coffeyvidzro/dugble/server/internal/transport/middleware"
+	"github.com/dugble/dugble/server/internal/authz"
+	"github.com/dugble/dugble/server/internal/config"
+	authmodule "github.com/dugble/dugble/server/internal/modules/auth"
+	sessionmodule "github.com/dugble/dugble/server/internal/modules/session"
+	teammodule "github.com/dugble/dugble/server/internal/modules/team"
+	teamtokenmodule "github.com/dugble/dugble/server/internal/modules/teamtoken"
+	platformemail "github.com/dugble/dugble/server/internal/platform/awsses"
+	"github.com/dugble/dugble/server/internal/platform/idempotency"
+	httptransport "github.com/dugble/dugble/server/internal/transport"
+	httpmiddleware "github.com/dugble/dugble/server/internal/transport/middleware"
 )
 
 type serverMiddleware struct {

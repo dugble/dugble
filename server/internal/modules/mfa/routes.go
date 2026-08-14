@@ -5,8 +5,8 @@ import (
 
 	"github.com/labstack/echo/v5"
 
-	"github.com/coffeyvidzro/dugble/server/internal/authn"
-	httpmiddleware "github.com/coffeyvidzro/dugble/server/internal/transport/middleware"
+	"github.com/dugble/dugble/server/internal/authn"
+	httpmiddleware "github.com/dugble/dugble/server/internal/transport/middleware"
 )
 
 func RegisterRoutes(router *echo.Echo, handler *Handler, authMiddleware, csrfMiddleware echo.MiddlewareFunc) {

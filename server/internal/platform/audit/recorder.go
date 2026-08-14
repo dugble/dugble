@@ -5,8 +5,8 @@ import (
 
 	"github.com/google/uuid"
 
-	sentrymonitoring "github.com/coffeyvidzro/dugble/server/internal/adapters/monitoring/sentry"
-	"github.com/coffeyvidzro/dugble/server/internal/authz"
+	sentrymonitoring "github.com/dugble/dugble/server/internal/adapters/monitoring/sentry"
+	"github.com/dugble/dugble/server/internal/authz"
 )
 
 func Record(ctx context.Context, access authz.Access, event Event) {

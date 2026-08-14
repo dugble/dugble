@@ -10,10 +10,10 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
-	"github.com/coffeyvidzro/dugble/server/internal/authz"
-	"github.com/coffeyvidzro/dugble/server/internal/platform/audit"
-	platformwebhook "github.com/coffeyvidzro/dugble/server/internal/platform/webhook"
-	apperrors "github.com/coffeyvidzro/dugble/server/pkg/errors"
+	"github.com/dugble/dugble/server/internal/authz"
+	"github.com/dugble/dugble/server/internal/platform/audit"
+	platformwebhook "github.com/dugble/dugble/server/internal/platform/webhook"
+	apperrors "github.com/dugble/dugble/server/pkg/errors"
 )
 
 type Service struct {

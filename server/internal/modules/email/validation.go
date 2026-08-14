@@ -13,8 +13,8 @@ import (
 
 	"github.com/google/uuid"
 
-	platformemail "github.com/coffeyvidzro/dugble/server/internal/platform/awsses"
-	apperrors "github.com/coffeyvidzro/dugble/server/pkg/errors"
+	platformemail "github.com/dugble/dugble/server/internal/platform/awsses"
+	apperrors "github.com/dugble/dugble/server/pkg/errors"
 )
 
 const (

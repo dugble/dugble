@@ -9,8 +9,8 @@ import (
 
 	"github.com/google/uuid"
 
-	smsmodule "github.com/coffeyvidzro/dugble/server/internal/modules/sms"
-	smsapi "github.com/coffeyvidzro/dugble/server/internal/platform/sms"
+	smsmodule "github.com/dugble/dugble/server/internal/modules/sms"
+	smsapi "github.com/dugble/dugble/server/internal/platform/sms"
 )
 
 const defaultStaleProcessingAfter = 15 * time.Minute

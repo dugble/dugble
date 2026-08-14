@@ -3,7 +3,7 @@ package broadcast
 import (
 	"github.com/labstack/echo/v5"
 
-	"github.com/coffeyvidzro/dugble/server/pkg/httputil"
+	"github.com/dugble/dugble/server/pkg/httputil"
 )
 
 func (h *Handler) Duplicate(c *echo.Context) error {

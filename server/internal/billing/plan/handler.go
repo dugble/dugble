@@ -1,7 +1,7 @@
 package plan
 
 import (
-	"github.com/coffeyvidzro/dugble/server/pkg/httputil"
+	"github.com/dugble/dugble/server/pkg/httputil"
 	"github.com/labstack/echo/v5"
 )
 

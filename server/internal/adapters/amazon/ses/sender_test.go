@@ -9,7 +9,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/sesv2"
 	"github.com/aws/smithy-go"
 
-	platformemail "github.com/coffeyvidzro/dugble/server/internal/platform/awsses"
+	platformemail "github.com/dugble/dugble/server/internal/platform/awsses"
 )
 
 type sendClientStub struct {

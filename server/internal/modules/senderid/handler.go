@@ -5,8 +5,8 @@ import (
 
 	"github.com/labstack/echo/v5"
 
-	apperrors "github.com/coffeyvidzro/dugble/server/pkg/errors"
-	"github.com/coffeyvidzro/dugble/server/pkg/httputil"
+	apperrors "github.com/dugble/dugble/server/pkg/errors"
+	"github.com/dugble/dugble/server/pkg/httputil"
 )
 
 type Handler struct{ service *Service }

@@ -11,10 +11,10 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
-	hubteladapter "github.com/coffeyvidzro/dugble/server/internal/adapters/hubtel"
-	"github.com/coffeyvidzro/dugble/server/internal/authz"
-	"github.com/coffeyvidzro/dugble/server/internal/billing/payment"
-	apperrors "github.com/coffeyvidzro/dugble/server/pkg/errors"
+	hubteladapter "github.com/dugble/dugble/server/internal/adapters/hubtel"
+	"github.com/dugble/dugble/server/internal/authz"
+	"github.com/dugble/dugble/server/internal/billing/payment"
+	apperrors "github.com/dugble/dugble/server/pkg/errors"
 )
 
 type store interface {

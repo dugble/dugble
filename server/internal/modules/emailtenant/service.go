@@ -7,7 +7,7 @@ import (
 
 	"github.com/google/uuid"
 
-	platformemail "github.com/coffeyvidzro/dugble/server/internal/platform/awsses"
+	platformemail "github.com/dugble/dugble/server/internal/platform/awsses"
 )
 
 type ProvisioningRequest struct {

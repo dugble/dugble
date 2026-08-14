@@ -7,7 +7,7 @@ import (
 	"strings"
 	"sync"
 
-	platformsenderid "github.com/coffeyvidzro/dugble/server/internal/platform/senderid"
+	platformsenderid "github.com/dugble/dugble/server/internal/platform/senderid"
 )
 
 const ProviderID = platformsenderid.ProviderLeamout
