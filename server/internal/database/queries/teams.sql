@@ -130,6 +130,16 @@ FROM team_members
 WHERE team_id = sqlc.arg(team_id)
 ORDER BY created_at ASC;
 
+-- name: ListActiveTeamOwnerRecipients :many
+SELECT users.name, users.email, teams.name AS team_name
+FROM team_members
+JOIN users ON users.id = team_members.user_id
+JOIN teams ON teams.id = team_members.team_id
+WHERE team_members.team_id = sqlc.arg(team_id)
+  AND team_members.role = 'owner'
+  AND team_members.status = 'active'
+ORDER BY users.id;
+
 -- name: UpdateTeamMemberRole :one
 UPDATE team_members
 SET role = sqlc.arg(role),

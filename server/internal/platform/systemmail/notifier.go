@@ -117,7 +117,7 @@ func formatMoney(currency string, units int64) string {
 	return strings.TrimSpace(currency) + " " + value
 }
 
-func (s *EmailService) SendWalletBalanceAlert(ctx context.Context, tx pgx.Tx, input SendWalletBalanceAlertInput) error {
+func (s *EmailService) SendWalletBalanceAlert(ctx context.Context, input SendWalletBalanceAlertInput) error {
 	exhausted := strings.EqualFold(strings.TrimSpace(input.Level), "exhausted")
 	subject := "Your Dugble wallet balance is low"
 	preview := "Add funds to your Dugble wallet to avoid interrupted service."
@@ -132,7 +132,7 @@ func (s *EmailService) SendWalletBalanceAlert(ctx context.Context, tx pgx.Tx, in
 		"Team": displayName(input.TeamName), "Balance": formatMoney(input.Currency, input.BalanceUnits),
 		"Message": message, "BillingURL": s.frontendURL + "/settings/billing",
 	}
-	return s.sendTemplateEmail(ctx, tx, SendTemplateEmailInput{To: input.ToEmail, Subject: subject, TemplateName: walletBalanceAlertTemplate, Data: data})
+	return s.SendTemplateEmail(ctx, SendTemplateEmailInput{To: input.ToEmail, Subject: subject, TemplateName: walletBalanceAlertTemplate, Data: data})
 }
 
 func (s *EmailService) SendEmailVerification(ctx context.Context, input SendEmailVerificationInput) error {

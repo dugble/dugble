@@ -4,7 +4,10 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+
+	"github.com/dugble/dugble/server/internal/platform/systemmail"
 )
 
 type chargeRepository interface {
@@ -13,11 +16,16 @@ type chargeRepository interface {
 }
 
 type balanceNotifier interface {
-	Notify(context.Context, CommittedCharge) error
+	SendWalletBalanceAlert(context.Context, systemmail.SendWalletBalanceAlertInput) error
+}
+
+type balanceRecipientRepository interface {
+	ListBalanceRecipients(context.Context, uuid.UUID) ([]BalanceRecipient, error)
 }
 
 type Service struct {
 	repository      chargeRepository
+	recipients      balanceRecipientRepository
 	balanceNotifier balanceNotifier
 }
 
@@ -27,7 +35,9 @@ func (s *Service) WithBalanceNotifier(notifier balanceNotifier) *Service {
 }
 
 func NewService(repository chargeRepository) *Service {
-	return &Service{repository: repository}
+	service := &Service{repository: repository}
+	service.recipients, _ = repository.(balanceRecipientRepository)
+	return service
 }
 
 func (s *Service) ChargeEmail(

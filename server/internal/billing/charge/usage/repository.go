@@ -62,6 +62,18 @@ func (r *Repository) ChargeEmail(
 	return charge, nil
 }
 
+func (r *Repository) ListBalanceRecipients(ctx context.Context, teamID uuid.UUID) ([]BalanceRecipient, error) {
+	rows, err := r.queries.ListActiveTeamOwnerRecipients(ctx, dbsqlc.ListActiveTeamOwnerRecipientsParams{TeamID: teamID})
+	if err != nil {
+		return nil, fmt.Errorf("list wallet balance recipients: %w", err)
+	}
+	recipients := make([]BalanceRecipient, 0, len(rows))
+	for _, row := range rows {
+		recipients = append(recipients, BalanceRecipient{Name: row.Name, Email: row.Email, TeamName: row.TeamName})
+	}
+	return recipients, nil
+}
+
 func lockTeamBilling(ctx context.Context, tx pgx.Tx, teamID uuid.UUID) error {
 	if tx == nil {
 		return errors.New("billing transaction is required")

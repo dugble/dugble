@@ -251,6 +251,7 @@ type Querier interface {
 	IsChannelAddressSuppressed(ctx context.Context, arg IsChannelAddressSuppressedParams) (bool, error)
 	IsTOTPEnabled(ctx context.Context, arg IsTOTPEnabledParams) (bool, error)
 	LinkEmailProviderEvent(ctx context.Context, arg LinkEmailProviderEventParams) (int64, error)
+	ListActiveTeamOwnerRecipients(ctx context.Context, arg ListActiveTeamOwnerRecipientsParams) ([]ListActiveTeamOwnerRecipientsRow, error)
 	ListAllDomainDNSRecords(ctx context.Context, arg ListAllDomainDNSRecordsParams) ([]DomainDnsRecord, error)
 	ListBroadcastRecipients(ctx context.Context, arg ListBroadcastRecipientsParams) ([]BroadcastRecipient, error)
 	ListBroadcasts(ctx context.Context, arg ListBroadcastsParams) ([]Broadcast, error)

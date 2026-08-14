@@ -11,6 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/dugble/dugble/server/internal/billing/subscription/lifecycle"
+	dbsqlc "github.com/dugble/dugble/server/internal/database/sqlc"
 )
 
 const getDueSQL = `
@@ -88,29 +89,13 @@ func (*Repository) ApplyCharge(ctx context.Context, tx pgx.Tx, id uuid.UUID, app
 }
 
 func (*Repository) ListBillingRecipients(ctx context.Context, tx pgx.Tx, teamID uuid.UUID) ([]BillingRecipient, error) {
-	rows, err := tx.Query(ctx, `
-SELECT users.name, users.email, teams.name
-FROM team_members
-JOIN users ON users.id = team_members.user_id
-JOIN teams ON teams.id = team_members.team_id
-WHERE team_members.team_id = $1
-  AND team_members.role = 'owner'
-  AND team_members.status = 'active'
-ORDER BY users.id`, teamID)
+	rows, err := dbsqlc.New(tx).ListActiveTeamOwnerRecipients(ctx, dbsqlc.ListActiveTeamOwnerRecipientsParams{TeamID: teamID})
 	if err != nil {
 		return nil, fmt.Errorf("list subscription billing recipients: %w", err)
 	}
-	defer rows.Close()
-	recipients := make([]BillingRecipient, 0, 1)
-	for rows.Next() {
-		var recipient BillingRecipient
-		if err := rows.Scan(&recipient.Name, &recipient.Email, &recipient.TeamName); err != nil {
-			return nil, fmt.Errorf("scan subscription billing recipient: %w", err)
-		}
-		recipients = append(recipients, recipient)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("list subscription billing recipients: %w", err)
+	recipients := make([]BillingRecipient, 0, len(rows))
+	for _, row := range rows {
+		recipients = append(recipients, BillingRecipient{Name: row.Name, Email: row.Email, TeamName: row.TeamName})
 	}
 	return recipients, nil
 }

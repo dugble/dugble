@@ -55,6 +55,12 @@ type EmailChargeInput struct {
 	RecipientCount int64
 }
 
+type BalanceRecipient struct {
+	Name     string
+	Email    string
+	TeamName string
+}
+
 // CommittedCharge is emitted only after the transaction containing the
 // message, immediate billing mutation, and delivery outbox event has committed.
 // The committed transaction is the billable acceptance boundary: later
