@@ -39,7 +39,9 @@ func (p *checkProvider) AssociateDomainWithTenant(_ context.Context, domainName,
 
 type verifiedDNS struct{}
 
-func (verifiedDNS) Verify(context.Context, string, platformemail.VerificationRecord) bool { return true }
+func (verifiedDNS) Verify(context.Context, string, platformemail.VerificationRecord) bool {
+	return true
+}
 
 func TestCheckAssociatesVerifiedDomainWithTenant(t *testing.T) {
 	teamID := uuid.New()
