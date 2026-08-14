@@ -31,14 +31,23 @@ type eventPublisher interface {
 type pastDueNotifier interface {
 	SendSubscriptionPastDue(context.Context, pgx.Tx, systemmail.SendSubscriptionPastDueInput) error
 }
+type planChangeNotifier interface {
+	SendSubscriptionChangeTx(context.Context, pgx.Tx, systemmail.SendSubscriptionChangeInput) error
+}
 
 type Service struct {
-	repository renewalStore
-	charger    periodCharger
-	lifecycle  decider
-	events     eventPublisher
-	notifier   pastDueNotifier
-	now        func() time.Time
+	repository   renewalStore
+	charger      periodCharger
+	lifecycle    decider
+	events       eventPublisher
+	notifier     pastDueNotifier
+	planNotifier planChangeNotifier
+	now          func() time.Time
+}
+
+func (s *Service) WithPlanChangeNotifier(notifier planChangeNotifier) *Service {
+	s.planNotifier = notifier
+	return s
 }
 
 func (s *Service) WithPastDueNotifier(notifier pastDueNotifier) *Service {
@@ -105,10 +114,32 @@ func (s *Service) ProcessTeam(ctx context.Context, tx pgx.Tx, teamID uuid.UUID) 
 			return Result{}, err
 		}
 	}
+	if base.Outcome == OutcomePlanChanged {
+		if err := s.notifyPlanActivated(ctx, tx, due, base); err != nil {
+			return Result{}, err
+		}
+	}
 	if err := s.publish(ctx, tx, base); err != nil {
 		return Result{}, err
 	}
 	return base, nil
+}
+
+func (s *Service) notifyPlanActivated(ctx context.Context, tx pgx.Tx, due Due, result Result) error {
+	if s.planNotifier == nil {
+		return nil
+	}
+	recipients, err := s.repository.ListBillingRecipients(ctx, tx, due.TeamID)
+	if err != nil {
+		return err
+	}
+	for _, recipient := range recipients {
+		input := systemmail.SendSubscriptionChangeInput{ToEmail: recipient.Email, Name: recipient.Name, CurrentPlan: result.PreviousPlan, NewPlan: result.CurrentPlan, Event: "plan_change_activated", EffectiveAt: result.PeriodStart.UTC().Format("2 January 2006")}
+		if err := s.planNotifier.SendSubscriptionChangeTx(ctx, tx, input); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (s *Service) notifyPastDue(ctx context.Context, tx pgx.Tx, due Due, result Result) error {

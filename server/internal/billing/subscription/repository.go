@@ -9,6 +9,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	dbsqlc "github.com/dugble/dugble/server/internal/database/sqlc"
+	"github.com/dugble/dugble/server/internal/platform/systemmail"
 )
 
 const listChargesWithCreditSQL = `
@@ -48,6 +49,18 @@ OFFSET $3
 type Repository struct {
 	db      *pgxpool.Pool
 	queries *dbsqlc.Queries
+}
+
+func (r *Repository) ListNotificationRecipients(ctx context.Context, teamID uuid.UUID) ([]systemmail.Recipient, error) {
+	rows, err := r.queries.ListActiveTeamOwnerRecipients(ctx, dbsqlc.ListActiveTeamOwnerRecipientsParams{TeamID: teamID})
+	if err != nil {
+		return nil, err
+	}
+	recipients := make([]systemmail.Recipient, 0, len(rows))
+	for _, row := range rows {
+		recipients = append(recipients, systemmail.Recipient{Name: row.Name, Email: row.Email})
+	}
+	return recipients, nil
 }
 
 func NewRepository(db *pgxpool.Pool) *Repository {

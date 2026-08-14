@@ -273,6 +273,7 @@ func (registry *Registry) newModules(startupCtx context.Context) (modules, error
 		subscriptionLifecycle.NewService(),
 	).WithEventPublisher(subscriptionRenewal.NewEventPublisher(outboxRepository))
 	renewalService.WithPastDueNotifier(notificationEmailService)
+	renewalService.WithPlanChangeNotifier(notificationEmailService)
 	renewalConfig := subscriptionRenewal.DefaultConfig()
 	renewalConfig.OnFailure = func(ctx context.Context, failure subscriptionRenewal.Failure) {
 		sentrymonitoring.ErrorContext(ctx, "subscription renewal failed", "team_id", failure.TeamID, "error", failure.Err)

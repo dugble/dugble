@@ -4,11 +4,13 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
 	"github.com/dugble/dugble/server/internal/authz"
+	"github.com/dugble/dugble/server/internal/platform/systemmail"
 	apperrors "github.com/dugble/dugble/server/pkg/errors"
 )
 
@@ -19,10 +21,18 @@ type store interface {
 	CancelPlanChange(context.Context, uuid.UUID) (Subscription, error)
 	Cancel(context.Context, uuid.UUID) (Subscription, error)
 	Reactivate(context.Context, uuid.UUID) (Subscription, error)
+	ListNotificationRecipients(context.Context, uuid.UUID) ([]systemmail.Recipient, error)
 }
-type Service struct{ repository store }
+type notifier interface {
+	SendSubscriptionChange(context.Context, systemmail.SendSubscriptionChangeInput) error
+}
+type Service struct {
+	repository store
+	notifier   notifier
+}
 
-func NewService(repository store) *Service { return &Service{repository: repository} }
+func NewService(repository store) *Service                 { return &Service{repository: repository} }
+func (s *Service) WithNotifier(notifier notifier) *Service { s.notifier = notifier; return s }
 func (s *Service) Get(ctx context.Context) (Subscription, error) {
 	access, decision := authz.ResolveAccess(ctx, authz.PermissionWalletRead)
 	if !decision.Allowed {
@@ -74,6 +84,7 @@ func (s *Service) SelectPlan(ctx context.Context, input SelectPlanInput) (Subscr
 	if err != nil {
 		return Subscription{}, apperrors.NewInternal("Unable to schedule plan change", err)
 	}
+	s.notify(ctx, access.Scope.TeamID, systemmail.SendSubscriptionChangeInput{CurrentPlan: result.PlanCode, NewPlan: plan, Event: "plan_change_scheduled", EffectiveAt: formatEffectiveAt(result.PendingPlanEffectiveAt)})
 	return result, nil
 }
 func (s *Service) CancelPendingPlanChange(ctx context.Context) (Subscription, error) {
@@ -81,6 +92,7 @@ func (s *Service) CancelPendingPlanChange(ctx context.Context) (Subscription, er
 	if !decision.Allowed {
 		return Subscription{}, apperrors.NewForbidden(decision.Reason)
 	}
+	previous, _ := s.repository.GetSubscription(ctx, access.Scope.TeamID)
 	result, err := s.repository.CancelPlanChange(ctx, access.Scope.TeamID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Subscription{}, apperrors.NewConflict("Subscription cannot be changed")
@@ -88,6 +100,11 @@ func (s *Service) CancelPendingPlanChange(ctx context.Context) (Subscription, er
 	if err != nil {
 		return Subscription{}, apperrors.NewInternal("Unable to cancel pending plan change", err)
 	}
+	newPlan := ""
+	if previous.PendingPlanCode != nil {
+		newPlan = *previous.PendingPlanCode
+	}
+	s.notify(ctx, access.Scope.TeamID, systemmail.SendSubscriptionChangeInput{CurrentPlan: result.PlanCode, NewPlan: newPlan, Event: "plan_change_canceled"})
 	return result, nil
 }
 func (s *Service) Cancel(ctx context.Context) (Subscription, error) {
@@ -102,6 +119,7 @@ func (s *Service) Cancel(ctx context.Context) (Subscription, error) {
 	if err != nil {
 		return Subscription{}, apperrors.NewInternal("Unable to cancel subscription", err)
 	}
+	s.notify(ctx, access.Scope.TeamID, systemmail.SendSubscriptionChangeInput{CurrentPlan: result.PlanCode, Event: "cancellation_scheduled", EffectiveAt: result.CurrentPeriodEnd.UTC().Format("2 January 2006")})
 	return result, nil
 }
 
@@ -117,5 +135,27 @@ func (s *Service) Reactivate(ctx context.Context) (Subscription, error) {
 	if err != nil {
 		return Subscription{}, apperrors.NewInternal("Unable to reactivate subscription", err)
 	}
+	s.notify(ctx, access.Scope.TeamID, systemmail.SendSubscriptionChangeInput{CurrentPlan: result.PlanCode, Event: "cancellation_reversed"})
 	return result, nil
+}
+
+func (s *Service) notify(ctx context.Context, teamID uuid.UUID, input systemmail.SendSubscriptionChangeInput) {
+	if s.notifier == nil {
+		return
+	}
+	recipients, err := s.repository.ListNotificationRecipients(ctx, teamID)
+	if err != nil {
+		return
+	}
+	for _, recipient := range recipients {
+		input.ToEmail, input.Name = recipient.Email, recipient.Name
+		_ = s.notifier.SendSubscriptionChange(ctx, input)
+	}
+}
+
+func formatEffectiveAt(value *time.Time) string {
+	if value == nil {
+		return "the next billing period"
+	}
+	return value.UTC().Format("2 January 2006")
 }

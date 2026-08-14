@@ -40,6 +40,7 @@ const (
 	senderIDApprovedTemplate      = "sender_id_approved.html"
 	senderIDRejectedTemplate      = "sender_id_rejected.html"
 	senderIDSuspendedTemplate     = "sender_id_suspended.html"
+	subscriptionChangeTemplate    = "subscription_change.html"
 )
 
 type EmailService struct {
@@ -213,6 +214,39 @@ func (s *EmailService) SendSenderIDStatus(ctx context.Context, input SendSenderI
 		"SenderIDsURL": s.frontendURL + "/dashboard/sender-ids",
 	}
 	return s.SendTemplateEmail(ctx, SendTemplateEmailInput{To: input.ToEmail, Subject: subject, TemplateName: templateName, Data: data})
+}
+
+func (s *EmailService) SendSubscriptionChange(ctx context.Context, input SendSubscriptionChangeInput) error {
+	return s.sendSubscriptionChange(ctx, nil, input)
+}
+
+func (s *EmailService) SendSubscriptionChangeTx(ctx context.Context, tx pgx.Tx, input SendSubscriptionChangeInput) error {
+	return s.sendSubscriptionChange(ctx, tx, input)
+}
+
+func (s *EmailService) sendSubscriptionChange(ctx context.Context, tx pgx.Tx, input SendSubscriptionChangeInput) error {
+	event := strings.ToLower(strings.TrimSpace(input.Event))
+	subject := "Your Dugble subscription changed"
+	message := "Your subscription settings were updated."
+	switch event {
+	case "plan_change_scheduled":
+		subject = "Your Dugble plan change is scheduled"
+		message = fmt.Sprintf("Your plan will change from %s to %s on %s.", displayValue(input.CurrentPlan), displayValue(input.NewPlan), displayValue(input.EffectiveAt))
+	case "plan_change_activated":
+		subject = "Your Dugble plan change is active"
+		message = fmt.Sprintf("Your plan changed from %s to %s.", displayValue(input.CurrentPlan), displayValue(input.NewPlan))
+	case "plan_change_canceled":
+		subject = "Your Dugble plan change was canceled"
+		message = fmt.Sprintf("The scheduled change to %s was canceled. Your %s plan will continue.", displayValue(input.NewPlan), displayValue(input.CurrentPlan))
+	case "cancellation_scheduled":
+		subject = "Your Dugble subscription cancellation is scheduled"
+		message = fmt.Sprintf("Your %s subscription will be canceled on %s.", displayValue(input.CurrentPlan), displayValue(input.EffectiveAt))
+	case "cancellation_reversed":
+		subject = "Your Dugble subscription cancellation was reversed"
+		message = fmt.Sprintf("Your %s subscription will remain active.", displayValue(input.CurrentPlan))
+	}
+	data := map[string]string{"Name": displayName(input.Name), "PreviewText": subject, "Message": message, "BillingURL": s.frontendURL + "/dashboard/billing"}
+	return s.sendTemplateEmail(ctx, tx, SendTemplateEmailInput{To: input.ToEmail, Subject: subject, TemplateName: subscriptionChangeTemplate, Data: data})
 }
 
 func (s *EmailService) SendEmailVerification(ctx context.Context, input SendEmailVerificationInput) error {

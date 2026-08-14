@@ -120,7 +120,7 @@ func (registry *Registry) registerModules(router *echo.Echo) error {
 	teammodule.RegisterRoutes(router, teammodule.NewHandler(teamService), middleware.auth, middleware.csrf, middleware.tenant)
 	walletmodule.RegisterRoutes(router, walletmodule.NewHandler(walletService), middleware.tenantAccess)
 	planmodule.RegisterRoutes(router, planmodule.NewHandler(planmodule.NewService(planmodule.NewRepository(db))), middleware.tenantAccess)
-	subscriptionmodule.RegisterRoutes(router, subscriptionmodule.NewHandler(subscriptionmodule.NewService(subscriptionmodule.NewRepository(db))), middleware.tenantAccess)
+	subscriptionmodule.RegisterRoutes(router, subscriptionmodule.NewHandler(subscriptionmodule.NewService(subscriptionmodule.NewRepository(db)).WithNotifier(notificationEmailService)), middleware.tenantAccess)
 	auditeventmodule.RegisterRoutes(router, auditeventmodule.NewHandler(auditeventmodule.NewService(auditRepository)), middleware.auth, middleware.csrf, middleware.tenant)
 	teamtokenmodule.RegisterRoutes(router, teamtokenmodule.NewHandler(teamtokenmodule.NewService(teamTokenRepository).WithNotifier(notificationEmailService)), middleware.auth, middleware.csrf, middleware.tenant)
 	contactmodule.RegisterRoutes(router, contactmodule.NewHandler(contactmodule.NewService(contactRepository)), middleware.tenantAccess)
