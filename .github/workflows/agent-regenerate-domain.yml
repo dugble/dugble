@@ -4,19 +4,22 @@ on:
   pull_request:
     paths:
       - ".github/workflows/agent-regenerate-domain.yml"
-      - "server/migrations/**"
+      - "server/migrations/*.sql"
       - "server/internal/database/queries/**"
       - "server/sqlc.yaml"
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   regenerate:
+    if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
 
       - uses: actions/setup-go@v7
         with:
@@ -35,15 +38,16 @@ jobs:
             arigaio/atlas:1.3.0-alpine \
             migrate hash --dir file:///migrations
 
-      - name: Emit generated artifacts
+      - name: Commit generated artifacts
         run: |
-          for file in \
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
             server/migrations/atlas.sum \
             server/internal/database/sqlc/models.go \
             server/internal/database/sqlc/domains.sql.go \
-            server/internal/database/sqlc/domain_claims.sql.go; do
-            echo "ARTIFACT_BEGIN:${file}"
-            base64 -w0 "${file}"
-            echo
-            echo "ARTIFACT_END:${file}"
-          done
+            server/internal/database/sqlc/domain_claims.sql.go
+          if ! git diff --cached --quiet; then
+            git commit -m "regenerate domain database artifacts"
+            git push origin "HEAD:${{ github.event.pull_request.head.ref }}"
+          fi
