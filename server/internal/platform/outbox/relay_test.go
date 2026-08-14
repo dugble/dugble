@@ -51,12 +51,12 @@ func (publisher relayPublisherStub) Publish(context.Context, string, []byte, map
 
 type permanentTestError struct{ error }
 
-func (permanentTestError) Permanent() bool   { return true }
+func (permanentTestError) Permanent() bool     { return true }
 func (permanentTestError) FailureCode() string { return "invalid_message" }
 
 type retryableTestError struct{ error }
 
-func (retryableTestError) Retryable() bool   { return true }
+func (retryableTestError) Retryable() bool     { return true }
 func (retryableTestError) FailureCode() string { return "broker_unavailable" }
 
 func TestRelayRetriesTransientClaimFailure(t *testing.T) {
