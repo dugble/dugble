@@ -463,20 +463,39 @@ type OauthIdentity struct {
 }
 
 type OutboxEvent struct {
-	ID            uuid.UUID          `db:"id" json:"id"`
-	Subject       string             `db:"subject" json:"subject"`
-	AggregateType string             `db:"aggregate_type" json:"aggregate_type"`
-	AggregateID   uuid.UUID          `db:"aggregate_id" json:"aggregate_id"`
-	Payload       []byte             `db:"payload" json:"payload"`
-	Headers       []byte             `db:"headers" json:"headers"`
-	AvailableAt   pgtype.Timestamptz `db:"available_at" json:"available_at"`
-	PublishedAt   pgtype.Timestamptz `db:"published_at" json:"published_at"`
-	Attempts      int32              `db:"attempts" json:"attempts"`
-	LastError     *string            `db:"last_error" json:"last_error"`
-	LockedAt      pgtype.Timestamptz `db:"locked_at" json:"locked_at"`
-	LockedBy      *string            `db:"locked_by" json:"locked_by"`
-	CreatedAt     pgtype.Timestamptz `db:"created_at" json:"created_at"`
-	UpdatedAt     pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	ID               uuid.UUID          `db:"id" json:"id"`
+	Subject          string             `db:"subject" json:"subject"`
+	AggregateType    string             `db:"aggregate_type" json:"aggregate_type"`
+	AggregateID      uuid.UUID          `db:"aggregate_id" json:"aggregate_id"`
+	Payload          []byte             `db:"payload" json:"payload"`
+	Headers          []byte             `db:"headers" json:"headers"`
+	AvailableAt      pgtype.Timestamptz `db:"available_at" json:"available_at"`
+	PublishedAt      pgtype.Timestamptz `db:"published_at" json:"published_at"`
+	Attempts         int32              `db:"attempts" json:"attempts"`
+	PublishFailures  int32              `db:"publish_failures" json:"publish_failures"`
+	RedriveCount     int32              `db:"redrive_count" json:"redrive_count"`
+	LastError        *string            `db:"last_error" json:"last_error"`
+	QuarantinedAt    pgtype.Timestamptz `db:"quarantined_at" json:"quarantined_at"`
+	QuarantineCode   *string            `db:"quarantine_code" json:"quarantine_code"`
+	QuarantineReason *string            `db:"quarantine_reason" json:"quarantine_reason"`
+	LockedAt         pgtype.Timestamptz `db:"locked_at" json:"locked_at"`
+	LockedBy         *string            `db:"locked_by" json:"locked_by"`
+	CreatedAt        pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt        pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+}
+
+type OutboxEventAction struct {
+	ID              uuid.UUID          `db:"id" json:"id"`
+	EventID         uuid.UUID          `db:"event_id" json:"event_id"`
+	Action          string             `db:"action" json:"action"`
+	ReasonCode      *string            `db:"reason_code" json:"reason_code"`
+	Reason          *string            `db:"reason" json:"reason"`
+	PublishFailures int32              `db:"publish_failures" json:"publish_failures"`
+	RedriveCount    int32              `db:"redrive_count" json:"redrive_count"`
+	ActorType       string             `db:"actor_type" json:"actor_type"`
+	ActorID         *string            `db:"actor_id" json:"actor_id"`
+	Metadata        []byte             `db:"metadata" json:"metadata"`
+	CreatedAt       pgtype.Timestamptz `db:"created_at" json:"created_at"`
 }
 
 type PaymentTransaction struct {
