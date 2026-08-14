@@ -12,10 +12,7 @@ import (
 
 const maxDomainLength = 253
 
-var (
-	domainPattern = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$`)
-	labelPattern  = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$`)
-)
+var domainPattern = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$`)
 
 func validateCreate(req CreateRequest) (string, string, DomainConfiguration, error) {
 	return validateDomainConfiguration(req.Name, req.Region, req.TLS)
@@ -42,12 +39,8 @@ func validateDomainConfiguration(name, region, tls string) (string, string, Doma
 	}
 
 	configuration := DomainConfiguration{
-		OpenTracking:      false,
-		ClickTracking:     false,
-		TrackingSubdomain: nil,
-		TLS:               DefaultTLSMode,
-		Capabilities:      Capabilities{Sending: true, Receiving: false},
-		CustomReturnPath:  DefaultCustomReturnPath,
+		TLS:              DefaultTLSMode,
+		CustomReturnPath: DefaultCustomReturnPath,
 	}
 	if strings.TrimSpace(tls) != "" {
 		configuration.TLS = strings.ToLower(strings.TrimSpace(tls))
@@ -60,12 +53,8 @@ func validateDomainConfiguration(name, region, tls string) (string, string, Doma
 
 func validateUpdate(current SenderDomain, req UpdateRequest) (DomainConfiguration, error) {
 	configuration := DomainConfiguration{
-		OpenTracking:      current.OpenTracking,
-		ClickTracking:     current.ClickTracking,
-		TrackingSubdomain: current.TrackingSubdomain,
-		TLS:               current.TLS,
-		Capabilities:      current.Capabilities,
-		CustomReturnPath:  current.CustomReturnPath,
+		TLS:              current.TLS,
+		CustomReturnPath: current.CustomReturnPath,
 	}
 	if req.TLS != nil {
 		configuration.TLS = strings.ToLower(strings.TrimSpace(*req.TLS))
