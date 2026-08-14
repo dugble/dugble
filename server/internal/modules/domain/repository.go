@@ -58,19 +58,14 @@ func (r *Repository) Create(ctx context.Context, input CreateDomainInput) (Sende
 
 	queries := r.queries.WithTx(tx)
 	row, err := queries.CreateDomain(ctx, dbsqlc.CreateDomainParams{
-		TeamID:            input.TeamID,
-		Name:              strings.ToLower(strings.TrimSpace(input.Name)),
-		Provider:          strings.ToLower(strings.TrimSpace(input.Provider)),
-		ProviderAccount:   strings.ToLower(strings.TrimSpace(input.ProviderAccount)),
-		ProviderRegion:    strings.ToLower(strings.TrimSpace(input.ProviderRegion)),
-		CustomReturnPath:  strings.ToLower(strings.TrimSpace(input.CustomReturnPath)),
-		OpenTracking:      input.Configuration.OpenTracking,
-		ClickTracking:     input.Configuration.ClickTracking,
-		TrackingSubdomain: input.Configuration.TrackingSubdomain,
-		TlsMode:           input.Configuration.TLS,
-		SendingEnabled:    input.Configuration.Capabilities.Sending,
-		ReceivingEnabled:  input.Configuration.Capabilities.Receiving,
-		CreatedBy:         input.CreatedBy,
+		TeamID:           input.TeamID,
+		Name:             strings.ToLower(strings.TrimSpace(input.Name)),
+		Provider:         strings.ToLower(strings.TrimSpace(input.Provider)),
+		ProviderAccount:  strings.ToLower(strings.TrimSpace(input.ProviderAccount)),
+		ProviderRegion:   strings.ToLower(strings.TrimSpace(input.ProviderRegion)),
+		CustomReturnPath: strings.ToLower(strings.TrimSpace(input.CustomReturnPath)),
+		TlsMode:          input.Configuration.TLS,
+		CreatedBy:        input.CreatedBy,
 	})
 	if isUniqueViolation(err) {
 		return SenderDomain{}, ErrSenderDomainAlreadyExists
@@ -147,14 +142,9 @@ func (r *Repository) UpdateConfiguration(
 		return SenderDomain{}, err
 	}
 	row, err := r.queries.UpdateDomainConfiguration(ctx, dbsqlc.UpdateDomainConfigurationParams{
-		OpenTracking:      configuration.OpenTracking,
-		ClickTracking:     configuration.ClickTracking,
-		TrackingSubdomain: configuration.TrackingSubdomain,
-		TlsMode:           configuration.TLS,
-		SendingEnabled:    configuration.Capabilities.Sending,
-		ReceivingEnabled:  configuration.Capabilities.Receiving,
-		ID:                id,
-		TeamID:            teamID,
+		TlsMode: configuration.TLS,
+		ID:      id,
+		TeamID:  teamID,
 	})
 	if err != nil {
 		return SenderDomain{}, fmt.Errorf("update sender domain configuration: %w", err)
@@ -458,12 +448,7 @@ func domainFromSQLC(row dbsqlc.Domain, records []dbsqlc.DomainDnsRecord) SenderD
 		Status:                    row.Status,
 		ProviderStatus:            row.ProviderStatus,
 		VerificationRecords:       verificationRecordsFromSQLC(records),
-		OpenTracking:              row.OpenTracking,
-		ClickTracking:             row.ClickTracking,
-		TrackingSubdomain:         row.TrackingSubdomain,
-		ActiveTrackingSubdomain:   row.ActiveTrackingSubdomain,
 		TLS:                       row.TlsMode,
-		Capabilities:              Capabilities{Sending: row.SendingEnabled, Receiving: row.ReceivingEnabled},
 		CustomReturnPath:          row.CustomReturnPath,
 		FailureReason:             row.FailureReason,
 		HealthStatus:              row.HealthStatus,
