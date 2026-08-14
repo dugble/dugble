@@ -11,7 +11,7 @@ func TestValidateCreateUsesSupportedConfiguration(t *testing.T) {
 
 	name, region, configuration, err := validateCreate(CreateRequest{
 		Name:   "Example.COM",
-		Region: "eu-west-1",
+		Region: "eu-north-1",
 		TLS:    "enforced",
 	})
 	if err != nil {
@@ -20,8 +20,8 @@ func TestValidateCreateUsesSupportedConfiguration(t *testing.T) {
 	if name != "example.com" {
 		t.Fatalf("name = %q, want example.com", name)
 	}
-	if region != "eu-west-1" {
-		t.Fatalf("region = %q, want eu-west-1", region)
+	if region != "eu-north-1" {
+		t.Fatalf("region = %q, want eu-north-1", region)
 	}
 	if configuration.TLS != "enforced" {
 		t.Fatalf("TLS = %q, want enforced", configuration.TLS)
@@ -36,7 +36,7 @@ func TestValidateCreateDefaultsTLS(t *testing.T) {
 
 	_, _, configuration, err := validateCreate(CreateRequest{
 		Name:   "example.com",
-		Region: "eu-west-1",
+		Region: "eu-north-1",
 	})
 	if err != nil {
 		t.Fatalf("validateCreate() error = %v", err)
@@ -51,7 +51,7 @@ func TestSenderDomainJSONContainsOnlySupportedConfiguration(t *testing.T) {
 
 	payload, err := json.Marshal(SenderDomain{
 		Domain:           "example.com",
-		ProviderRegion:   "eu-west-1",
+		ProviderRegion:   "eu-north-1",
 		TLS:              "enforced",
 		CustomReturnPath: "send",
 	})
@@ -64,7 +64,7 @@ func TestSenderDomainJSONContainsOnlySupportedConfiguration(t *testing.T) {
 			t.Fatalf("response contains removed field %q: %s", field, body)
 		}
 	}
-	for _, field := range []string{"\"name\":\"example.com\"", "\"region\":\"eu-west-1\"", "\"tls\":\"enforced\""} {
+	for _, field := range []string{"\"name\":\"example.com\"", "\"region\":\"eu-north-1\"", "\"tls\":\"enforced\""} {
 		if !strings.Contains(body, field) {
 			t.Fatalf("response missing %s: %s", field, body)
 		}
