@@ -12,10 +12,10 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	charges "github.com/coffeyvidzro/dugble/server/internal/billing/charge/subscription"
-	usagecharges "github.com/coffeyvidzro/dugble/server/internal/billing/charge/usage"
-	"github.com/coffeyvidzro/dugble/server/internal/billing/subscription/lifecycle"
-	"github.com/coffeyvidzro/dugble/server/internal/platform/outbox"
+	charges "github.com/dugble/dugble/server/internal/billing/charge/subscription"
+	usagecharges "github.com/dugble/dugble/server/internal/billing/charge/usage"
+	"github.com/dugble/dugble/server/internal/billing/subscription/lifecycle"
+	"github.com/dugble/dugble/server/internal/platform/outbox"
 )
 
 func TestRenewalIntegration(t *testing.T) {

@@ -10,7 +10,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	dbsqlc "github.com/coffeyvidzro/dugble/server/internal/database/sqlc"
+	dbsqlc "github.com/dugble/dugble/server/internal/database/sqlc"
 )
 
 var (

@@ -7,7 +7,7 @@ import (
 
 	"github.com/getsentry/sentry-go"
 
-	"github.com/coffeyvidzro/dugble/server/internal/config"
+	"github.com/dugble/dugble/server/internal/config"
 )
 
 // Init initializes Sentry error monitoring when a DSN is configured.

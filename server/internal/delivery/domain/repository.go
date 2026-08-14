@@ -6,7 +6,7 @@ import (
 
 	"github.com/google/uuid"
 
-	domainmodule "github.com/coffeyvidzro/dugble/server/internal/modules/domain"
+	domainmodule "github.com/dugble/dugble/server/internal/modules/domain"
 )
 
 type repository interface {

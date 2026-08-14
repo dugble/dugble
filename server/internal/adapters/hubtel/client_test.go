@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/coffeyvidzro/dugble/server/internal/config"
+	"github.com/dugble/dugble/server/internal/config"
 )
 
 type roundTripperFunc func(*http.Request) (*http.Response, error)

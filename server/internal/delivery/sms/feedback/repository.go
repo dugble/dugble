@@ -7,15 +7,15 @@ import (
 	"strings"
 	"time"
 
-	attempt "github.com/coffeyvidzro/dugble/server/internal/delivery/attempt"
-	feedback "github.com/coffeyvidzro/dugble/server/internal/delivery/feedback"
+	attempt "github.com/dugble/dugble/server/internal/delivery/attempt"
+	feedback "github.com/dugble/dugble/server/internal/delivery/feedback"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	smsmodule "github.com/coffeyvidzro/dugble/server/internal/modules/sms"
-	smsapi "github.com/coffeyvidzro/dugble/server/internal/platform/sms"
+	smsmodule "github.com/dugble/dugble/server/internal/modules/sms"
+	smsapi "github.com/dugble/dugble/server/internal/platform/sms"
 )
 
 type PendingMessage struct {

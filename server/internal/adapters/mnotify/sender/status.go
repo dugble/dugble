@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/coffeyvidzro/dugble/server/internal/adapters/mnotify"
-	platformsenderid "github.com/coffeyvidzro/dugble/server/internal/platform/senderid"
+	"github.com/dugble/dugble/server/internal/adapters/mnotify"
+	platformsenderid "github.com/dugble/dugble/server/internal/platform/senderid"
 )
 
 type StatusResponse = platformsenderid.StatusResponse

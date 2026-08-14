@@ -9,10 +9,10 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
-	broadcastmodule "github.com/coffeyvidzro/dugble/server/internal/modules/broadcast"
-	emailmodule "github.com/coffeyvidzro/dugble/server/internal/modules/email"
-	messagetemplate "github.com/coffeyvidzro/dugble/server/internal/modules/messagetemplate"
-	apperrors "github.com/coffeyvidzro/dugble/server/pkg/errors"
+	broadcastmodule "github.com/dugble/dugble/server/internal/modules/broadcast"
+	emailmodule "github.com/dugble/dugble/server/internal/modules/email"
+	messagetemplate "github.com/dugble/dugble/server/internal/modules/messagetemplate"
+	apperrors "github.com/dugble/dugble/server/pkg/errors"
 )
 
 type processorTx struct {

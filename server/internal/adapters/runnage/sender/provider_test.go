@@ -5,8 +5,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/coffeyvidzro/dugble/server/internal/adapters/runnage"
-	platformsenderid "github.com/coffeyvidzro/dugble/server/internal/platform/senderid"
+	"github.com/dugble/dugble/server/internal/adapters/runnage"
+	platformsenderid "github.com/dugble/dugble/server/internal/platform/senderid"
 )
 
 func validRequest() platformsenderid.CreateRequest {

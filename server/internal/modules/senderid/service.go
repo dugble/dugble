@@ -8,9 +8,9 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/coffeyvidzro/dugble/server/internal/authz"
-	platformsenderid "github.com/coffeyvidzro/dugble/server/internal/platform/senderid"
-	apperrors "github.com/coffeyvidzro/dugble/server/pkg/errors"
+	"github.com/dugble/dugble/server/internal/authz"
+	platformsenderid "github.com/dugble/dugble/server/internal/platform/senderid"
+	apperrors "github.com/dugble/dugble/server/pkg/errors"
 )
 
 const (

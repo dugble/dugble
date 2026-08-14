@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/coffeyvidzro/dugble/server/internal/adapters/postgres"
-	"github.com/coffeyvidzro/dugble/server/internal/platform/keyrotation"
-	"github.com/coffeyvidzro/dugble/server/internal/security"
+	"github.com/dugble/dugble/server/internal/adapters/postgres"
+	"github.com/dugble/dugble/server/internal/platform/keyrotation"
+	"github.com/dugble/dugble/server/internal/security"
 )
 
 func main() {

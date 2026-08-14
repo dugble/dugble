@@ -5,8 +5,8 @@ import (
 	"strings"
 	"time"
 
-	messagetemplate "github.com/coffeyvidzro/dugble/server/internal/modules/messagetemplate"
-	apperrors "github.com/coffeyvidzro/dugble/server/pkg/errors"
+	messagetemplate "github.com/dugble/dugble/server/internal/modules/messagetemplate"
+	apperrors "github.com/dugble/dugble/server/pkg/errors"
 )
 
 const maxFanoutFailureMessageRunes = 255

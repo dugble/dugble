@@ -5,7 +5,7 @@ import (
 
 	"github.com/labstack/echo/v5"
 
-	"github.com/coffeyvidzro/dugble/server/internal/platform/audit"
+	"github.com/dugble/dugble/server/internal/platform/audit"
 )
 
 func AuditRequestContext(next echo.HandlerFunc) echo.HandlerFunc {

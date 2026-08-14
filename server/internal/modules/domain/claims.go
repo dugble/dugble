@@ -10,12 +10,12 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
-	"github.com/coffeyvidzro/dugble/server/internal/authz"
-	dbsqlc "github.com/coffeyvidzro/dugble/server/internal/database/sqlc"
-	"github.com/coffeyvidzro/dugble/server/internal/modules/emailtenant"
-	platformemail "github.com/coffeyvidzro/dugble/server/internal/platform/awsses"
-	apperrors "github.com/coffeyvidzro/dugble/server/pkg/errors"
-	"github.com/coffeyvidzro/dugble/server/pkg/pgconv"
+	"github.com/dugble/dugble/server/internal/authz"
+	dbsqlc "github.com/dugble/dugble/server/internal/database/sqlc"
+	"github.com/dugble/dugble/server/internal/modules/emailtenant"
+	platformemail "github.com/dugble/dugble/server/internal/platform/awsses"
+	apperrors "github.com/dugble/dugble/server/pkg/errors"
+	"github.com/dugble/dugble/server/pkg/pgconv"
 )
 
 var (

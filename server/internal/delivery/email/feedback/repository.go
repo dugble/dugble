@@ -8,18 +8,18 @@ import (
 	"strings"
 	"time"
 
-	attempt "github.com/coffeyvidzro/dugble/server/internal/delivery/attempt"
-	feedback "github.com/coffeyvidzro/dugble/server/internal/delivery/feedback"
+	attempt "github.com/dugble/dugble/server/internal/delivery/attempt"
+	feedback "github.com/dugble/dugble/server/internal/delivery/feedback"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	awsses "github.com/coffeyvidzro/dugble/server/internal/adapters/amazon/ses"
-	awssns "github.com/coffeyvidzro/dugble/server/internal/adapters/amazon/sns"
-	"github.com/coffeyvidzro/dugble/server/internal/platform/outbox"
-	platformwebhook "github.com/coffeyvidzro/dugble/server/internal/platform/webhook"
+	awsses "github.com/dugble/dugble/server/internal/adapters/amazon/ses"
+	awssns "github.com/dugble/dugble/server/internal/adapters/amazon/sns"
+	"github.com/dugble/dugble/server/internal/platform/outbox"
+	platformwebhook "github.com/dugble/dugble/server/internal/platform/webhook"
 )
 
 var ErrProviderEventUnlinked = errors.New("email provider event is not linked to a message")

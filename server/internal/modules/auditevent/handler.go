@@ -4,8 +4,8 @@ import (
 	"strconv"
 	"strings"
 
-	apperrors "github.com/coffeyvidzro/dugble/server/pkg/errors"
-	"github.com/coffeyvidzro/dugble/server/pkg/httputil"
+	apperrors "github.com/dugble/dugble/server/pkg/errors"
+	"github.com/dugble/dugble/server/pkg/httputil"
 	"github.com/labstack/echo/v5"
 )
 

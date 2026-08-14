@@ -7,7 +7,7 @@ import (
 	"sort"
 	"strings"
 
-	platformrouting "github.com/coffeyvidzro/dugble/server/internal/platform/sms/routing"
+	platformrouting "github.com/dugble/dugble/server/internal/platform/sms/routing"
 )
 
 type Route = platformrouting.Route

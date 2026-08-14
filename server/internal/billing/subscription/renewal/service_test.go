@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	charges "github.com/coffeyvidzro/dugble/server/internal/billing/charge/subscription"
-	"github.com/coffeyvidzro/dugble/server/internal/billing/subscription/lifecycle"
+	charges "github.com/dugble/dugble/server/internal/billing/charge/subscription"
+	"github.com/dugble/dugble/server/internal/billing/subscription/lifecycle"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 )

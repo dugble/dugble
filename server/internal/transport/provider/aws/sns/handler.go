@@ -7,14 +7,14 @@ import (
 	"mime"
 	"strings"
 
-	sentrymonitoring "github.com/coffeyvidzro/dugble/server/internal/adapters/monitoring/sentry"
+	sentrymonitoring "github.com/dugble/dugble/server/internal/adapters/monitoring/sentry"
 
 	"github.com/labstack/echo/v5"
 
-	awsses "github.com/coffeyvidzro/dugble/server/internal/adapters/amazon/ses"
-	awssns "github.com/coffeyvidzro/dugble/server/internal/adapters/amazon/sns"
-	apperrors "github.com/coffeyvidzro/dugble/server/pkg/errors"
-	"github.com/coffeyvidzro/dugble/server/pkg/httputil"
+	awsses "github.com/dugble/dugble/server/internal/adapters/amazon/ses"
+	awssns "github.com/dugble/dugble/server/internal/adapters/amazon/sns"
+	apperrors "github.com/dugble/dugble/server/pkg/errors"
+	"github.com/dugble/dugble/server/pkg/httputil"
 )
 
 const maxRequestBodyBytes int64 = 256 * 1024

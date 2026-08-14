@@ -3,7 +3,7 @@ package middleware
 import (
 	"net/http"
 
-	sentrymonitoring "github.com/coffeyvidzro/dugble/server/internal/adapters/monitoring/sentry"
+	sentrymonitoring "github.com/dugble/dugble/server/internal/adapters/monitoring/sentry"
 
 	"github.com/arcjet/arcjet-go"
 	"github.com/labstack/echo/v5"

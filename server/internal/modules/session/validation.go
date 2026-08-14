@@ -3,7 +3,7 @@ package session
 import (
 	"strings"
 
-	apperrors "github.com/coffeyvidzro/dugble/server/pkg/errors"
+	apperrors "github.com/dugble/dugble/server/pkg/errors"
 )
 
 func validateSessionID(value string) (string, error) {

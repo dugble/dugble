@@ -6,10 +6,10 @@ import (
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v5"
 
-	"github.com/coffeyvidzro/dugble/server/internal/authn"
-	"github.com/coffeyvidzro/dugble/server/internal/authz"
-	apperrors "github.com/coffeyvidzro/dugble/server/pkg/errors"
-	"github.com/coffeyvidzro/dugble/server/pkg/httputil"
+	"github.com/dugble/dugble/server/internal/authn"
+	"github.com/dugble/dugble/server/internal/authz"
+	apperrors "github.com/dugble/dugble/server/pkg/errors"
+	"github.com/dugble/dugble/server/pkg/httputil"
 )
 
 const defaultTenantParam = "team_id"

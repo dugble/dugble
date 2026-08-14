@@ -12,9 +12,9 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	dbsqlc "github.com/coffeyvidzro/dugble/server/internal/database/sqlc"
-	platformemail "github.com/coffeyvidzro/dugble/server/internal/platform/awsses"
-	"github.com/coffeyvidzro/dugble/server/pkg/pgconv"
+	dbsqlc "github.com/dugble/dugble/server/internal/database/sqlc"
+	platformemail "github.com/dugble/dugble/server/internal/platform/awsses"
+	"github.com/dugble/dugble/server/pkg/pgconv"
 )
 
 var ErrSenderDomainAlreadyExists = errors.New("sender domain already exists")

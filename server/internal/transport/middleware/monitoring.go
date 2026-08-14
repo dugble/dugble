@@ -11,7 +11,7 @@ import (
 	"github.com/labstack/echo/v5"
 	"github.com/newrelic/go-agent/v3/newrelic"
 
-	"github.com/coffeyvidzro/dugble/server/internal/authn"
+	"github.com/dugble/dugble/server/internal/authn"
 )
 
 var ignoredMonitoringPaths = map[string]struct{}{"/health": {}, "/ready": {}}

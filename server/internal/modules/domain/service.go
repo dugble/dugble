@@ -7,10 +7,10 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/coffeyvidzro/dugble/server/internal/authz"
-	"github.com/coffeyvidzro/dugble/server/internal/modules/emailtenant"
-	platformemail "github.com/coffeyvidzro/dugble/server/internal/platform/awsses"
-	apperrors "github.com/coffeyvidzro/dugble/server/pkg/errors"
+	"github.com/dugble/dugble/server/internal/authz"
+	"github.com/dugble/dugble/server/internal/modules/emailtenant"
+	platformemail "github.com/dugble/dugble/server/internal/platform/awsses"
+	apperrors "github.com/dugble/dugble/server/pkg/errors"
 )
 
 const manualHealthFailureReason = "sender domain verification checks no longer pass"

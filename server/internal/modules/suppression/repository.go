@@ -11,8 +11,8 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	dbsqlc "github.com/coffeyvidzro/dugble/server/internal/database/sqlc"
-	platformevent "github.com/coffeyvidzro/dugble/server/internal/platform/event"
+	dbsqlc "github.com/dugble/dugble/server/internal/database/sqlc"
+	platformevent "github.com/dugble/dugble/server/internal/platform/event"
 )
 
 var ErrAlreadyExists = errors.New("suppression already exists")

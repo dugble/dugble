@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/coffeyvidzro/dugble/server/internal/config"
+	"github.com/dugble/dugble/server/internal/config"
 )
 
 const (

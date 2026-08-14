@@ -7,9 +7,9 @@ import (
 
 	"github.com/labstack/echo/v5"
 
-	"github.com/coffeyvidzro/dugble/server/pkg/httputil"
+	"github.com/dugble/dugble/server/pkg/httputil"
 
-	apperrors "github.com/coffeyvidzro/dugble/server/pkg/errors"
+	apperrors "github.com/dugble/dugble/server/pkg/errors"
 )
 
 type service interface {

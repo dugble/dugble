@@ -9,7 +9,7 @@ import (
 
 	"github.com/labstack/echo/v5"
 
-	httpmiddleware "github.com/coffeyvidzro/dugble/server/internal/transport/middleware"
+	httpmiddleware "github.com/dugble/dugble/server/internal/transport/middleware"
 )
 
 func TestRouterAppliesGeneralResponseMiddleware(t *testing.T) {

@@ -7,8 +7,8 @@ import (
 	"github.com/labstack/echo/v5"
 	echomiddleware "github.com/labstack/echo/v5/middleware"
 
-	httpmiddleware "github.com/coffeyvidzro/dugble/server/internal/transport/middleware"
-	"github.com/coffeyvidzro/dugble/server/pkg/httputil"
+	httpmiddleware "github.com/dugble/dugble/server/internal/transport/middleware"
+	"github.com/dugble/dugble/server/pkg/httputil"
 )
 
 // Registrar adds one cohesive set of routes to an Echo router.

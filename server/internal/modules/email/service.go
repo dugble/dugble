@@ -11,11 +11,11 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
-	"github.com/coffeyvidzro/dugble/server/internal/authn"
-	"github.com/coffeyvidzro/dugble/server/internal/authz"
-	platformbilling "github.com/coffeyvidzro/dugble/server/internal/billing/charge/usage"
-	platformemail "github.com/coffeyvidzro/dugble/server/internal/platform/awsses"
-	apperrors "github.com/coffeyvidzro/dugble/server/pkg/errors"
+	"github.com/dugble/dugble/server/internal/authn"
+	"github.com/dugble/dugble/server/internal/authz"
+	platformbilling "github.com/dugble/dugble/server/internal/billing/charge/usage"
+	platformemail "github.com/dugble/dugble/server/internal/platform/awsses"
+	apperrors "github.com/dugble/dugble/server/pkg/errors"
 )
 
 const (

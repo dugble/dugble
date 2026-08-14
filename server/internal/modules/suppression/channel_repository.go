@@ -6,8 +6,8 @@ import (
 
 	"github.com/google/uuid"
 
-	dbsqlc "github.com/coffeyvidzro/dugble/server/internal/database/sqlc"
-	"github.com/coffeyvidzro/dugble/server/pkg/pgconv"
+	dbsqlc "github.com/dugble/dugble/server/internal/database/sqlc"
+	"github.com/dugble/dugble/server/pkg/pgconv"
 )
 
 func (r *Repository) CreateChannel(ctx context.Context, params CreateChannelParams) (ChannelSuppression, error) {

@@ -10,11 +10,11 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
-	"github.com/coffeyvidzro/dugble/server/internal/authn"
-	"github.com/coffeyvidzro/dugble/server/internal/authz"
-	"github.com/coffeyvidzro/dugble/server/internal/modules/session"
-	"github.com/coffeyvidzro/dugble/server/internal/modules/teamtoken"
-	"github.com/coffeyvidzro/dugble/server/internal/security"
+	"github.com/dugble/dugble/server/internal/authn"
+	"github.com/dugble/dugble/server/internal/authz"
+	"github.com/dugble/dugble/server/internal/modules/session"
+	"github.com/dugble/dugble/server/internal/modules/teamtoken"
+	"github.com/dugble/dugble/server/internal/security"
 )
 
 // CredentialResolver normalizes every supported credential into an authn.Principal.

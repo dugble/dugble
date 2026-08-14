@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	apperrors "github.com/coffeyvidzro/dugble/server/pkg/errors"
+	apperrors "github.com/dugble/dugble/server/pkg/errors"
 )
 
 type fakeRepository struct {

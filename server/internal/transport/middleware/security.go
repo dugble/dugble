@@ -16,10 +16,10 @@ import (
 	"github.com/labstack/echo/v5"
 	echomiddleware "github.com/labstack/echo/v5/middleware"
 
-	"github.com/coffeyvidzro/dugble/server/internal/authn"
-	"github.com/coffeyvidzro/dugble/server/internal/platform/idempotency"
-	apperrors "github.com/coffeyvidzro/dugble/server/pkg/errors"
-	"github.com/coffeyvidzro/dugble/server/pkg/httputil"
+	"github.com/dugble/dugble/server/internal/authn"
+	"github.com/dugble/dugble/server/internal/platform/idempotency"
+	apperrors "github.com/dugble/dugble/server/pkg/errors"
+	"github.com/dugble/dugble/server/pkg/httputil"
 )
 
 func Security(development bool) echo.MiddlewareFunc {

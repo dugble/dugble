@@ -6,8 +6,8 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/coffeyvidzro/dugble/server/internal/adapters/mnotify"
-	platformsms "github.com/coffeyvidzro/dugble/server/internal/platform/sms"
+	"github.com/dugble/dugble/server/internal/adapters/mnotify"
+	platformsms "github.com/dugble/dugble/server/internal/platform/sms"
 )
 
 const (

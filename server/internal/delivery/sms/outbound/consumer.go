@@ -9,12 +9,12 @@ import (
 	"strings"
 	"time"
 
-	sentrymonitoring "github.com/coffeyvidzro/dugble/server/internal/adapters/monitoring/sentry"
+	sentrymonitoring "github.com/dugble/dugble/server/internal/adapters/monitoring/sentry"
 
 	"github.com/google/uuid"
 	natsjs "github.com/nats-io/nats.go/jetstream"
 
-	jetstreammessaging "github.com/coffeyvidzro/dugble/server/internal/adapters/nats"
+	jetstreammessaging "github.com/dugble/dugble/server/internal/adapters/nats"
 )
 
 const maxDeadLetterReasonLength = 512

@@ -4,8 +4,8 @@ import (
 	"errors"
 	"testing"
 
-	platformsms "github.com/coffeyvidzro/dugble/server/internal/platform/sms"
-	"github.com/coffeyvidzro/dugble/server/internal/platform/sms/routing"
+	platformsms "github.com/dugble/dugble/server/internal/platform/sms"
+	"github.com/dugble/dugble/server/internal/platform/sms/routing"
 )
 
 func TestDefaultConfigPrioritizesCountryProviders(t *testing.T) {

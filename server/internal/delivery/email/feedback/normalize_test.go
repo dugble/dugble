@@ -5,9 +5,9 @@ import (
 	"testing"
 	"time"
 
-	attempt "github.com/coffeyvidzro/dugble/server/internal/delivery/attempt"
+	attempt "github.com/dugble/dugble/server/internal/delivery/attempt"
 
-	awsses "github.com/coffeyvidzro/dugble/server/internal/adapters/amazon/ses"
+	awsses "github.com/dugble/dugble/server/internal/adapters/amazon/ses"
 )
 
 func TestNormalizeSESFeedbackEventUsesAggregateState(t *testing.T) {

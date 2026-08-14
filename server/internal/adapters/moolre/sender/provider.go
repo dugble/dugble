@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/coffeyvidzro/dugble/server/internal/adapters/moolre"
-	platformsenderid "github.com/coffeyvidzro/dugble/server/internal/platform/senderid"
+	"github.com/dugble/dugble/server/internal/adapters/moolre"
+	platformsenderid "github.com/dugble/dugble/server/internal/platform/senderid"
 )
 
 const (

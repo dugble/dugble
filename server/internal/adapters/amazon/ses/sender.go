@@ -11,7 +11,7 @@ import (
 	sestypes "github.com/aws/aws-sdk-go-v2/service/sesv2/types"
 	"github.com/aws/smithy-go"
 
-	platformemail "github.com/coffeyvidzro/dugble/server/internal/platform/awsses"
+	platformemail "github.com/dugble/dugble/server/internal/platform/awsses"
 )
 
 const (

@@ -8,9 +8,9 @@ import (
 	"sync"
 	"time"
 
-	sentrymonitoring "github.com/coffeyvidzro/dugble/server/internal/adapters/monitoring/sentry"
+	sentrymonitoring "github.com/dugble/dugble/server/internal/adapters/monitoring/sentry"
 
-	platformsenderid "github.com/coffeyvidzro/dugble/server/internal/platform/senderid"
+	platformsenderid "github.com/dugble/dugble/server/internal/platform/senderid"
 )
 
 type Config struct {

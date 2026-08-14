@@ -9,7 +9,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
-	"github.com/coffeyvidzro/dugble/server/internal/platform/outbox"
+	"github.com/dugble/dugble/server/internal/platform/outbox"
 )
 
 const deliveryEventNamespace = "https://dugble.com/events/sms/delivery/"

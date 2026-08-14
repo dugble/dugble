@@ -1,4 +1,4 @@
-module github.com/coffeyvidzro/dugble/server
+module github.com/dugble/dugble/server
 
 go 1.26.6
 

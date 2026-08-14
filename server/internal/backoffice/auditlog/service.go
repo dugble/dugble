@@ -5,7 +5,7 @@ import (
 	"errors"
 	"strings"
 
-	apperrors "github.com/coffeyvidzro/dugble/server/pkg/errors"
+	apperrors "github.com/dugble/dugble/server/pkg/errors"
 )
 
 const defaultLimit int32 = 50

@@ -10,7 +10,7 @@ import (
 
 	"github.com/labstack/echo/v5"
 
-	apperrors "github.com/coffeyvidzro/dugble/server/pkg/errors"
+	apperrors "github.com/dugble/dugble/server/pkg/errors"
 )
 
 func TestReadBodyRestoresRequestBody(t *testing.T) {

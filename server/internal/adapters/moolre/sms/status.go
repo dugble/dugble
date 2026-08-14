@@ -5,8 +5,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/coffeyvidzro/dugble/server/internal/adapters/moolre"
-	platformsms "github.com/coffeyvidzro/dugble/server/internal/platform/sms"
+	"github.com/dugble/dugble/server/internal/adapters/moolre"
+	platformsms "github.com/dugble/dugble/server/internal/platform/sms"
 )
 
 type statusEntry struct {

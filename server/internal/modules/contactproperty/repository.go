@@ -13,8 +13,8 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/coffeyvidzro/dugble/server/internal/authz"
-	dbsqlc "github.com/coffeyvidzro/dugble/server/internal/database/sqlc"
+	"github.com/dugble/dugble/server/internal/authz"
+	dbsqlc "github.com/dugble/dugble/server/internal/database/sqlc"
 )
 
 var ErrAlreadyExists = errors.New("contact property already exists")

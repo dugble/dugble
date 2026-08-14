@@ -7,9 +7,9 @@ import (
 	"net/url"
 	"strings"
 
-	sentrymonitoring "github.com/coffeyvidzro/dugble/server/internal/adapters/monitoring/sentry"
+	sentrymonitoring "github.com/dugble/dugble/server/internal/adapters/monitoring/sentry"
 
-	platformemail "github.com/coffeyvidzro/dugble/server/internal/platform/awsses"
+	platformemail "github.com/dugble/dugble/server/internal/platform/awsses"
 )
 
 const (

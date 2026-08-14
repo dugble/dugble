@@ -6,7 +6,7 @@ import (
 
 	"github.com/google/uuid"
 
-	platformsms "github.com/coffeyvidzro/dugble/server/internal/platform/sms"
+	platformsms "github.com/dugble/dugble/server/internal/platform/sms"
 )
 
 var (

@@ -3,7 +3,7 @@ package feedback
 import (
 	"context"
 
-	feedback "github.com/coffeyvidzro/dugble/server/internal/delivery/feedback"
+	feedback "github.com/dugble/dugble/server/internal/delivery/feedback"
 )
 
 type eventRepository interface {

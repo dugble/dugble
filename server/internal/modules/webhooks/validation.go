@@ -5,8 +5,8 @@ import (
 	"slices"
 	"strings"
 
-	platformwebhook "github.com/coffeyvidzro/dugble/server/internal/platform/webhook"
-	apperrors "github.com/coffeyvidzro/dugble/server/pkg/errors"
+	platformwebhook "github.com/dugble/dugble/server/internal/platform/webhook"
+	apperrors "github.com/dugble/dugble/server/pkg/errors"
 )
 
 const maxWebhookURLLength = 2048

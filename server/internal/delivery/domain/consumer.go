@@ -7,9 +7,9 @@ import (
 	"sync"
 	"time"
 
-	sentrymonitoring "github.com/coffeyvidzro/dugble/server/internal/adapters/monitoring/sentry"
+	sentrymonitoring "github.com/dugble/dugble/server/internal/adapters/monitoring/sentry"
 
-	domainmodule "github.com/coffeyvidzro/dugble/server/internal/modules/domain"
+	domainmodule "github.com/dugble/dugble/server/internal/modules/domain"
 )
 
 type Config struct {

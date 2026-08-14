@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	platformhttp "github.com/coffeyvidzro/dugble/server/internal/platform/httpclient"
+	platformhttp "github.com/dugble/dugble/server/internal/platform/httpclient"
 )
 
 const (

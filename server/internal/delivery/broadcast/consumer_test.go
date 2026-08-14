@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	broadcastmodule "github.com/coffeyvidzro/dugble/server/internal/modules/broadcast"
+	broadcastmodule "github.com/dugble/dugble/server/internal/modules/broadcast"
 )
 
 type fakeRepository struct {

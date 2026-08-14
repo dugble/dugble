@@ -4,7 +4,7 @@ import (
 	"context"
 	"strings"
 
-	apperrors "github.com/coffeyvidzro/dugble/server/pkg/errors"
+	apperrors "github.com/dugble/dugble/server/pkg/errors"
 	"github.com/google/uuid"
 )
 

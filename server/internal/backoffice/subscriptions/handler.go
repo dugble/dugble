@@ -3,8 +3,8 @@ package subscriptions
 import (
 	"context"
 
-	"github.com/coffeyvidzro/dugble/server/internal/authn"
-	"github.com/coffeyvidzro/dugble/server/pkg/httputil"
+	"github.com/dugble/dugble/server/internal/authn"
+	"github.com/dugble/dugble/server/pkg/httputil"
 	"github.com/labstack/echo/v5"
 )
 

@@ -5,7 +5,7 @@ import (
 	"errors"
 	"net/http"
 
-	httptransport "github.com/coffeyvidzro/dugble/server/internal/transport"
+	httptransport "github.com/dugble/dugble/server/internal/transport"
 )
 
 const serviceName = "dugble-backoffice"

@@ -6,7 +6,7 @@ import (
 
 	"github.com/labstack/echo/v5"
 
-	"github.com/coffeyvidzro/dugble/server/pkg/httputil"
+	"github.com/dugble/dugble/server/pkg/httputil"
 )
 
 type service interface {

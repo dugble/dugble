@@ -10,7 +10,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 
-	"github.com/coffeyvidzro/dugble/server/internal/billing/subscription/lifecycle"
+	"github.com/dugble/dugble/server/internal/billing/subscription/lifecycle"
 )
 
 const getDueSQL = `

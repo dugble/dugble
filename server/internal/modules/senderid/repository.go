@@ -12,7 +12,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/coffeyvidzro/dugble/server/pkg/pgconv"
+	"github.com/dugble/dugble/server/pkg/pgconv"
 )
 
 var ErrSenderIDAlreadyExists = errors.New("sender id already exists")

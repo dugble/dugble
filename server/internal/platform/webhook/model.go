@@ -6,7 +6,7 @@ import (
 
 	"github.com/google/uuid"
 
-	platformevent "github.com/coffeyvidzro/dugble/server/internal/platform/event"
+	platformevent "github.com/dugble/dugble/server/internal/platform/event"
 )
 
 // SubscribableEventTypes delegates to the canonical platform event catalog.

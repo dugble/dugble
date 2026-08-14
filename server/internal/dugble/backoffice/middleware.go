@@ -6,7 +6,7 @@ import (
 
 	"github.com/labstack/echo/v5"
 
-	"github.com/coffeyvidzro/dugble/server/internal/authn"
+	"github.com/dugble/dugble/server/internal/authn"
 )
 
 func RequireAdmin(adminEmails []string) echo.MiddlewareFunc {

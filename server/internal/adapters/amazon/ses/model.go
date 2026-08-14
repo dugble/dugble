@@ -11,7 +11,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/sesv2"
 	sestypes "github.com/aws/aws-sdk-go-v2/service/sesv2/types"
 
-	"github.com/coffeyvidzro/dugble/server/internal/modules/emailtenant"
+	"github.com/dugble/dugble/server/internal/modules/emailtenant"
 )
 
 const (

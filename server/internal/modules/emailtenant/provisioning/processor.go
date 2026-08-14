@@ -7,7 +7,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/coffeyvidzro/dugble/server/internal/modules/emailtenant"
+	"github.com/dugble/dugble/server/internal/modules/emailtenant"
 )
 
 type tenantStore interface {

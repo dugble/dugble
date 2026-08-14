@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	platformsenderid "github.com/coffeyvidzro/dugble/server/internal/platform/senderid"
+	platformsenderid "github.com/dugble/dugble/server/internal/platform/senderid"
 )
 
 type CreateRequest = platformsenderid.CreateRequest

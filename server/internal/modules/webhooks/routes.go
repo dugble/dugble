@@ -3,7 +3,7 @@ package webhooks
 import (
 	"github.com/labstack/echo/v5"
 
-	"github.com/coffeyvidzro/dugble/server/internal/authz"
+	"github.com/dugble/dugble/server/internal/authz"
 )
 
 type TenantMiddleware func(permission authz.Permission) echo.MiddlewareFunc
