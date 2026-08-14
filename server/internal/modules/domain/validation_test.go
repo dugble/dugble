@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-func TestValidateCreateUsesPlatformOwnedDefaults(t *testing.T) {
+func TestValidateCreateUsesSupportedConfiguration(t *testing.T) {
 	t.Parallel()
 
 	name, region, configuration, err := validateCreate(CreateRequest{
@@ -29,12 +29,6 @@ func TestValidateCreateUsesPlatformOwnedDefaults(t *testing.T) {
 	if configuration.CustomReturnPath != DefaultCustomReturnPath {
 		t.Fatalf("CustomReturnPath = %q, want %q", configuration.CustomReturnPath, DefaultCustomReturnPath)
 	}
-	if configuration.OpenTracking || configuration.ClickTracking || configuration.TrackingSubdomain != nil {
-		t.Fatal("tracking configuration must remain platform-owned and disabled")
-	}
-	if !configuration.Capabilities.Sending || configuration.Capabilities.Receiving {
-		t.Fatalf("capabilities = %+v, want outbound-only defaults", configuration.Capabilities)
-	}
 }
 
 func TestValidateCreateDefaultsTLS(t *testing.T) {
@@ -52,19 +46,14 @@ func TestValidateCreateDefaultsTLS(t *testing.T) {
 	}
 }
 
-func TestSenderDomainJSONHidesLegacyConfiguration(t *testing.T) {
+func TestSenderDomainJSONContainsOnlySupportedConfiguration(t *testing.T) {
 	t.Parallel()
 
 	payload, err := json.Marshal(SenderDomain{
-		Domain:                  "example.com",
-		ProviderRegion:          "eu-west-1",
-		TLS:                     "enforced",
-		OpenTracking:            true,
-		ClickTracking:           true,
-		TrackingSubdomain:       stringPtr("track"),
-		ActiveTrackingSubdomain: stringPtr("track"),
-		Capabilities:            Capabilities{Sending: true},
-		CustomReturnPath:        "send",
+		Domain:           "example.com",
+		ProviderRegion:   "eu-west-1",
+		TLS:              "enforced",
+		CustomReturnPath: "send",
 	})
 	if err != nil {
 		t.Fatalf("json.Marshal() error = %v", err)
@@ -81,5 +70,3 @@ func TestSenderDomainJSONHidesLegacyConfiguration(t *testing.T) {
 		}
 	}
 }
-
-func stringPtr(value string) *string { return &value }
