@@ -10,11 +10,14 @@ import (
 )
 
 type relayStoreStub struct {
-	claim       func(context.Context) ([]Event, error)
-	marked      []uuid.UUID
-	released    []uuid.UUID
-	releaseTime time.Time
-	lastError   string
+	claim           func(context.Context) ([]Event, error)
+	marked          []uuid.UUID
+	released        []uuid.UUID
+	quarantined     []uuid.UUID
+	releaseTime     time.Time
+	lastError       string
+	quarantineCode  string
+	quarantineError string
 }
 
 func (store *relayStoreStub) ClaimBatch(ctx context.Context, _ string, _ int, _ time.Time) ([]Event, error) {
@@ -33,11 +36,28 @@ func (store *relayStoreStub) Release(_ context.Context, id uuid.UUID, _ string, 
 	return nil
 }
 
+func (store *relayStoreStub) Quarantine(_ context.Context, id uuid.UUID, _ string, code string, reason string) error {
+	store.quarantined = append(store.quarantined, id)
+	store.quarantineCode = code
+	store.quarantineError = reason
+	return nil
+}
+
 type relayPublisherStub struct{ err error }
 
 func (publisher relayPublisherStub) Publish(context.Context, string, []byte, map[string]string, string) error {
 	return publisher.err
 }
+
+type permanentTestError struct{ error }
+
+func (permanentTestError) Permanent() bool   { return true }
+func (permanentTestError) FailureCode() string { return "invalid_message" }
+
+type retryableTestError struct{ error }
+
+func (retryableTestError) Retryable() bool   { return true }
+func (retryableTestError) FailureCode() string { return "broker_unavailable" }
 
 func TestRelayRetriesTransientClaimFailure(t *testing.T) {
 	t.Parallel()
@@ -67,9 +87,9 @@ func TestRelayRetriesTransientClaimFailure(t *testing.T) {
 func TestRelayReleasesFailedPublicationForRetry(t *testing.T) {
 	t.Parallel()
 
-	event := Event{ID: uuid.New(), AggregateID: uuid.New(), Attempts: 3}
+	event := Event{ID: uuid.New(), AggregateID: uuid.New(), PublishFailures: 2}
 	store := &relayStoreStub{claim: func(context.Context) ([]Event, error) { return nil, nil }}
-	relay := NewRelay(store, relayPublisherStub{err: errors.New("broker unavailable")}, Config{})
+	relay := NewRelay(store, relayPublisherStub{err: retryableTestError{errors.New("broker unavailable")}}, Config{})
 	before := time.Now().UTC().Add(4 * time.Second)
 
 	if err := relay.processEvent(context.Background(), event); err != nil {
@@ -77,6 +97,9 @@ func TestRelayReleasesFailedPublicationForRetry(t *testing.T) {
 	}
 	if len(store.released) != 1 || store.released[0] != event.ID {
 		t.Fatalf("released events = %v, want %s", store.released, event.ID)
+	}
+	if len(store.quarantined) != 0 {
+		t.Fatalf("quarantined events = %v, want none", store.quarantined)
 	}
 	if store.releaseTime.Before(before) {
 		t.Fatalf("next attempt = %v, want at least %v", store.releaseTime, before)
@@ -86,6 +109,77 @@ func TestRelayReleasesFailedPublicationForRetry(t *testing.T) {
 	}
 }
 
+func TestRelayQuarantinesPermanentPublicationFailure(t *testing.T) {
+	t.Parallel()
+
+	event := Event{ID: uuid.New(), AggregateID: uuid.New()}
+	store := &relayStoreStub{claim: func(context.Context) ([]Event, error) { return nil, nil }}
+	relay := NewRelay(store, relayPublisherStub{err: permanentTestError{errors.New("message too large")}}, Config{})
+
+	if err := relay.processEvent(context.Background(), event); err != nil {
+		t.Fatalf("processEvent() error = %v", err)
+	}
+	if len(store.quarantined) != 1 || store.quarantined[0] != event.ID {
+		t.Fatalf("quarantined events = %v, want %s", store.quarantined, event.ID)
+	}
+	if len(store.released) != 0 {
+		t.Fatalf("released events = %v, want none", store.released)
+	}
+	if store.quarantineCode != "invalid_message" {
+		t.Fatalf("quarantine code = %q, want invalid_message", store.quarantineCode)
+	}
+}
+
+func TestRelayQuarantinesUnknownFailureAfterBudget(t *testing.T) {
+	t.Parallel()
+
+	event := Event{ID: uuid.New(), AggregateID: uuid.New(), PublishFailures: 2}
+	store := &relayStoreStub{claim: func(context.Context) ([]Event, error) { return nil, nil }}
+	relay := NewRelay(store, relayPublisherStub{err: errors.New("mystery failure")}, Config{MaxUnknownPublishFailures: 3})
+
+	if err := relay.processEvent(context.Background(), event); err != nil {
+		t.Fatalf("processEvent() error = %v", err)
+	}
+	if len(store.quarantined) != 1 || store.quarantined[0] != event.ID {
+		t.Fatalf("quarantined events = %v, want %s", store.quarantined, event.ID)
+	}
+}
+
+func TestRelayContinuesBatchAfterQuarantiningPoisonEvent(t *testing.T) {
+	t.Parallel()
+
+	poison := Event{ID: uuid.New(), AggregateID: uuid.New()}
+	healthy := Event{ID: uuid.New(), AggregateID: uuid.New()}
+	store := &relayStoreStub{claim: func(context.Context) ([]Event, error) { return []Event{poison, healthy}, nil }}
+	publisher := &sequencePublisher{errors: []error{permanentTestError{errors.New("invalid message")}, nil}}
+	relay := NewRelay(store, publisher, Config{})
+
+	processed, err := relay.processBatch(context.Background())
+	if err != nil {
+		t.Fatalf("processBatch() error = %v", err)
+	}
+	if processed != 2 {
+		t.Fatalf("processed = %d, want 2", processed)
+	}
+	if len(store.quarantined) != 1 || store.quarantined[0] != poison.ID {
+		t.Fatalf("quarantined events = %v, want %s", store.quarantined, poison.ID)
+	}
+	if len(store.marked) != 1 || store.marked[0] != healthy.ID {
+		t.Fatalf("marked events = %v, want %s", store.marked, healthy.ID)
+	}
+}
+
+type sequencePublisher struct {
+	errors []error
+	calls  int
+}
+
+func (publisher *sequencePublisher) Publish(context.Context, string, []byte, map[string]string, string) error {
+	err := publisher.errors[publisher.calls]
+	publisher.calls++
+	return err
+}
+
 func TestFailureBackoffIsBounded(t *testing.T) {
 	t.Parallel()
 
@@ -93,5 +187,13 @@ func TestFailureBackoffIsBounded(t *testing.T) {
 		if got := failureBackoff(attempt+1, time.Second, 5*time.Second); got != want {
 			t.Fatalf("failureBackoff(%d) = %v, want %v", attempt+1, got, want)
 		}
+	}
+}
+
+func TestRetryBackoffCapsAtFifteenMinutes(t *testing.T) {
+	t.Parallel()
+
+	if got := retryBackoff(11); got != 15*time.Minute {
+		t.Fatalf("retryBackoff(11) = %v, want %v", got, 15*time.Minute)
 	}
 }

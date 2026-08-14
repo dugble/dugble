@@ -46,7 +46,7 @@ func (r *Repository) DeletePendingTx(ctx context.Context, tx pgx.Tx, eventID uui
 	}
 	result, err := tx.Exec(ctx, `
 		DELETE FROM outbox_events
-		WHERE id = $1 AND published_at IS NULL
+		WHERE id = $1 AND published_at IS NULL AND quarantined_at IS NULL
 	`, eventID)
 	if err != nil {
 		return fmt.Errorf("delete pending outbox event: %w", err)
@@ -64,7 +64,7 @@ func (r *Repository) UpdatePendingAvailableAtTx(ctx context.Context, tx pgx.Tx, 
 	result, err := tx.Exec(ctx, `
 		UPDATE outbox_events
 		SET available_at = $2, updated_at = now()
-		WHERE id = $1 AND published_at IS NULL
+		WHERE id = $1 AND published_at IS NULL AND quarantined_at IS NULL
 	`, eventID, availableAt)
 	if err != nil {
 		return fmt.Errorf("reschedule pending outbox event: %w", err)
@@ -146,6 +146,7 @@ func (r *Repository) ClaimBatch(
 			SELECT id
 			FROM outbox_events
 			WHERE published_at IS NULL
+			  AND quarantined_at IS NULL
 			  AND available_at <= now()
 			  AND (locked_at IS NULL OR locked_at < $3)
 			ORDER BY available_at, created_at
@@ -168,6 +169,7 @@ func (r *Repository) ClaimBatch(
 			event.headers,
 			event.available_at,
 			event.attempts,
+			event.publish_failures,
 			event.created_at
 	`, workerID, limit, staleBefore)
 	if err != nil {
@@ -188,6 +190,7 @@ func (r *Repository) ClaimBatch(
 			&headersJSON,
 			&event.AvailableAt,
 			&event.Attempts,
+			&event.PublishFailures,
 			&event.CreatedAt,
 		); err != nil {
 			return nil, fmt.Errorf("scan outbox event: %w", err)
@@ -214,6 +217,7 @@ func (r *Repository) MarkPublished(ctx context.Context, eventID uuid.UUID, worke
 			updated_at = now()
 		WHERE id = $1
 		  AND published_at IS NULL
+		  AND quarantined_at IS NULL
 		  AND locked_by = $2
 	`, eventID, workerID)
 	if err != nil {
@@ -235,12 +239,14 @@ func (r *Repository) Release(
 	result, err := r.pool.Exec(ctx, `
 		UPDATE outbox_events
 		SET available_at = $3,
+			publish_failures = publish_failures + 1,
 			locked_at = NULL,
 			locked_by = NULL,
 			last_error = $4,
 			updated_at = now()
 		WHERE id = $1
 		  AND published_at IS NULL
+		  AND quarantined_at IS NULL
 		  AND locked_by = $2
 	`, eventID, workerID, nextAttempt, lastError)
 	if err != nil {
@@ -248,6 +254,72 @@ func (r *Repository) Release(
 	}
 	if result.RowsAffected() != 1 {
 		return ErrClaimLost
+	}
+	return nil
+}
+
+func (r *Repository) Quarantine(
+	ctx context.Context,
+	eventID uuid.UUID,
+	workerID string,
+	code string,
+	reason string,
+) error {
+	code = strings.TrimSpace(code)
+	if code == "" {
+		code = "unknown"
+	}
+	result, err := r.pool.Exec(ctx, `
+		UPDATE outbox_events
+		SET quarantined_at = now(),
+			quarantine_code = $3,
+			quarantine_reason = $4,
+			publish_failures = publish_failures + 1,
+			locked_at = NULL,
+			locked_by = NULL,
+			last_error = $4,
+			updated_at = now()
+		WHERE id = $1
+		  AND published_at IS NULL
+		  AND quarantined_at IS NULL
+		  AND locked_by = $2
+	`, eventID, workerID, code, reason)
+	if err != nil {
+		return fmt.Errorf("quarantine outbox event %s: %w", eventID, err)
+	}
+	if result.RowsAffected() != 1 {
+		return ErrClaimLost
+	}
+	return nil
+}
+
+func (r *Repository) Redrive(ctx context.Context, eventID uuid.UUID) error {
+	if r == nil || r.pool == nil {
+		return errors.New("outbox repository is not configured")
+	}
+	if eventID == uuid.Nil {
+		return errors.New("outbox event ID is required")
+	}
+	result, err := r.pool.Exec(ctx, `
+		UPDATE outbox_events
+		SET quarantined_at = NULL,
+			quarantine_code = NULL,
+			quarantine_reason = NULL,
+			publish_failures = 0,
+			available_at = now(),
+			locked_at = NULL,
+			locked_by = NULL,
+			last_error = NULL,
+			updated_at = now()
+		WHERE id = $1
+		  AND published_at IS NULL
+		  AND quarantined_at IS NOT NULL
+	`, eventID)
+	if err != nil {
+		return fmt.Errorf("redrive outbox event %s: %w", eventID, err)
+	}
+	if result.RowsAffected() != 1 {
+		return ErrNotQuarantined
 	}
 	return nil
 }

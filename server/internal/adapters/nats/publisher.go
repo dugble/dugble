@@ -17,6 +17,19 @@ type Publisher interface {
 	Publish(context.Context, string, []byte, map[string]string, string) error
 }
 
+type publishError struct {
+	err       error
+	code      string
+	retryable bool
+	permanent bool
+}
+
+func (err publishError) Error() string       { return err.err.Error() }
+func (err publishError) Unwrap() error       { return err.err }
+func (err publishError) Retryable() bool     { return err.retryable }
+func (err publishError) Permanent() bool     { return err.permanent }
+func (err publishError) FailureCode() string { return err.code }
+
 func (client *Client) Publish(
 	ctx context.Context,
 	subject string,
@@ -25,14 +38,21 @@ func (client *Client) Publish(
 	messageID string,
 ) error {
 	if ctx == nil {
-		return fmt.Errorf("JetStream publish context is required")
+		return publishError{err: fmt.Errorf("JetStream publish context is required"), code: "invalid_context", permanent: true}
 	}
 	if client == nil || client.jetStream == nil || client.connection == nil {
-		return ErrClientUnavailable
+		return publishError{err: ErrClientUnavailable, code: "client_unavailable", retryable: true}
 	}
 	subject = strings.TrimSpace(subject)
 	if subject == "" {
-		return fmt.Errorf("JetStream subject is required")
+		return publishError{err: fmt.Errorf("JetStream subject is required"), code: "invalid_subject", permanent: true}
+	}
+	if len(payload) > maxMessageSize {
+		return publishError{
+			err:       fmt.Errorf("JetStream message payload is %d bytes; maximum is %d", len(payload), maxMessageSize),
+			code:      "message_too_large",
+			permanent: true,
+		}
 	}
 
 	message := &natsgo.Msg{Subject: subject, Data: payload, Header: natsgo.Header{}}
@@ -69,7 +89,7 @@ func (client *Client) Publish(
 		if transaction != nil {
 			transaction.NoticeError(wrapped)
 		}
-		return wrapped
+		return publishError{err: wrapped, code: "jetstream_publish_failed", retryable: true}
 	}
 	return nil
 }

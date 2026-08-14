@@ -19,14 +19,16 @@ type Store interface {
 	ClaimBatch(context.Context, string, int, time.Time) ([]Event, error)
 	MarkPublished(context.Context, uuid.UUID, string) error
 	Release(context.Context, uuid.UUID, string, time.Time, string) error
+	Quarantine(context.Context, uuid.UUID, string, string, string) error
 }
 
 type Config struct {
-	PollInterval    time.Duration
-	BatchSize       int
-	LockTimeout     time.Duration
-	FailureRetryMin time.Duration
-	FailureRetryMax time.Duration
+	PollInterval              time.Duration
+	BatchSize                 int
+	LockTimeout               time.Duration
+	FailureRetryMin           time.Duration
+	FailureRetryMax           time.Duration
+	MaxUnknownPublishFailures int
 }
 
 type Relay struct {
@@ -54,6 +56,9 @@ func NewRelay(store Store, publisher Publisher, config Config) *Relay {
 	}
 	if config.FailureRetryMax < config.FailureRetryMin {
 		config.FailureRetryMax = config.FailureRetryMin
+	}
+	if config.MaxUnknownPublishFailures <= 0 {
+		config.MaxUnknownPublishFailures = 20
 	}
 
 	return &Relay{
@@ -162,7 +167,25 @@ func (r *Relay) processEvent(ctx context.Context, event Event) error {
 		return nil
 	}
 
-	nextAttempt := time.Now().UTC().Add(retryBackoff(event.Attempts))
+	class, code := classifyPublishError(publishErr)
+	failureNumber := event.PublishFailures + 1
+	if class == publishErrorPermanent || (class == publishErrorUnknown && failureNumber >= r.config.MaxUnknownPublishFailures) {
+		if err := r.store.Quarantine(ctx, event.ID, r.workerID, code, truncateError(publishErr)); err != nil {
+			return errors.Join(fmt.Errorf("publish outbox event %s: %w", event.ID, publishErr), err)
+		}
+		sentrymonitoring.Error(
+			"outbox event quarantined",
+			"event_id", event.ID,
+			"subject", event.Subject,
+			"attempt", event.Attempts,
+			"publish_failures", failureNumber,
+			"quarantine_code", code,
+			"error", publishErr,
+		)
+		return nil
+	}
+
+	nextAttempt := time.Now().UTC().Add(retryBackoff(failureNumber))
 	if err := r.store.Release(
 		ctx,
 		event.ID,
@@ -178,6 +201,7 @@ func (r *Relay) processEvent(ctx context.Context, event Event) error {
 		"event_id", event.ID,
 		"subject", event.Subject,
 		"attempt", event.Attempts,
+		"publish_failures", failureNumber,
 		"next_attempt", nextAttempt,
 		"error", publishErr,
 	)
@@ -188,7 +212,7 @@ func retryBackoff(attempt int) time.Duration {
 	if attempt < 1 {
 		attempt = 1
 	}
-	exponent := min(attempt-1, 9)
+	exponent := min(attempt-1, 10)
 	seconds := math.Pow(2, float64(exponent))
 	backoff := time.Duration(seconds) * time.Second
 	if backoff > 15*time.Minute {
