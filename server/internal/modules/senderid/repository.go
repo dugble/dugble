@@ -52,7 +52,7 @@ func (r *Repository) Create(
 	countryCode string,
 	purpose string,
 	provider *string,
-	createdBy uuid.UUID,
+	createdBy *uuid.UUID,
 ) (SenderID, error) {
 	if r == nil || r.db == nil {
 		return SenderID{}, errors.New("sender id repository is not configured")

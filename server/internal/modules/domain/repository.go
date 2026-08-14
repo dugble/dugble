@@ -35,7 +35,7 @@ type CreateDomainInput struct {
 	ProviderAccount     string
 	ProviderRegion      string
 	CustomReturnPath    string
-	CreatedBy           uuid.UUID
+	CreatedBy           *uuid.UUID
 	Configuration       DomainConfiguration
 	VerificationRecords []VerificationRecord
 }
@@ -70,7 +70,7 @@ func (r *Repository) Create(ctx context.Context, input CreateDomainInput) (Sende
 		TlsMode:           input.Configuration.TLS,
 		SendingEnabled:    input.Configuration.Capabilities.Sending,
 		ReceivingEnabled:  input.Configuration.Capabilities.Receiving,
-		CreatedBy:         &input.CreatedBy,
+		CreatedBy:         input.CreatedBy,
 	})
 	if isUniqueViolation(err) {
 		return SenderDomain{}, ErrSenderDomainAlreadyExists

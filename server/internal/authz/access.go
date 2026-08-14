@@ -26,6 +26,17 @@ func (actor Actor) IsTeamToken() bool {
 	return actor.Type == ActorTypeTeamToken && actor.TokenID != uuid.Nil
 }
 
+// UserIDPtr returns the authenticated user's ID when the actor is a user.
+// Team-token actors intentionally return nil so nullable user attribution
+// columns do not receive uuid.Nil and violate their users foreign key.
+func (actor Actor) UserIDPtr() *uuid.UUID {
+	if !actor.IsUser() {
+		return nil
+	}
+	id := actor.UserID
+	return &id
+}
+
 type TeamScope struct {
 	TeamID      uuid.UUID
 	Role        string
