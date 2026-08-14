@@ -15,32 +15,33 @@ import (
 )
 
 const (
-	verifyEmailTemplate           = "verify_email.html"
-	forgotPasswordTemplate        = "forgot_password.html"
-	passwordChangedTemplate       = "password_changed.html"
-	emailChangedTemplate          = "email_changed.html"
-	mfaEnabledTemplate            = "mfa_enabled.html"
-	mfaDisabledTemplate           = "mfa_disabled.html"
-	recoveryCodeUsedTemplate      = "recovery_code_used.html"
-	mfaLoginFailedTemplate        = "mfa_login_failed.html"
-	newLoginTemplate              = "new_login.html"
-	accountDeletedTemplate        = "account_deleted.html"
-	teamMemberRemovedTemplate     = "team_member_removed.html"
-	teamMemberRoleChangedTemplate = "team_member_role_changed.html"
-	teamTokenCreatedTemplate      = "team_token_created.html"
-	teamTokenRevokedTemplate      = "team_token_revoked.html"
-	teamInvitationTemplate        = "team_invitation.html"
-	subscriptionPastDueTemplate   = "subscription_past_due.html"
-	walletBalanceAlertTemplate    = "wallet_balance_alert.html"
-	walletTopUpSucceededTemplate  = "wallet_top_up_succeeded.html"
-	walletTopUpFailedTemplate     = "wallet_top_up_failed.html"
-	senderDomainVerifiedTemplate  = "sender_domain_verified.html"
-	senderDomainFailedTemplate    = "sender_domain_failed.html"
-	senderDomainDegradedTemplate  = "sender_domain_degraded.html"
-	senderIDApprovedTemplate      = "sender_id_approved.html"
-	senderIDRejectedTemplate      = "sender_id_rejected.html"
-	senderIDSuspendedTemplate     = "sender_id_suspended.html"
-	subscriptionChangeTemplate    = "subscription_change.html"
+	verifyEmailTemplate             = "verify_email.html"
+	forgotPasswordTemplate          = "forgot_password.html"
+	passwordChangedTemplate         = "password_changed.html"
+	emailChangedTemplate            = "email_changed.html"
+	mfaEnabledTemplate              = "mfa_enabled.html"
+	mfaDisabledTemplate             = "mfa_disabled.html"
+	recoveryCodeUsedTemplate        = "recovery_code_used.html"
+	mfaLoginFailedTemplate          = "mfa_login_failed.html"
+	newLoginTemplate                = "new_login.html"
+	accountDeletedTemplate          = "account_deleted.html"
+	teamMemberRemovedTemplate       = "team_member_removed.html"
+	teamMemberRoleChangedTemplate   = "team_member_role_changed.html"
+	teamTokenCreatedTemplate        = "team_token_created.html"
+	teamTokenRevokedTemplate        = "team_token_revoked.html"
+	teamInvitationTemplate          = "team_invitation.html"
+	subscriptionPastDueTemplate     = "subscription_past_due.html"
+	walletBalanceAlertTemplate      = "wallet_balance_alert.html"
+	walletTopUpSucceededTemplate    = "wallet_top_up_succeeded.html"
+	walletTopUpFailedTemplate       = "wallet_top_up_failed.html"
+	senderDomainVerifiedTemplate    = "sender_domain_verified.html"
+	senderDomainFailedTemplate      = "sender_domain_failed.html"
+	senderDomainDegradedTemplate    = "sender_domain_degraded.html"
+	senderIDApprovedTemplate        = "sender_id_approved.html"
+	senderIDRejectedTemplate        = "sender_id_rejected.html"
+	senderIDSuspendedTemplate       = "sender_id_suspended.html"
+	subscriptionChangeTemplate      = "subscription_change.html"
+	webhookEndpointDisabledTemplate = "webhook_endpoint_disabled.html"
 )
 
 type EmailService struct {
@@ -218,6 +219,16 @@ func (s *EmailService) SendSenderIDStatus(ctx context.Context, input SendSenderI
 
 func (s *EmailService) SendSubscriptionChange(ctx context.Context, input SendSubscriptionChangeInput) error {
 	return s.sendSubscriptionChange(ctx, nil, input)
+}
+
+func (s *EmailService) SendWebhookEndpointDisabled(ctx context.Context, input SendWebhookEndpointDisabledInput) error {
+	data := map[string]string{
+		"Name": displayName(input.Name), "PreviewText": "A Dugble webhook endpoint was automatically disabled.",
+		"EndpointURL": displayValue(input.EndpointURL), "FailureCount": strconv.FormatInt(int64(input.FailureCount), 10),
+		"ResponseStatus": displayValue(input.ResponseStatus), "LastError": displayValue(input.LastError),
+		"WebhooksURL": s.frontendURL + "/dashboard/webhooks",
+	}
+	return s.SendTemplateEmail(ctx, SendTemplateEmailInput{To: input.ToEmail, Subject: "Action required: a Dugble webhook endpoint was disabled", TemplateName: webhookEndpointDisabledTemplate, Data: data})
 }
 
 func (s *EmailService) SendSubscriptionChangeTx(ctx context.Context, tx pgx.Tx, input SendSubscriptionChangeInput) error {

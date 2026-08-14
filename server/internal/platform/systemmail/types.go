@@ -127,6 +127,15 @@ type SendSubscriptionChangeInput struct {
 	EffectiveAt string
 }
 
+type SendWebhookEndpointDisabledInput struct {
+	ToEmail        string
+	Name           string
+	EndpointURL    string
+	FailureCount   int32
+	ResponseStatus string
+	LastError      string
+}
+
 type EmailSender = platformemail.Sender
 
 type TransactionalEmailSender interface {

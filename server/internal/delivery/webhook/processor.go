@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
+	"github.com/dugble/dugble/server/internal/platform/systemmail"
 )
 
 const (
@@ -17,22 +19,39 @@ const (
 	maximumRetryAfter = 24 * time.Hour
 )
 
+type notificationRecipientStore interface {
+	ListNotificationRecipients(context.Context, uuid.UUID) ([]systemmail.Recipient, error)
+}
+
+type endpointDisabledNotifier interface {
+	SendWebhookEndpointDisabled(context.Context, systemmail.SendWebhookEndpointDisabledInput) error
+}
+
 type Processor struct {
-	queue    ResultQueue
-	client   HTTPClient
-	policy   RetryPolicy
-	workerID string
-	now      func() time.Time
+	queue      ResultQueue
+	client     HTTPClient
+	policy     RetryPolicy
+	workerID   string
+	now        func() time.Time
+	recipients notificationRecipientStore
+	notifier   endpointDisabledNotifier
 }
 
 func NewProcessor(queue ResultQueue, client HTTPClient, policy RetryPolicy, workerID string) *Processor {
-	return &Processor{
+	processor := &Processor{
 		queue:    queue,
 		client:   client,
 		policy:   policy,
 		workerID: strings.TrimSpace(workerID),
 		now:      time.Now,
 	}
+	processor.recipients, _ = queue.(notificationRecipientStore)
+	return processor
+}
+
+func (processor *Processor) WithNotifier(notifier endpointDisabledNotifier) *Processor {
+	processor.notifier = notifier
+	return processor
 }
 
 // Handler is retained as a source-compatible name while callers migrate to Processor.
@@ -125,10 +144,32 @@ func (processor *Processor) finishFailure(ctx context.Context, delivery ClaimedD
 }
 
 func (processor *Processor) markFailed(ctx context.Context, delivery ClaimedDelivery, status *int32, body *string, cause error) error {
-	if err := processor.queue.MarkFailed(ctx, delivery.ID, processor.workerID, status, body, cause.Error()); err != nil {
+	result, err := processor.queue.MarkFailed(ctx, delivery.ID, processor.workerID, status, body, cause.Error())
+	if err != nil {
 		return errors.Join(cause, err)
 	}
+	processor.notifyDisabled(ctx, result, status, cause)
 	return nil
+}
+
+func (processor *Processor) notifyDisabled(ctx context.Context, result FailureResult, responseStatus *int32, cause error) {
+	if !result.AutoDisabled || processor.notifier == nil || processor.recipients == nil {
+		return
+	}
+	recipients, err := processor.recipients.ListNotificationRecipients(ctx, result.TeamID)
+	if err != nil {
+		return
+	}
+	status := ""
+	if responseStatus != nil {
+		status = strconv.FormatInt(int64(*responseStatus), 10)
+	}
+	for _, recipient := range recipients {
+		_ = processor.notifier.SendWebhookEndpointDisabled(ctx, systemmail.SendWebhookEndpointDisabledInput{
+			ToEmail: recipient.Email, Name: recipient.Name, EndpointURL: result.EndpointURL,
+			FailureCount: result.ConsecutiveFailures, ResponseStatus: status, LastError: cause.Error(),
+		})
+	}
 }
 
 func retryAfter(value string, now func() time.Time) (time.Time, bool) {

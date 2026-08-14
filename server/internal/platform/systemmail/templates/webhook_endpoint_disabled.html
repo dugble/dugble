@@ -1,0 +1,7 @@
+{{template "email.header" .}}
+    <p>Hi {{.Name}},</p>
+    <p>Dugble automatically disabled the webhook endpoint <strong>{{.EndpointURL}}</strong> after <strong>{{.FailureCount}}</strong> consecutive failures.</p>
+    <p>Last response status: <strong>{{.ResponseStatus}}</strong><br>Last error: <strong>{{.LastError}}</strong></p>
+    <p>Fix the endpoint, then re-enable it to resume webhook delivery.</p>
+    <p><a href="{{.WebhooksURL}}">Review webhook endpoint</a></p>
+{{template "email.footer" .}}

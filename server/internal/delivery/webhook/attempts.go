@@ -28,3 +28,12 @@ type HTTPResponse struct {
 	Body       string
 	Header     http.Header
 }
+
+type FailureResult struct {
+	DeliveryID          uuid.UUID
+	EndpointID          uuid.UUID
+	TeamID              uuid.UUID
+	EndpointURL         string
+	ConsecutiveFailures int32
+	AutoDisabled        bool
+}

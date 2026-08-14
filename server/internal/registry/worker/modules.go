@@ -259,7 +259,7 @@ func (registry *Registry) newModules(startupCtx context.Context) (modules, error
 		webhookdelivery.NewClient(10*time.Second),
 		webhookdelivery.DefaultRetryPolicy(),
 		webhookWorkerID,
-	)
+	).WithNotifier(notificationEmailService)
 	webhookConsumer := webhookdelivery.NewConsumer(
 		webhookRepository,
 		webhookProcessor,

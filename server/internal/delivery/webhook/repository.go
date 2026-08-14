@@ -10,6 +10,9 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	dbsqlc "github.com/dugble/dugble/server/internal/database/sqlc"
+	"github.com/dugble/dugble/server/internal/platform/systemmail"
 )
 
 const claimDeliveriesSQL = `
@@ -75,7 +78,7 @@ WITH failed AS (
     SET status = 'failed', response_status = $3, response_body = $4,
         last_error = $5, locked_at = NULL, locked_by = NULL, updated_at = now()
     WHERE delivery.id = $1 AND delivery.locked_by = $2
-    RETURNING delivery.id, delivery.endpoint_id
+    RETURNING delivery.id, delivery.endpoint_id, delivery.event_id
 ), update_endpoint AS (
     UPDATE webhook_endpoints
     SET consecutive_failures = consecutive_failures + 1,
@@ -91,9 +94,15 @@ WITH failed AS (
         END,
         updated_at = now()
     WHERE id = (SELECT endpoint_id FROM failed)
-    RETURNING id
+    RETURNING id, enabled, disabled_reason, consecutive_failures, url
 )
-SELECT id FROM failed`
+SELECT failed.id, failed.endpoint_id, event.team_id, endpoint.url,
+       endpoint.consecutive_failures,
+       (endpoint.enabled = false AND endpoint.disabled_reason = 'failure_threshold'
+        AND endpoint.consecutive_failures = $6) AS auto_disabled
+FROM failed
+JOIN update_endpoint AS endpoint ON endpoint.id = failed.endpoint_id
+JOIN webhook_events AS event ON event.id = failed.event_id`
 
 const releaseClaimSQL = `
 UPDATE webhook_deliveries
@@ -102,6 +111,7 @@ WHERE id = $1 AND locked_by = $2`
 
 type Repository struct {
 	db               *pgxpool.Pool
+	queries          *dbsqlc.Queries
 	autoDisableAfter int32
 }
 
@@ -117,7 +127,19 @@ func NewRepository(db *pgxpool.Pool, configs ...RepositoryConfig) *Repository {
 	if config.AutoDisableAfter <= 0 {
 		config.AutoDisableAfter = 20
 	}
-	return &Repository{db: db, autoDisableAfter: config.AutoDisableAfter}
+	return &Repository{db: db, queries: dbsqlc.New(db), autoDisableAfter: config.AutoDisableAfter}
+}
+
+func (repository *Repository) ListNotificationRecipients(ctx context.Context, teamID uuid.UUID) ([]systemmail.Recipient, error) {
+	rows, err := repository.queries.ListActiveTeamOwnerRecipients(ctx, dbsqlc.ListActiveTeamOwnerRecipientsParams{TeamID: teamID})
+	if err != nil {
+		return nil, fmt.Errorf("list webhook notification recipients: %w", err)
+	}
+	recipients := make([]systemmail.Recipient, 0, len(rows))
+	for _, row := range rows {
+		recipients = append(recipients, systemmail.Recipient{Name: row.Name, Email: row.Email})
+	}
+	return recipients, nil
 }
 
 func (repository *Repository) Claim(ctx context.Context, workerID string, limit int32, staleBefore time.Time) ([]ClaimedDelivery, error) {
@@ -181,15 +203,22 @@ func (repository *Repository) ScheduleRetry(ctx context.Context, id uuid.UUID, w
 	)
 }
 
-func (repository *Repository) MarkFailed(ctx context.Context, id uuid.UUID, workerID string, status *int32, body *string, lastError string) error {
+func (repository *Repository) MarkFailed(ctx context.Context, id uuid.UUID, workerID string, status *int32, body *string, lastError string) (FailureResult, error) {
 	workerID, err := repository.validateResult(id, workerID)
 	if err != nil {
-		return err
+		return FailureResult{}, err
 	}
-	return scanResult(
-		repository.db.QueryRow(ctx, markFailedSQL, id, workerID, status, body, strings.TrimSpace(lastError), repository.autoDisableAfter),
-		"mark webhook delivery failed",
+	var result FailureResult
+	err = repository.db.QueryRow(ctx, markFailedSQL, id, workerID, status, body, strings.TrimSpace(lastError), repository.autoDisableAfter).Scan(
+		&result.DeliveryID, &result.EndpointID, &result.TeamID, &result.EndpointURL, &result.ConsecutiveFailures, &result.AutoDisabled,
 	)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return FailureResult{}, ErrClaimLost
+	}
+	if err != nil {
+		return FailureResult{}, fmt.Errorf("mark webhook delivery failed: %w", err)
+	}
+	return result, nil
 }
 
 func (repository *Repository) ReleaseClaim(ctx context.Context, id uuid.UUID, workerID string) error {
