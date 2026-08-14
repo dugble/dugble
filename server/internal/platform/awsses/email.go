@@ -92,6 +92,12 @@ type DomainProvider interface {
 	DeleteDomain(context.Context, string, string) error
 }
 
+// DomainTenantAssociator is implemented by providers that require a verified
+// sender identity to be explicitly associated with the customer's tenant.
+type DomainTenantAssociator interface {
+	AssociateDomainWithTenant(context.Context, string, string, string) error
+}
+
 type SendError struct {
 	Code              string
 	Retryable         bool
