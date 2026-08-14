@@ -10,6 +10,7 @@ import (
 	"github.com/dugble/dugble/server/internal/authz"
 	"github.com/dugble/dugble/server/internal/modules/emailtenant"
 	platformemail "github.com/dugble/dugble/server/internal/platform/awsses"
+	"github.com/dugble/dugble/server/internal/platform/systemmail"
 	apperrors "github.com/dugble/dugble/server/pkg/errors"
 )
 
@@ -19,11 +20,21 @@ type emailTenantProvisioner interface {
 	RequestProvisioning(context.Context, uuid.UUID, string) (emailtenant.Tenant, error)
 }
 
+type statusNotifier interface {
+	SendSenderDomainStatus(context.Context, systemmail.SendSenderDomainStatusInput) error
+}
+
 type Service struct {
 	repository      *Repository
 	provider        platformemail.DomainProvider
 	dns             platformemail.DNSVerifier
 	tenantProvision emailTenantProvisioner
+	notifier        statusNotifier
+}
+
+func (s *Service) WithNotifier(notifier statusNotifier) *Service {
+	s.notifier = notifier
+	return s
 }
 
 type ReconciliationResult struct {
@@ -229,6 +240,7 @@ func (s *Service) Verify(ctx context.Context, domainID string) (SenderDomain, er
 		if updateErr != nil {
 			return SenderDomain{}, apperrors.NewInternal("Unable to update sender domain health", updateErr)
 		}
+		s.notifyStatus(ctx, domain, updated)
 		return updated, nil
 	}
 	if checkErr != nil {
@@ -244,6 +256,7 @@ func (s *Service) Verify(ctx context.Context, domainID string) (SenderDomain, er
 		if updateErr != nil {
 			return SenderDomain{}, apperrors.NewInternal("Unable to update sender domain verification", updateErr)
 		}
+		s.notifyStatus(ctx, domain, updated)
 		return updated, nil
 	}
 
@@ -258,7 +271,30 @@ func (s *Service) Verify(ctx context.Context, domainID string) (SenderDomain, er
 	if err != nil {
 		return SenderDomain{}, apperrors.NewInternal("Unable to update sender domain verification", err)
 	}
+	s.notifyStatus(ctx, domain, updated)
 	return updated, nil
+}
+
+func (s *Service) notifyStatus(ctx context.Context, previous, updated SenderDomain) {
+	status := NotificationStatus(previous, updated)
+	if status == "" || s.notifier == nil {
+		return
+	}
+	teamID, err := uuid.Parse(updated.TeamID)
+	if err != nil {
+		return
+	}
+	recipients, err := s.repository.ListNotificationRecipients(ctx, teamID)
+	if err != nil {
+		return
+	}
+	reason := ""
+	if updated.FailureReason != nil {
+		reason = *updated.FailureReason
+	}
+	for _, recipient := range recipients {
+		_ = s.notifier.SendSenderDomainStatus(ctx, systemmail.SendSenderDomainStatusInput{ToEmail: recipient.Email, Name: recipient.Name, Domain: updated.Domain, Status: status, Reason: reason})
+	}
 }
 
 func manualHealthObservation(

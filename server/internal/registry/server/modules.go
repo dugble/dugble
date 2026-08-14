@@ -104,7 +104,7 @@ func (registry *Registry) registerModules(router *echo.Echo) error {
 	messageTemplateService := messagetemplatemodule.NewService(messageTemplateRepository, emailAPIService)
 	broadcastService := broadcastmodule.NewService(broadcastRepository, messageTemplateService)
 	webhookService := webhooksmodule.NewService(webhookRepository, webhookEmitter)
-	domainService := domainmodule.NewService(domainRepository, registry.emailClient, netdns.New(), emailTenantService)
+	domainService := domainmodule.NewService(domainRepository, registry.emailClient, netdns.New(), emailTenantService).WithNotifier(notificationEmailService)
 	walletService := walletmodule.NewService(
 		walletmodule.NewRepository(db),
 		walletmodule.ServiceConfig{FrontendURL: cfg.FrontendURL, BackendURL: cfg.BackendURL},

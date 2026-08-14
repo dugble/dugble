@@ -102,6 +102,14 @@ type SendWalletTopUpResultInput struct {
 	Status          string
 }
 
+type SendSenderDomainStatusInput struct {
+	ToEmail string
+	Name    string
+	Domain  string
+	Status  string
+	Reason  string
+}
+
 type EmailSender = platformemail.Sender
 
 type TransactionalEmailSender interface {

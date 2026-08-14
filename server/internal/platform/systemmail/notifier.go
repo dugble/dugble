@@ -34,6 +34,9 @@ const (
 	walletBalanceAlertTemplate    = "wallet_balance_alert.html"
 	walletTopUpSucceededTemplate  = "wallet_top_up_succeeded.html"
 	walletTopUpFailedTemplate     = "wallet_top_up_failed.html"
+	senderDomainVerifiedTemplate  = "sender_domain_verified.html"
+	senderDomainFailedTemplate    = "sender_domain_failed.html"
+	senderDomainDegradedTemplate  = "sender_domain_degraded.html"
 )
 
 type EmailService struct {
@@ -151,6 +154,33 @@ func (s *EmailService) SendWalletTopUpResult(ctx context.Context, input SendWall
 		"Name": displayName(input.Name), "PreviewText": preview,
 		"Team": displayName(input.TeamName), "Amount": formatMoney(input.Currency, input.AmountUnits),
 		"Reference": displayValue(input.ClientReference), "BillingURL": s.frontendURL + "/dashboard/billing/transactions",
+	}
+	return s.SendTemplateEmail(ctx, SendTemplateEmailInput{To: input.ToEmail, Subject: subject, TemplateName: templateName, Data: data})
+}
+
+func (s *EmailService) SendSenderDomainStatus(ctx context.Context, input SendSenderDomainStatusInput) error {
+	status := strings.ToLower(strings.TrimSpace(input.Status))
+	reason := strings.TrimSpace(input.Reason)
+	if reason == "" {
+		reason = "DNS verification checks did not pass"
+	}
+	subject := "Your Dugble sender domain verification failed"
+	templateName := senderDomainFailedTemplate
+	preview := "Your sender domain could not be verified."
+	switch status {
+	case "verified":
+		subject = "Your Dugble sender domain is verified"
+		templateName = senderDomainVerifiedTemplate
+		preview = "Your sender domain is ready to send email."
+	case "degraded":
+		subject = "Action required: your Dugble sender domain is degraded"
+		templateName = senderDomainDegradedTemplate
+		preview = "Your sender domain verification checks are failing."
+	}
+	data := map[string]string{
+		"Name": displayName(input.Name), "PreviewText": preview,
+		"Domain": displayValue(input.Domain), "Reason": reason,
+		"DomainsURL": s.frontendURL + "/dashboard/domains",
 	}
 	return s.SendTemplateEmail(ctx, SendTemplateEmailInput{To: input.ToEmail, Subject: subject, TemplateName: templateName, Data: data})
 }

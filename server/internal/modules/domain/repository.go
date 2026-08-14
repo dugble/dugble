@@ -14,6 +14,7 @@ import (
 
 	dbsqlc "github.com/dugble/dugble/server/internal/database/sqlc"
 	platformemail "github.com/dugble/dugble/server/internal/platform/awsses"
+	"github.com/dugble/dugble/server/internal/platform/systemmail"
 	"github.com/dugble/dugble/server/pkg/pgconv"
 )
 
@@ -26,6 +27,18 @@ type Repository struct {
 
 func NewRepository(db *pgxpool.Pool) *Repository {
 	return &Repository{db: db, queries: dbsqlc.New(db)}
+}
+
+func (r *Repository) ListNotificationRecipients(ctx context.Context, teamID uuid.UUID) ([]systemmail.Recipient, error) {
+	rows, err := r.queries.ListActiveTeamOwnerRecipients(ctx, dbsqlc.ListActiveTeamOwnerRecipientsParams{TeamID: teamID})
+	if err != nil {
+		return nil, fmt.Errorf("list sender domain notification recipients: %w", err)
+	}
+	recipients := make([]systemmail.Recipient, 0, len(rows))
+	for _, row := range rows {
+		recipients = append(recipients, systemmail.Recipient{Name: row.Name, Email: row.Email})
+	}
+	return recipients, nil
 }
 
 type CreateDomainInput struct {
