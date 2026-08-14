@@ -332,8 +332,27 @@ func (s *Service) Check(ctx context.Context, domain SenderDomain) (Reconciliatio
 			records[index].Status = platformemail.RecordStatusVerified
 		}
 	}
+	status := verificationStatus(records, providerStatus)
+	if status == StatusVerified {
+		associator, ok := s.provider.(platformemail.DomainTenantAssociator)
+		if !ok {
+			return ReconciliationResult{}, errors.New("sender domain provider does not support tenant association")
+		}
+		teamID, parseErr := uuid.Parse(domain.TeamID)
+		if parseErr != nil {
+			return ReconciliationResult{}, fmt.Errorf("parse sender domain team id: %w", parseErr)
+		}
+		if associationErr := associator.AssociateDomainWithTenant(
+			ctx,
+			domain.Domain,
+			domain.ProviderRegion,
+			emailtenant.AWSExternalName(teamID),
+		); associationErr != nil {
+			return ReconciliationResult{}, associationErr
+		}
+	}
 	return ReconciliationResult{
-		Status:              verificationStatus(records, providerStatus),
+		Status:              status,
 		VerificationRecords: records,
 	}, nil
 }
