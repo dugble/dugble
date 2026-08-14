@@ -1,0 +1,6 @@
+{{template "email.header" .}}
+    <p>Hi {{.Name}},</p>
+    <p>Your Sender ID <strong>{{.SenderID}}</strong> was suspended and can no longer be used to send messages.</p>
+    <p>Reason: <strong>{{.Reason}}</strong></p>
+    <p><a href="{{.SenderIDsURL}}">Review Sender IDs</a></p>
+{{template "email.footer" .}}

@@ -110,6 +110,14 @@ type SendSenderDomainStatusInput struct {
 	Reason  string
 }
 
+type SendSenderIDStatusInput struct {
+	ToEmail  string
+	Name     string
+	SenderID string
+	Status   string
+	Reason   string
+}
+
 type EmailSender = platformemail.Sender
 
 type TransactionalEmailSender interface {

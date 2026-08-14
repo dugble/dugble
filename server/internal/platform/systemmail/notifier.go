@@ -37,6 +37,9 @@ const (
 	senderDomainVerifiedTemplate  = "sender_domain_verified.html"
 	senderDomainFailedTemplate    = "sender_domain_failed.html"
 	senderDomainDegradedTemplate  = "sender_domain_degraded.html"
+	senderIDApprovedTemplate      = "sender_id_approved.html"
+	senderIDRejectedTemplate      = "sender_id_rejected.html"
+	senderIDSuspendedTemplate     = "sender_id_suspended.html"
 )
 
 type EmailService struct {
@@ -181,6 +184,33 @@ func (s *EmailService) SendSenderDomainStatus(ctx context.Context, input SendSen
 		"Name": displayName(input.Name), "PreviewText": preview,
 		"Domain": displayValue(input.Domain), "Reason": reason,
 		"DomainsURL": s.frontendURL + "/dashboard/domains",
+	}
+	return s.SendTemplateEmail(ctx, SendTemplateEmailInput{To: input.ToEmail, Subject: subject, TemplateName: templateName, Data: data})
+}
+
+func (s *EmailService) SendSenderIDStatus(ctx context.Context, input SendSenderIDStatusInput) error {
+	status := strings.ToLower(strings.TrimSpace(input.Status))
+	reason := strings.TrimSpace(input.Reason)
+	if reason == "" {
+		reason = "The provider did not supply a reason"
+	}
+	subject := "Your Dugble Sender ID was rejected"
+	templateName := senderIDRejectedTemplate
+	preview := "Your Sender ID registration was rejected."
+	switch status {
+	case "approved":
+		subject = "Your Dugble Sender ID was approved"
+		templateName = senderIDApprovedTemplate
+		preview = "Your Sender ID is ready to use."
+	case "suspended":
+		subject = "Action required: your Dugble Sender ID was suspended"
+		templateName = senderIDSuspendedTemplate
+		preview = "Your Sender ID was suspended."
+	}
+	data := map[string]string{
+		"Name": displayName(input.Name), "PreviewText": preview,
+		"SenderID": displayValue(input.SenderID), "Reason": reason,
+		"SenderIDsURL": s.frontendURL + "/dashboard/sender-ids",
 	}
 	return s.SendTemplateEmail(ctx, SendTemplateEmailInput{To: input.ToEmail, Subject: subject, TemplateName: templateName, Data: data})
 }

@@ -202,6 +202,7 @@ func (registry *Registry) newModules(startupCtx context.Context) (modules, error
 		if consumerErr != nil {
 			return modules{}, fmt.Errorf("initialize Sender ID reconciliation: %w", consumerErr)
 		}
+		senderIDConsumer.WithNotifier(notificationEmailService)
 		senderIDRun = senderIDConsumer.Run
 	}
 

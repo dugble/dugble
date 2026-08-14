@@ -11,7 +11,12 @@ import (
 	sentrymonitoring "github.com/dugble/dugble/server/internal/adapters/monitoring/sentry"
 
 	platformsenderid "github.com/dugble/dugble/server/internal/platform/senderid"
+	"github.com/dugble/dugble/server/internal/platform/systemmail"
 )
+
+type notifier interface {
+	SendSenderIDStatus(context.Context, systemmail.SendSenderIDStatusInput) error
+}
 
 type Config struct {
 	PollInterval         time.Duration
@@ -53,6 +58,12 @@ type Consumer struct {
 	config     Config
 	workerID   string
 	now        func() time.Time
+	notifier   notifier
+}
+
+func (consumer *Consumer) WithNotifier(notifier notifier) *Consumer {
+	consumer.notifier = notifier
+	return consumer
 }
 
 func NewConsumer(
