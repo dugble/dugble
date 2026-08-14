@@ -55,24 +55,19 @@ func (r *Repository) CreateClaim(
 	targetDomainID := uuid.New()
 	verificationToken := uuid.NewString()
 	row, err := queries.CreateDomainClaim(ctx, dbsqlc.CreateDomainClaimParams{
-		TargetDomainID:    targetDomainID,
-		SourceDomainID:    &source.ID,
-		NormalizedName:    source.NormalizedName,
-		SourceTeamID:      source.TeamID,
-		TargetTeamID:      targetTeamID,
-		ProviderRegion:    region,
-		CustomReturnPath:  configuration.CustomReturnPath,
-		OpenTracking:      configuration.OpenTracking,
-		ClickTracking:     configuration.ClickTracking,
-		TrackingSubdomain: configuration.TrackingSubdomain,
-		TlsMode:           configuration.TLS,
-		SendingEnabled:    configuration.Capabilities.Sending,
-		ReceivingEnabled:  configuration.Capabilities.Receiving,
-		RecordName:        "_kepler-claim." + source.NormalizedName,
-		RecordValue:       verificationToken,
-		RecordTtl:         "Auto",
-		ExpiresAt:         pgconv.TimestamptzFromTime(time.Now().UTC().Add(DefaultClaimLifetime)),
-		CreatedBy:         &createdBy,
+		TargetDomainID:   targetDomainID,
+		SourceDomainID:   &source.ID,
+		NormalizedName:   source.NormalizedName,
+		SourceTeamID:     source.TeamID,
+		TargetTeamID:     targetTeamID,
+		ProviderRegion:   region,
+		CustomReturnPath: configuration.CustomReturnPath,
+		TlsMode:          configuration.TLS,
+		RecordName:       "_kepler-claim." + source.NormalizedName,
+		RecordValue:      verificationToken,
+		RecordTtl:        "Auto",
+		ExpiresAt:        pgconv.TimestamptzFromTime(time.Now().UTC().Add(DefaultClaimLifetime)),
+		CreatedBy:        &createdBy,
 	})
 	if isUniqueViolation(err) {
 		return DomainClaim{}, ErrDomainClaimAlreadyExists
@@ -246,20 +241,15 @@ func (r *Repository) CompleteClaimTransfer(
 		return SenderDomain{}, DomainClaim{}, fmt.Errorf("remove source domain during claim: %w", err)
 	}
 	created, err := queries.CreateClaimedDomain(ctx, dbsqlc.CreateClaimedDomainParams{
-		ID:                claim.TargetDomainID,
-		TeamID:            claim.TargetTeamID,
-		Name:              claim.NormalizedName,
-		Provider:          source.Provider,
-		ProviderAccount:   source.ProviderAccount,
-		ProviderRegion:    claim.ProviderRegion,
-		OpenTracking:      claim.OpenTracking,
-		ClickTracking:     claim.ClickTracking,
-		TrackingSubdomain: claim.TrackingSubdomain,
-		TlsMode:           claim.TlsMode,
-		SendingEnabled:    claim.SendingEnabled,
-		ReceivingEnabled:  claim.ReceivingEnabled,
-		CustomReturnPath:  claim.CustomReturnPath,
-		CreatedBy:         claim.CreatedBy,
+		ID:               claim.TargetDomainID,
+		TeamID:           claim.TargetTeamID,
+		Name:             claim.NormalizedName,
+		Provider:         source.Provider,
+		ProviderAccount:  source.ProviderAccount,
+		ProviderRegion:   claim.ProviderRegion,
+		TlsMode:          claim.TlsMode,
+		CustomReturnPath: claim.CustomReturnPath,
+		CreatedBy:        claim.CreatedBy,
 	})
 	if err != nil {
 		return SenderDomain{}, DomainClaim{}, fmt.Errorf("create claimed domain: %w", err)
@@ -449,23 +439,16 @@ func domainClaimFromSQLC(row dbsqlc.DomainClaim) DomainClaim {
 		sourceDomainID = &value
 	}
 	return DomainClaim{
-		ID:                row.ID.String(),
-		DomainID:          row.TargetDomainID.String(),
-		Name:              row.NormalizedName,
-		Status:            row.Status,
-		SourceDomainID:    sourceDomainID,
-		SourceTeamID:      row.SourceTeamID.String(),
-		TargetTeamID:      row.TargetTeamID.String(),
-		Region:            row.ProviderRegion,
-		CustomReturnPath:  row.CustomReturnPath,
-		OpenTracking:      row.OpenTracking,
-		ClickTracking:     row.ClickTracking,
-		TrackingSubdomain: row.TrackingSubdomain,
-		TLS:               row.TlsMode,
-		Capabilities: Capabilities{
-			Sending:   row.SendingEnabled,
-			Receiving: row.ReceivingEnabled,
-		},
+		ID:               row.ID.String(),
+		DomainID:         row.TargetDomainID.String(),
+		Name:             row.NormalizedName,
+		Status:           row.Status,
+		SourceDomainID:   sourceDomainID,
+		SourceTeamID:     row.SourceTeamID.String(),
+		TargetTeamID:     row.TargetTeamID.String(),
+		Region:           row.ProviderRegion,
+		CustomReturnPath: row.CustomReturnPath,
+		TLS:              row.TlsMode,
 		VerificationRecord: VerificationRecord{
 			Record: "claim",
 			Name:   row.RecordName,
