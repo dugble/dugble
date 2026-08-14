@@ -12,8 +12,18 @@ type chargeRepository interface {
 	ChargeEmail(context.Context, pgx.Tx, EmailChargeInput) (Charge, error)
 }
 
+type balanceNotifier interface {
+	Notify(context.Context, CommittedCharge) error
+}
+
 type Service struct {
-	repository chargeRepository
+	repository      chargeRepository
+	balanceNotifier balanceNotifier
+}
+
+func (s *Service) WithBalanceNotifier(notifier balanceNotifier) *Service {
+	s.balanceNotifier = notifier
+	return s
 }
 
 func NewService(repository chargeRepository) *Service {

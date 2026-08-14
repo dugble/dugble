@@ -4,8 +4,21 @@ import (
 	"time"
 
 	charges "github.com/dugble/dugble/server/internal/billing/charge/subscription"
+	"github.com/dugble/dugble/server/internal/billing/subscription/lifecycle"
 	"github.com/google/uuid"
 )
+
+type Due struct {
+	SubscriptionID uuid.UUID
+	TeamID         uuid.UUID
+	State          lifecycle.State
+}
+
+type BillingRecipient struct {
+	Name     string
+	Email    string
+	TeamName string
+}
 
 type Outcome string
 

@@ -83,6 +83,15 @@ type SendSubscriptionPastDueInput struct {
 	BalanceUnits int64
 }
 
+type SendWalletBalanceAlertInput struct {
+	ToEmail      string
+	Name         string
+	TeamName     string
+	Currency     string
+	BalanceUnits int64
+	Level        string
+}
+
 type EmailSender = platformemail.Sender
 
 type TransactionalEmailSender interface {

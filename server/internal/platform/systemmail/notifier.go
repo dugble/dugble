@@ -31,6 +31,7 @@ const (
 	teamTokenRevokedTemplate      = "team_token_revoked.html"
 	teamInvitationTemplate        = "team_invitation.html"
 	subscriptionPastDueTemplate   = "subscription_past_due.html"
+	walletBalanceAlertTemplate    = "wallet_balance_alert.html"
 )
 
 type EmailService struct {
@@ -114,6 +115,24 @@ func formatMoney(currency string, units int64) string {
 		value = "-" + value
 	}
 	return strings.TrimSpace(currency) + " " + value
+}
+
+func (s *EmailService) SendWalletBalanceAlert(ctx context.Context, tx pgx.Tx, input SendWalletBalanceAlertInput) error {
+	exhausted := strings.EqualFold(strings.TrimSpace(input.Level), "exhausted")
+	subject := "Your Dugble wallet balance is low"
+	preview := "Add funds to your Dugble wallet to avoid interrupted service."
+	message := "Your wallet is running low. Add funds soon to keep your messages sending."
+	if exhausted {
+		subject = "Action required: your Dugble wallet is empty"
+		preview = "Your Dugble wallet is empty."
+		message = "Your wallet is empty. Add funds now to restore paid message sending."
+	}
+	data := map[string]string{
+		"Name": displayName(input.Name), "PreviewText": preview,
+		"Team": displayName(input.TeamName), "Balance": formatMoney(input.Currency, input.BalanceUnits),
+		"Message": message, "BillingURL": s.frontendURL + "/settings/billing",
+	}
+	return s.sendTemplateEmail(ctx, tx, SendTemplateEmailInput{To: input.ToEmail, Subject: subject, TemplateName: walletBalanceAlertTemplate, Data: data})
 }
 
 func (s *EmailService) SendEmailVerification(ctx context.Context, input SendEmailVerificationInput) error {

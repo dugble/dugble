@@ -90,7 +90,9 @@ func (registry *Registry) registerModules(router *echo.Echo) error {
 	webhookEmitter := platformwebhook.NewEmitter(webhookRepository)
 	smsRepository := smsmodule.NewRepositoryWithWebhookEmitter(db, webhookEmitter)
 	smsCampaignRepository := smscampaignmodule.NewRepository(db)
-	billingService := platformbilling.NewService(platformbilling.NewRepository(db))
+	billingService := platformbilling.NewService(platformbilling.NewRepository(db)).WithBalanceNotifier(
+		platformbilling.NewBalanceNotifier(db, notificationEmailService),
+	)
 	smsService := smsmodule.NewService(smsRepository, registry.smsSender, smsdelivery.NewQueue(registry.outbox), billingService)
 	emailAPIService := emailmodule.NewService(
 		emailmodule.NewRepository(db),

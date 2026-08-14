@@ -46,18 +46,6 @@ WHERE id = $1
 RETURNING plan_code, current_period_start, current_period_end
 `
 
-type Due struct {
-	SubscriptionID uuid.UUID
-	TeamID         uuid.UUID
-	State          lifecycle.State
-}
-
-type BillingRecipient struct {
-	Name     string
-	Email    string
-	TeamName string
-}
-
 type Repository struct{}
 
 func NewRepository() *Repository { return &Repository{} }

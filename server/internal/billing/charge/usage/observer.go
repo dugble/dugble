@@ -34,4 +34,9 @@ func (s *Service) ObserveCommittedCharge(ctx context.Context, committed Committe
 		"remaining_credit_units", committed.RemainingCreditUnits,
 		"remaining_balance_units", committed.RemainingBalance,
 	)
+	if s.balanceNotifier != nil {
+		if err := s.balanceNotifier.Notify(ctx, committed); err != nil {
+			sentrymonitoring.Warn("failed to send wallet balance notification", "team_id", committed.TeamID, "error", err)
+		}
+	}
 }
