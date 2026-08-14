@@ -68,7 +68,7 @@ func (s *Service) Create(ctx context.Context, req CreateRequest) (SenderID, erro
 		countryCode,
 		purpose,
 		provider,
-		tenantContext.Actor.UserID,
+		tenantContext.Actor.UserIDPtr(),
 	)
 	if err != nil {
 		if errors.Is(err, ErrSenderIDAlreadyExists) {
