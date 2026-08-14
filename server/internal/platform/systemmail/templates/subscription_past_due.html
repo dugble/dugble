@@ -1,0 +1,10 @@
+{{template "email.header" .}}
+    <p>Hi {{.Name}},</p>
+    <p>
+      We could not renew the <strong>{{.Plan}}</strong> subscription for
+      <strong>{{.Team}}</strong> because its wallet did not have enough funds.
+    </p>
+    <p>Payment due: <strong>{{.Amount}}</strong><br>Current wallet balance: <strong>{{.Balance}}</strong></p>
+    <p>Your subscription is now past due. Add funds to restore normal service.</p>
+    <p><a href="{{.BillingURL}}">Review billing and add funds</a></p>
+{{template "email.footer" .}}

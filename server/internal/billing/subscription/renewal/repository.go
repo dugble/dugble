@@ -52,6 +52,12 @@ type Due struct {
 	State          lifecycle.State
 }
 
+type BillingRecipient struct {
+	Name     string
+	Email    string
+	TeamName string
+}
+
 type Repository struct{}
 
 func NewRepository() *Repository { return &Repository{} }
@@ -91,6 +97,34 @@ func (*Repository) ApplyCharge(ctx context.Context, tx pgx.Tx, id uuid.UUID, app
 	var state appliedState
 	err := tx.QueryRow(ctx, applyChargeSQL, id, applied, plan, start, end).Scan(&state.Plan, &state.Period.Start, &state.Period.End)
 	return state, err
+}
+
+func (*Repository) ListBillingRecipients(ctx context.Context, tx pgx.Tx, teamID uuid.UUID) ([]BillingRecipient, error) {
+	rows, err := tx.Query(ctx, `
+SELECT users.name, users.email, teams.name
+FROM team_members
+JOIN users ON users.id = team_members.user_id
+JOIN teams ON teams.id = team_members.team_id
+WHERE team_members.team_id = $1
+  AND team_members.role = 'owner'
+  AND team_members.status = 'active'
+ORDER BY users.id`, teamID)
+	if err != nil {
+		return nil, fmt.Errorf("list subscription billing recipients: %w", err)
+	}
+	defer rows.Close()
+	recipients := make([]BillingRecipient, 0, 1)
+	for rows.Next() {
+		var recipient BillingRecipient
+		if err := rows.Scan(&recipient.Name, &recipient.Email, &recipient.TeamName); err != nil {
+			return nil, fmt.Errorf("scan subscription billing recipient: %w", err)
+		}
+		recipients = append(recipients, recipient)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("list subscription billing recipients: %w", err)
+	}
+	return recipients, nil
 }
 
 type timeRange struct{ Start, End time.Time }

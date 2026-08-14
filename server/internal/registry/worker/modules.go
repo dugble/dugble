@@ -42,6 +42,7 @@ import (
 	platformevent "github.com/dugble/dugble/server/internal/platform/event"
 	"github.com/dugble/dugble/server/internal/platform/outbox"
 	platformsms "github.com/dugble/dugble/server/internal/platform/sms"
+	"github.com/dugble/dugble/server/internal/platform/systemmail"
 	platformwebhook "github.com/dugble/dugble/server/internal/platform/webhook"
 )
 
@@ -263,6 +264,12 @@ func (registry *Registry) newModules(startupCtx context.Context) (modules, error
 		chargeSubscription.NewService(chargeSubscription.NewRepository()),
 		subscriptionLifecycle.NewService(),
 	).WithEventPublisher(subscriptionRenewal.NewEventPublisher(outboxRepository))
+	renderer, err := systemmail.NewRenderer()
+	if err != nil {
+		return modules{}, fmt.Errorf("initialize subscription system email renderer: %w", err)
+	}
+	systemEmailQueue := systememail.NewQueue(outboxRepository, platformemail.Message{Provider: awsses.ProviderSES, Region: cfg.AWS.Region, Stream: "transactional", ConfigurationSet: platformemail.TransactionalConfigurationSet, SESTenantName: platformemail.SystemSESTenantName})
+	renewalService.WithPastDueNotifier(systemmail.NewEmailService(systemEmailQueue, renderer, cfg.FrontendURL, cfg.AWS.FromEmail))
 	renewalConfig := subscriptionRenewal.DefaultConfig()
 	renewalConfig.OnFailure = func(ctx context.Context, failure subscriptionRenewal.Failure) {
 		sentrymonitoring.ErrorContext(ctx, "subscription renewal failed", "team_id", failure.TeamID, "error", failure.Err)

@@ -10,12 +10,14 @@ import (
 
 	charges "github.com/dugble/dugble/server/internal/billing/charge/subscription"
 	"github.com/dugble/dugble/server/internal/billing/subscription/lifecycle"
+	"github.com/dugble/dugble/server/internal/platform/systemmail"
 )
 
 type renewalStore interface {
 	GetDue(context.Context, pgx.Tx, uuid.UUID) (Due, error)
 	ApplyCancellation(context.Context, pgx.Tx, uuid.UUID) (timeRange, error)
 	ApplyCharge(context.Context, pgx.Tx, uuid.UUID, bool, string, time.Time, time.Time) (appliedState, error)
+	ListBillingRecipients(context.Context, pgx.Tx, uuid.UUID) ([]BillingRecipient, error)
 }
 type periodCharger interface {
 	ChargePeriod(context.Context, pgx.Tx, charges.Input) (charges.Result, error)
@@ -26,13 +28,22 @@ type decider interface {
 type eventPublisher interface {
 	PublishTx(context.Context, pgx.Tx, Result) error
 }
+type pastDueNotifier interface {
+	SendSubscriptionPastDue(context.Context, pgx.Tx, systemmail.SendSubscriptionPastDueInput) error
+}
 
 type Service struct {
 	repository renewalStore
 	charger    periodCharger
 	lifecycle  decider
 	events     eventPublisher
+	notifier   pastDueNotifier
 	now        func() time.Time
+}
+
+func (s *Service) WithPastDueNotifier(notifier pastDueNotifier) *Service {
+	s.notifier = notifier
+	return s
 }
 
 func (s *Service) WithEventPublisher(publisher eventPublisher) *Service {
@@ -89,10 +100,36 @@ func (s *Service) ProcessTeam(ctx context.Context, tx pgx.Tx, teamID uuid.UUID) 
 	default:
 		base.Outcome = OutcomeRenewed
 	}
+	if base.Outcome == OutcomePastDue && due.State.Status != lifecycle.StatusPastDue {
+		if err := s.notifyPastDue(ctx, tx, due, base); err != nil {
+			return Result{}, err
+		}
+	}
 	if err := s.publish(ctx, tx, base); err != nil {
 		return Result{}, err
 	}
 	return base, nil
+}
+
+func (s *Service) notifyPastDue(ctx context.Context, tx pgx.Tx, due Due, result Result) error {
+	if s.notifier == nil {
+		return nil
+	}
+	recipients, err := s.repository.ListBillingRecipients(ctx, tx, due.TeamID)
+	if err != nil {
+		return err
+	}
+	for _, recipient := range recipients {
+		input := systemmail.SendSubscriptionPastDueInput{
+			ToEmail: recipient.Email, Name: recipient.Name, TeamName: recipient.TeamName,
+			PlanCode: result.CurrentPlan, Currency: result.Charge.Currency,
+			AmountUnits: result.Charge.AmountUnits, BalanceUnits: result.Charge.RemainingBalance,
+		}
+		if err := s.notifier.SendSubscriptionPastDue(ctx, tx, input); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (s *Service) publish(ctx context.Context, tx pgx.Tx, result Result) error {

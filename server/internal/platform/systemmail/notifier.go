@@ -5,9 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"strconv"
 	"strings"
 
 	sentrymonitoring "github.com/dugble/dugble/server/internal/adapters/monitoring/sentry"
+	"github.com/jackc/pgx/v5"
 
 	platformemail "github.com/dugble/dugble/server/internal/platform/awsses"
 )
@@ -28,6 +30,7 @@ const (
 	teamTokenCreatedTemplate      = "team_token_created.html"
 	teamTokenRevokedTemplate      = "team_token_revoked.html"
 	teamInvitationTemplate        = "team_invitation.html"
+	subscriptionPastDueTemplate   = "subscription_past_due.html"
 )
 
 type EmailService struct {
@@ -54,6 +57,10 @@ type SendTemplateEmailInput struct {
 }
 
 func (s *EmailService) SendTemplateEmail(ctx context.Context, input SendTemplateEmailInput) error {
+	return s.sendTemplateEmail(ctx, nil, input)
+}
+
+func (s *EmailService) sendTemplateEmail(ctx context.Context, tx pgx.Tx, input SendTemplateEmailInput) error {
 	if s == nil {
 		return errors.New("email service is not configured")
 	}
@@ -67,17 +74,46 @@ func (s *EmailService) SendTemplateEmail(ctx context.Context, input SendTemplate
 	if err != nil {
 		return err
 	}
-	_, err = s.sender.Send(ctx, platformemail.Message{
+	message := platformemail.Message{
 		From:    platformemail.Address{Email: s.fromEmail, Name: "Dugble"},
 		To:      []platformemail.Address{{Email: input.To}},
 		Subject: input.Subject,
 		HTML:    body,
-	})
+	}
+	if tx == nil {
+		_, err = s.sender.Send(ctx, message)
+	} else if sender, ok := s.sender.(TransactionalEmailSender); ok {
+		_, err = sender.SendTx(ctx, tx, message)
+	} else {
+		return errors.New("transactional email sender is not configured")
+	}
 	if err != nil {
 		sentrymonitoring.Warn("failed to send email", "error", err, "to", input.To, "template", input.TemplateName)
 		return fmt.Errorf("send email %s to %s: %w", input.TemplateName, input.To, err)
 	}
 	return nil
+}
+
+func (s *EmailService) SendSubscriptionPastDue(ctx context.Context, tx pgx.Tx, input SendSubscriptionPastDueInput) error {
+	data := map[string]string{
+		"Name": displayName(input.Name), "PreviewText": "Your Dugble subscription payment failed.",
+		"Team": displayName(input.TeamName), "Plan": displayValue(input.PlanCode),
+		"Amount": formatMoney(input.Currency, input.AmountUnits), "Balance": formatMoney(input.Currency, input.BalanceUnits),
+		"BillingURL": s.frontendURL + "/settings/billing",
+	}
+	return s.sendTemplateEmail(ctx, tx, SendTemplateEmailInput{To: input.ToEmail, Subject: "Action required: your Dugble subscription is past due", TemplateName: subscriptionPastDueTemplate, Data: data})
+}
+
+func formatMoney(currency string, units int64) string {
+	negative := units < 0
+	if negative {
+		units = -units
+	}
+	value := strconv.FormatInt(units/100, 10) + "." + fmt.Sprintf("%02d", units%100)
+	if negative {
+		value = "-" + value
+	}
+	return strings.TrimSpace(currency) + " " + value
 }
 
 func (s *EmailService) SendEmailVerification(ctx context.Context, input SendEmailVerificationInput) error {
