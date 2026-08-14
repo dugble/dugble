@@ -59,6 +59,11 @@ func New(ctx context.Context) (*Registry, error) {
 	}
 	registry.config = cfg
 
+	if err := sentrymonitoring.Init(cfg.Sentry, cfg.AppEnv); err != nil {
+		return fail(fmt.Errorf("initialize Sentry: %w", err))
+	}
+	registry.cleanups.Add(func() { sentrymonitoring.Flush(5 * time.Second) })
+
 	startupCtx, cancelStartup := context.WithTimeout(ctx, 15*time.Second)
 	defer cancelStartup()
 
