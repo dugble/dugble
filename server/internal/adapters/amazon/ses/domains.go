@@ -24,8 +24,7 @@ func (c *Client) ProvisionDomain(ctx context.Context, req platformemail.DomainPr
 	if err != nil {
 		return nil, err
 	}
-	tenantName := strings.TrimSpace(req.SESTenantName)
-	if tenantName == "" {
+	if strings.TrimSpace(req.SESTenantName) == "" {
 		return nil, errors.New("SES tenant name is required for sender-domain provisioning")
 	}
 	selector, privateKey, publicKey, err := generateBYODKIMMaterial()
@@ -54,22 +53,23 @@ func (c *Client) ProvisionDomain(ctx context.Context, req platformemail.DomainPr
 		}
 		return nil, fmt.Errorf("configure SES MAIL FROM domain: %w", err)
 	}
-	if err := c.associateIdentityWithTenant(ctx, req.Region, tenantName, req.Domain); err != nil {
-		cleanupErr := c.deleteDomainWithClient(ctx, client, req.Domain)
-		if cleanupErr != nil {
-			return nil, errors.Join(err, fmt.Errorf("roll back SES email identity: %w", cleanupErr))
-		}
-		return nil, err
-	}
 	return mapVerificationRecords(req, selector, publicKey), nil
 }
 
-func (c *Client) associateIdentityWithTenant(ctx context.Context, region, tenantName, domainName string) error {
+// AssociateDomainWithTenant associates a verified sender identity with the
+// customer's SES tenant. It is intentionally separate from ProvisionDomain:
+// SES tenant identities are expected to be verified resources, while a newly
+// created identity is still pending DNS verification.
+func (c *Client) AssociateDomainWithTenant(ctx context.Context, domainName, region, tenantName string) error {
 	client, err := c.tenantClient(region)
 	if err != nil {
 		return err
 	}
-	output, err := client.GetTenant(ctx, &sesv2.GetTenantInput{TenantName: aws.String(strings.TrimSpace(tenantName))})
+	tenantName = strings.TrimSpace(tenantName)
+	if tenantName == "" {
+		return errors.New("SES tenant name is required for sender identity association")
+	}
+	output, err := client.GetTenant(ctx, &sesv2.GetTenantInput{TenantName: aws.String(tenantName)})
 	if err != nil {
 		return fmt.Errorf("get SES tenant for sender identity: %w", err)
 	}
@@ -81,7 +81,7 @@ func (c *Client) associateIdentityWithTenant(ctx context.Context, region, tenant
 		return err
 	}
 	_, err = client.CreateTenantResourceAssociation(ctx, &sesv2.CreateTenantResourceAssociationInput{
-		TenantName:  aws.String(strings.TrimSpace(tenantName)),
+		TenantName:  aws.String(tenantName),
 		ResourceArn: aws.String(resourceARN),
 	})
 	if err != nil && !isAlreadyExists(err) {
