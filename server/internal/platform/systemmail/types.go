@@ -119,12 +119,12 @@ type SendSenderIDStatusInput struct {
 }
 
 type SendSubscriptionChangeInput struct {
-	ToEmail      string
-	Name         string
-	CurrentPlan  string
-	NewPlan      string
-	Event        string
-	EffectiveAt  string
+	ToEmail     string
+	Name        string
+	CurrentPlan string
+	NewPlan     string
+	Event       string
+	EffectiveAt string
 }
 
 type EmailSender = platformemail.Sender
