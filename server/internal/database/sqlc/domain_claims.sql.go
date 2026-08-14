@@ -21,7 +21,7 @@ SET status = 'canceled',
 WHERE target_domain_id = $1
   AND target_team_id = $2
   AND status IN ('pending', 'verified', 'blocked')
-RETURNING id, target_domain_id, source_domain_id, normalized_name, source_team_id, target_team_id, provider_region, custom_return_path, open_tracking, click_tracking, tracking_subdomain, tls_mode, sending_enabled, receiving_enabled, status, blocked_reason, failure_reason, record_name, record_value, record_ttl, verification_requested_at, verified_at, completed_at, expires_at, reconcile_locked_at, reconcile_locked_by, created_by, created_at, updated_at
+RETURNING id, target_domain_id, source_domain_id, normalized_name, source_team_id, target_team_id, provider_region, custom_return_path, tls_mode, status, blocked_reason, failure_reason, record_name, record_value, record_ttl, verification_requested_at, verified_at, completed_at, expires_at, reconcile_locked_at, reconcile_locked_by, created_by, created_at, updated_at
 `
 
 type CancelDomainClaimParams struct {
@@ -41,12 +41,7 @@ func (q *Queries) CancelDomainClaim(ctx context.Context, arg CancelDomainClaimPa
 		&i.TargetTeamID,
 		&i.ProviderRegion,
 		&i.CustomReturnPath,
-		&i.OpenTracking,
-		&i.ClickTracking,
-		&i.TrackingSubdomain,
 		&i.TlsMode,
-		&i.SendingEnabled,
-		&i.ReceivingEnabled,
 		&i.Status,
 		&i.BlockedReason,
 		&i.FailureReason,
@@ -87,9 +82,9 @@ WITH candidates AS (
         updated_at = now()
     FROM candidates
     WHERE claim.id = candidates.id
-    RETURNING claim.id, claim.target_domain_id, claim.source_domain_id, claim.normalized_name, claim.source_team_id, claim.target_team_id, claim.provider_region, claim.custom_return_path, claim.open_tracking, claim.click_tracking, claim.tracking_subdomain, claim.tls_mode, claim.sending_enabled, claim.receiving_enabled, claim.status, claim.blocked_reason, claim.failure_reason, claim.record_name, claim.record_value, claim.record_ttl, claim.verification_requested_at, claim.verified_at, claim.completed_at, claim.expires_at, claim.reconcile_locked_at, claim.reconcile_locked_by, claim.created_by, claim.created_at, claim.updated_at
+    RETURNING claim.id, claim.target_domain_id, claim.source_domain_id, claim.normalized_name, claim.source_team_id, claim.target_team_id, claim.provider_region, claim.custom_return_path, claim.tls_mode, claim.status, claim.blocked_reason, claim.failure_reason, claim.record_name, claim.record_value, claim.record_ttl, claim.verification_requested_at, claim.verified_at, claim.completed_at, claim.expires_at, claim.reconcile_locked_at, claim.reconcile_locked_by, claim.created_by, claim.created_at, claim.updated_at
 )
-SELECT updated.id, updated.target_domain_id, updated.source_domain_id, updated.normalized_name, updated.source_team_id, updated.target_team_id, updated.provider_region, updated.custom_return_path, updated.open_tracking, updated.click_tracking, updated.tracking_subdomain, updated.tls_mode, updated.sending_enabled, updated.receiving_enabled, updated.status, updated.blocked_reason, updated.failure_reason, updated.record_name, updated.record_value, updated.record_ttl, updated.verification_requested_at, updated.verified_at, updated.completed_at, updated.expires_at, updated.reconcile_locked_at, updated.reconcile_locked_by, updated.created_by, updated.created_at, updated.updated_at
+SELECT updated.id, updated.target_domain_id, updated.source_domain_id, updated.normalized_name, updated.source_team_id, updated.target_team_id, updated.provider_region, updated.custom_return_path, updated.tls_mode, updated.status, updated.blocked_reason, updated.failure_reason, updated.record_name, updated.record_value, updated.record_ttl, updated.verification_requested_at, updated.verified_at, updated.completed_at, updated.expires_at, updated.reconcile_locked_at, updated.reconcile_locked_by, updated.created_by, updated.created_at, updated.updated_at
 FROM updated
 ORDER BY updated.verification_requested_at, updated.created_at
 `
@@ -109,12 +104,7 @@ type ClaimPendingDomainClaimsRow struct {
 	TargetTeamID            uuid.UUID          `db:"target_team_id" json:"target_team_id"`
 	ProviderRegion          string             `db:"provider_region" json:"provider_region"`
 	CustomReturnPath        string             `db:"custom_return_path" json:"custom_return_path"`
-	OpenTracking            bool               `db:"open_tracking" json:"open_tracking"`
-	ClickTracking           bool               `db:"click_tracking" json:"click_tracking"`
-	TrackingSubdomain       *string            `db:"tracking_subdomain" json:"tracking_subdomain"`
 	TlsMode                 string             `db:"tls_mode" json:"tls_mode"`
-	SendingEnabled          bool               `db:"sending_enabled" json:"sending_enabled"`
-	ReceivingEnabled        bool               `db:"receiving_enabled" json:"receiving_enabled"`
 	Status                  string             `db:"status" json:"status"`
 	BlockedReason           *string            `db:"blocked_reason" json:"blocked_reason"`
 	FailureReason           *string            `db:"failure_reason" json:"failure_reason"`
@@ -150,12 +140,7 @@ func (q *Queries) ClaimPendingDomainClaims(ctx context.Context, arg ClaimPending
 			&i.TargetTeamID,
 			&i.ProviderRegion,
 			&i.CustomReturnPath,
-			&i.OpenTracking,
-			&i.ClickTracking,
-			&i.TrackingSubdomain,
 			&i.TlsMode,
-			&i.SendingEnabled,
-			&i.ReceivingEnabled,
 			&i.Status,
 			&i.BlockedReason,
 			&i.FailureReason,
@@ -191,12 +176,7 @@ INSERT INTO domain_claims (
     target_team_id,
     provider_region,
     custom_return_path,
-    open_tracking,
-    click_tracking,
-    tracking_subdomain,
     tls_mode,
-    sending_enabled,
-    receiving_enabled,
     record_name,
     record_value,
     record_ttl,
@@ -215,35 +195,25 @@ INSERT INTO domain_claims (
     $10,
     $11,
     $12,
-    $13,
-    $14,
-    $15,
-    $16,
-    $17,
-    $18
+    $13
 )
-RETURNING id, target_domain_id, source_domain_id, normalized_name, source_team_id, target_team_id, provider_region, custom_return_path, open_tracking, click_tracking, tracking_subdomain, tls_mode, sending_enabled, receiving_enabled, status, blocked_reason, failure_reason, record_name, record_value, record_ttl, verification_requested_at, verified_at, completed_at, expires_at, reconcile_locked_at, reconcile_locked_by, created_by, created_at, updated_at
+RETURNING id, target_domain_id, source_domain_id, normalized_name, source_team_id, target_team_id, provider_region, custom_return_path, tls_mode, status, blocked_reason, failure_reason, record_name, record_value, record_ttl, verification_requested_at, verified_at, completed_at, expires_at, reconcile_locked_at, reconcile_locked_by, created_by, created_at, updated_at
 `
 
 type CreateDomainClaimParams struct {
-	TargetDomainID    uuid.UUID          `db:"target_domain_id" json:"target_domain_id"`
-	SourceDomainID    *uuid.UUID         `db:"source_domain_id" json:"source_domain_id"`
-	NormalizedName    string             `db:"normalized_name" json:"normalized_name"`
-	SourceTeamID      uuid.UUID          `db:"source_team_id" json:"source_team_id"`
-	TargetTeamID      uuid.UUID          `db:"target_team_id" json:"target_team_id"`
-	ProviderRegion    string             `db:"provider_region" json:"provider_region"`
-	CustomReturnPath  string             `db:"custom_return_path" json:"custom_return_path"`
-	OpenTracking      bool               `db:"open_tracking" json:"open_tracking"`
-	ClickTracking     bool               `db:"click_tracking" json:"click_tracking"`
-	TrackingSubdomain *string            `db:"tracking_subdomain" json:"tracking_subdomain"`
-	TlsMode           string             `db:"tls_mode" json:"tls_mode"`
-	SendingEnabled    bool               `db:"sending_enabled" json:"sending_enabled"`
-	ReceivingEnabled  bool               `db:"receiving_enabled" json:"receiving_enabled"`
-	RecordName        string             `db:"record_name" json:"record_name"`
-	RecordValue       string             `db:"record_value" json:"record_value"`
-	RecordTtl         string             `db:"record_ttl" json:"record_ttl"`
-	ExpiresAt         pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
-	CreatedBy         *uuid.UUID         `db:"created_by" json:"created_by"`
+	TargetDomainID   uuid.UUID          `db:"target_domain_id" json:"target_domain_id"`
+	SourceDomainID   *uuid.UUID         `db:"source_domain_id" json:"source_domain_id"`
+	NormalizedName   string             `db:"normalized_name" json:"normalized_name"`
+	SourceTeamID     uuid.UUID          `db:"source_team_id" json:"source_team_id"`
+	TargetTeamID     uuid.UUID          `db:"target_team_id" json:"target_team_id"`
+	ProviderRegion   string             `db:"provider_region" json:"provider_region"`
+	CustomReturnPath string             `db:"custom_return_path" json:"custom_return_path"`
+	TlsMode          string             `db:"tls_mode" json:"tls_mode"`
+	RecordName       string             `db:"record_name" json:"record_name"`
+	RecordValue      string             `db:"record_value" json:"record_value"`
+	RecordTtl        string             `db:"record_ttl" json:"record_ttl"`
+	ExpiresAt        pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
+	CreatedBy        *uuid.UUID         `db:"created_by" json:"created_by"`
 }
 
 func (q *Queries) CreateDomainClaim(ctx context.Context, arg CreateDomainClaimParams) (DomainClaim, error) {
@@ -255,12 +225,7 @@ func (q *Queries) CreateDomainClaim(ctx context.Context, arg CreateDomainClaimPa
 		arg.TargetTeamID,
 		arg.ProviderRegion,
 		arg.CustomReturnPath,
-		arg.OpenTracking,
-		arg.ClickTracking,
-		arg.TrackingSubdomain,
 		arg.TlsMode,
-		arg.SendingEnabled,
-		arg.ReceivingEnabled,
 		arg.RecordName,
 		arg.RecordValue,
 		arg.RecordTtl,
@@ -277,12 +242,7 @@ func (q *Queries) CreateDomainClaim(ctx context.Context, arg CreateDomainClaimPa
 		&i.TargetTeamID,
 		&i.ProviderRegion,
 		&i.CustomReturnPath,
-		&i.OpenTracking,
-		&i.ClickTracking,
-		&i.TrackingSubdomain,
 		&i.TlsMode,
-		&i.SendingEnabled,
-		&i.ReceivingEnabled,
 		&i.Status,
 		&i.BlockedReason,
 		&i.FailureReason,
@@ -332,7 +292,7 @@ SET status = 'expired',
     updated_at = now()
 WHERE status IN ('pending', 'verified', 'blocked')
   AND expires_at <= now()
-RETURNING id, target_domain_id, source_domain_id, normalized_name, source_team_id, target_team_id, provider_region, custom_return_path, open_tracking, click_tracking, tracking_subdomain, tls_mode, sending_enabled, receiving_enabled, status, blocked_reason, failure_reason, record_name, record_value, record_ttl, verification_requested_at, verified_at, completed_at, expires_at, reconcile_locked_at, reconcile_locked_by, created_by, created_at, updated_at
+RETURNING id, target_domain_id, source_domain_id, normalized_name, source_team_id, target_team_id, provider_region, custom_return_path, tls_mode, status, blocked_reason, failure_reason, record_name, record_value, record_ttl, verification_requested_at, verified_at, completed_at, expires_at, reconcile_locked_at, reconcile_locked_by, created_by, created_at, updated_at
 `
 
 func (q *Queries) ExpireDomainClaims(ctx context.Context) ([]DomainClaim, error) {
@@ -353,12 +313,7 @@ func (q *Queries) ExpireDomainClaims(ctx context.Context) ([]DomainClaim, error)
 			&i.TargetTeamID,
 			&i.ProviderRegion,
 			&i.CustomReturnPath,
-			&i.OpenTracking,
-			&i.ClickTracking,
-			&i.TrackingSubdomain,
 			&i.TlsMode,
-			&i.SendingEnabled,
-			&i.ReceivingEnabled,
 			&i.Status,
 			&i.BlockedReason,
 			&i.FailureReason,
@@ -386,7 +341,7 @@ func (q *Queries) ExpireDomainClaims(ctx context.Context) ([]DomainClaim, error)
 }
 
 const getDomainClaim = `-- name: GetDomainClaim :one
-SELECT claim.id, claim.target_domain_id, claim.source_domain_id, claim.normalized_name, claim.source_team_id, claim.target_team_id, claim.provider_region, claim.custom_return_path, claim.open_tracking, claim.click_tracking, claim.tracking_subdomain, claim.tls_mode, claim.sending_enabled, claim.receiving_enabled, claim.status, claim.blocked_reason, claim.failure_reason, claim.record_name, claim.record_value, claim.record_ttl, claim.verification_requested_at, claim.verified_at, claim.completed_at, claim.expires_at, claim.reconcile_locked_at, claim.reconcile_locked_by, claim.created_by, claim.created_at, claim.updated_at
+SELECT claim.id, claim.target_domain_id, claim.source_domain_id, claim.normalized_name, claim.source_team_id, claim.target_team_id, claim.provider_region, claim.custom_return_path, claim.tls_mode, claim.status, claim.blocked_reason, claim.failure_reason, claim.record_name, claim.record_value, claim.record_ttl, claim.verification_requested_at, claim.verified_at, claim.completed_at, claim.expires_at, claim.reconcile_locked_at, claim.reconcile_locked_by, claim.created_by, claim.created_at, claim.updated_at
 FROM domain_claims AS claim
 WHERE claim.target_domain_id = $1
   AND claim.target_team_id = $2
@@ -409,12 +364,7 @@ func (q *Queries) GetDomainClaim(ctx context.Context, arg GetDomainClaimParams) 
 		&i.TargetTeamID,
 		&i.ProviderRegion,
 		&i.CustomReturnPath,
-		&i.OpenTracking,
-		&i.ClickTracking,
-		&i.TrackingSubdomain,
 		&i.TlsMode,
-		&i.SendingEnabled,
-		&i.ReceivingEnabled,
 		&i.Status,
 		&i.BlockedReason,
 		&i.FailureReason,
@@ -435,7 +385,7 @@ func (q *Queries) GetDomainClaim(ctx context.Context, arg GetDomainClaimParams) 
 }
 
 const getDomainClaimByID = `-- name: GetDomainClaimByID :one
-SELECT claim.id, claim.target_domain_id, claim.source_domain_id, claim.normalized_name, claim.source_team_id, claim.target_team_id, claim.provider_region, claim.custom_return_path, claim.open_tracking, claim.click_tracking, claim.tracking_subdomain, claim.tls_mode, claim.sending_enabled, claim.receiving_enabled, claim.status, claim.blocked_reason, claim.failure_reason, claim.record_name, claim.record_value, claim.record_ttl, claim.verification_requested_at, claim.verified_at, claim.completed_at, claim.expires_at, claim.reconcile_locked_at, claim.reconcile_locked_by, claim.created_by, claim.created_at, claim.updated_at
+SELECT claim.id, claim.target_domain_id, claim.source_domain_id, claim.normalized_name, claim.source_team_id, claim.target_team_id, claim.provider_region, claim.custom_return_path, claim.tls_mode, claim.status, claim.blocked_reason, claim.failure_reason, claim.record_name, claim.record_value, claim.record_ttl, claim.verification_requested_at, claim.verified_at, claim.completed_at, claim.expires_at, claim.reconcile_locked_at, claim.reconcile_locked_by, claim.created_by, claim.created_at, claim.updated_at
 FROM domain_claims AS claim
 WHERE claim.id = $1
 `
@@ -456,12 +406,7 @@ func (q *Queries) GetDomainClaimByID(ctx context.Context, arg GetDomainClaimByID
 		&i.TargetTeamID,
 		&i.ProviderRegion,
 		&i.CustomReturnPath,
-		&i.OpenTracking,
-		&i.ClickTracking,
-		&i.TrackingSubdomain,
 		&i.TlsMode,
-		&i.SendingEnabled,
-		&i.ReceivingEnabled,
 		&i.Status,
 		&i.BlockedReason,
 		&i.FailureReason,
@@ -491,7 +436,7 @@ SET status = 'blocked',
     updated_at = now()
 WHERE id = $2
   AND reconcile_locked_by = trim($3)
-RETURNING id, target_domain_id, source_domain_id, normalized_name, source_team_id, target_team_id, provider_region, custom_return_path, open_tracking, click_tracking, tracking_subdomain, tls_mode, sending_enabled, receiving_enabled, status, blocked_reason, failure_reason, record_name, record_value, record_ttl, verification_requested_at, verified_at, completed_at, expires_at, reconcile_locked_at, reconcile_locked_by, created_by, created_at, updated_at
+RETURNING id, target_domain_id, source_domain_id, normalized_name, source_team_id, target_team_id, provider_region, custom_return_path, tls_mode, status, blocked_reason, failure_reason, record_name, record_value, record_ttl, verification_requested_at, verified_at, completed_at, expires_at, reconcile_locked_at, reconcile_locked_by, created_by, created_at, updated_at
 `
 
 type MarkDomainClaimBlockedParams struct {
@@ -512,12 +457,7 @@ func (q *Queries) MarkDomainClaimBlocked(ctx context.Context, arg MarkDomainClai
 		&i.TargetTeamID,
 		&i.ProviderRegion,
 		&i.CustomReturnPath,
-		&i.OpenTracking,
-		&i.ClickTracking,
-		&i.TrackingSubdomain,
 		&i.TlsMode,
-		&i.SendingEnabled,
-		&i.ReceivingEnabled,
 		&i.Status,
 		&i.BlockedReason,
 		&i.FailureReason,
@@ -549,7 +489,7 @@ SET status = 'completed',
 WHERE id = $1
   AND status = 'verified'
   AND reconcile_locked_by = trim($2)
-RETURNING id, target_domain_id, source_domain_id, normalized_name, source_team_id, target_team_id, provider_region, custom_return_path, open_tracking, click_tracking, tracking_subdomain, tls_mode, sending_enabled, receiving_enabled, status, blocked_reason, failure_reason, record_name, record_value, record_ttl, verification_requested_at, verified_at, completed_at, expires_at, reconcile_locked_at, reconcile_locked_by, created_by, created_at, updated_at
+RETURNING id, target_domain_id, source_domain_id, normalized_name, source_team_id, target_team_id, provider_region, custom_return_path, tls_mode, status, blocked_reason, failure_reason, record_name, record_value, record_ttl, verification_requested_at, verified_at, completed_at, expires_at, reconcile_locked_at, reconcile_locked_by, created_by, created_at, updated_at
 `
 
 type MarkDomainClaimCompletedParams struct {
@@ -569,12 +509,7 @@ func (q *Queries) MarkDomainClaimCompleted(ctx context.Context, arg MarkDomainCl
 		&i.TargetTeamID,
 		&i.ProviderRegion,
 		&i.CustomReturnPath,
-		&i.OpenTracking,
-		&i.ClickTracking,
-		&i.TrackingSubdomain,
 		&i.TlsMode,
-		&i.SendingEnabled,
-		&i.ReceivingEnabled,
 		&i.Status,
 		&i.BlockedReason,
 		&i.FailureReason,
@@ -603,7 +538,7 @@ SET status = 'failed',
     updated_at = now()
 WHERE id = $2
   AND reconcile_locked_by = trim($3)
-RETURNING id, target_domain_id, source_domain_id, normalized_name, source_team_id, target_team_id, provider_region, custom_return_path, open_tracking, click_tracking, tracking_subdomain, tls_mode, sending_enabled, receiving_enabled, status, blocked_reason, failure_reason, record_name, record_value, record_ttl, verification_requested_at, verified_at, completed_at, expires_at, reconcile_locked_at, reconcile_locked_by, created_by, created_at, updated_at
+RETURNING id, target_domain_id, source_domain_id, normalized_name, source_team_id, target_team_id, provider_region, custom_return_path, tls_mode, status, blocked_reason, failure_reason, record_name, record_value, record_ttl, verification_requested_at, verified_at, completed_at, expires_at, reconcile_locked_at, reconcile_locked_by, created_by, created_at, updated_at
 `
 
 type MarkDomainClaimFailedParams struct {
@@ -624,12 +559,7 @@ func (q *Queries) MarkDomainClaimFailed(ctx context.Context, arg MarkDomainClaim
 		&i.TargetTeamID,
 		&i.ProviderRegion,
 		&i.CustomReturnPath,
-		&i.OpenTracking,
-		&i.ClickTracking,
-		&i.TrackingSubdomain,
 		&i.TlsMode,
-		&i.SendingEnabled,
-		&i.ReceivingEnabled,
 		&i.Status,
 		&i.BlockedReason,
 		&i.FailureReason,
@@ -658,7 +588,7 @@ SET status = 'verified',
     updated_at = now()
 WHERE id = $1
   AND reconcile_locked_by = trim($2)
-RETURNING id, target_domain_id, source_domain_id, normalized_name, source_team_id, target_team_id, provider_region, custom_return_path, open_tracking, click_tracking, tracking_subdomain, tls_mode, sending_enabled, receiving_enabled, status, blocked_reason, failure_reason, record_name, record_value, record_ttl, verification_requested_at, verified_at, completed_at, expires_at, reconcile_locked_at, reconcile_locked_by, created_by, created_at, updated_at
+RETURNING id, target_domain_id, source_domain_id, normalized_name, source_team_id, target_team_id, provider_region, custom_return_path, tls_mode, status, blocked_reason, failure_reason, record_name, record_value, record_ttl, verification_requested_at, verified_at, completed_at, expires_at, reconcile_locked_at, reconcile_locked_by, created_by, created_at, updated_at
 `
 
 type MarkDomainClaimVerifiedParams struct {
@@ -678,12 +608,7 @@ func (q *Queries) MarkDomainClaimVerified(ctx context.Context, arg MarkDomainCla
 		&i.TargetTeamID,
 		&i.ProviderRegion,
 		&i.CustomReturnPath,
-		&i.OpenTracking,
-		&i.ClickTracking,
-		&i.TrackingSubdomain,
 		&i.TlsMode,
-		&i.SendingEnabled,
-		&i.ReceivingEnabled,
 		&i.Status,
 		&i.BlockedReason,
 		&i.FailureReason,
@@ -710,7 +635,7 @@ SET reconcile_locked_at = NULL,
     updated_at = now()
 WHERE id = $1
   AND reconcile_locked_by = trim($2)
-RETURNING id, target_domain_id, source_domain_id, normalized_name, source_team_id, target_team_id, provider_region, custom_return_path, open_tracking, click_tracking, tracking_subdomain, tls_mode, sending_enabled, receiving_enabled, status, blocked_reason, failure_reason, record_name, record_value, record_ttl, verification_requested_at, verified_at, completed_at, expires_at, reconcile_locked_at, reconcile_locked_by, created_by, created_at, updated_at
+RETURNING id, target_domain_id, source_domain_id, normalized_name, source_team_id, target_team_id, provider_region, custom_return_path, tls_mode, status, blocked_reason, failure_reason, record_name, record_value, record_ttl, verification_requested_at, verified_at, completed_at, expires_at, reconcile_locked_at, reconcile_locked_by, created_by, created_at, updated_at
 `
 
 type ReleaseDomainClaimParams struct {
@@ -730,12 +655,7 @@ func (q *Queries) ReleaseDomainClaim(ctx context.Context, arg ReleaseDomainClaim
 		&i.TargetTeamID,
 		&i.ProviderRegion,
 		&i.CustomReturnPath,
-		&i.OpenTracking,
-		&i.ClickTracking,
-		&i.TrackingSubdomain,
 		&i.TlsMode,
-		&i.SendingEnabled,
-		&i.ReceivingEnabled,
 		&i.Status,
 		&i.BlockedReason,
 		&i.FailureReason,
@@ -765,7 +685,7 @@ WHERE target_domain_id = $1
   AND target_team_id = $2
   AND status IN ('pending', 'blocked')
   AND expires_at > now()
-RETURNING id, target_domain_id, source_domain_id, normalized_name, source_team_id, target_team_id, provider_region, custom_return_path, open_tracking, click_tracking, tracking_subdomain, tls_mode, sending_enabled, receiving_enabled, status, blocked_reason, failure_reason, record_name, record_value, record_ttl, verification_requested_at, verified_at, completed_at, expires_at, reconcile_locked_at, reconcile_locked_by, created_by, created_at, updated_at
+RETURNING id, target_domain_id, source_domain_id, normalized_name, source_team_id, target_team_id, provider_region, custom_return_path, tls_mode, status, blocked_reason, failure_reason, record_name, record_value, record_ttl, verification_requested_at, verified_at, completed_at, expires_at, reconcile_locked_at, reconcile_locked_by, created_by, created_at, updated_at
 `
 
 type RequestDomainClaimVerificationParams struct {
@@ -785,12 +705,7 @@ func (q *Queries) RequestDomainClaimVerification(ctx context.Context, arg Reques
 		&i.TargetTeamID,
 		&i.ProviderRegion,
 		&i.CustomReturnPath,
-		&i.OpenTracking,
-		&i.ClickTracking,
-		&i.TrackingSubdomain,
 		&i.TlsMode,
-		&i.SendingEnabled,
-		&i.ReceivingEnabled,
 		&i.Status,
 		&i.BlockedReason,
 		&i.FailureReason,
