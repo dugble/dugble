@@ -19,12 +19,32 @@ type result struct {
 	err  error
 }
 
-// Worker owns the background processes started by the worker command.
 type Worker struct {
 	jobs []job
 }
 
-func New(jobs ...job) (*Worker, error) {
+func newJobs(modules modules) []job {
+	return []job{
+		{name: "subscription renewal worker", run: modules.subscriptionRenewal},
+		{name: "outbox relay", run: modules.outboxRelay},
+		{name: "transactional email delivery consumer", run: modules.transactionalEmail},
+		{name: "marketing email delivery consumer", run: modules.marketingEmail},
+		{name: "system email consumer", run: modules.systemEmail},
+		{name: "email tenant provisioning consumer", run: modules.emailTenantProvisioning},
+		{name: "email feedback consumer", run: modules.emailFeedback},
+		{name: "email feedback reconciler", run: modules.emailFeedbackReconciler},
+		{name: "email feedback metrics collector", run: modules.emailFeedbackMetrics},
+		{name: "SMS delivery consumer", run: modules.smsDelivery},
+		{name: "SMS feedback reconciler", run: modules.smsFeedback},
+		{name: "SMS campaign execution consumer", run: modules.smsCampaign},
+		{name: "webhook delivery consumer", run: modules.webhookDelivery},
+		{name: "sender domain reconciliation consumer", run: modules.domainReconciliation},
+		{name: "broadcast execution consumer", run: modules.broadcastExecution},
+		{name: "Sender ID reconciliation", run: modules.senderIDReconciliation},
+	}
+}
+
+func newWorker(jobs ...job) (*Worker, error) {
 	if len(jobs) == 0 {
 		return nil, errors.New("worker requires at least one job")
 	}
