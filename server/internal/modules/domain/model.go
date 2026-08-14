@@ -44,9 +44,12 @@ const (
 
 type VerificationRecord = platformemail.VerificationRecord
 
+// Capabilities is retained internally for compatibility with the existing
+// persistence model. Sender domains are outbound-only, so callers cannot
+// configure capabilities through the public API.
 type Capabilities struct {
-	Sending   bool `json:"sending"`
-	Receiving bool `json:"receiving"`
+	Sending   bool `json:"-"`
+	Receiving bool `json:"-"`
 }
 
 type SenderDomain struct {
@@ -60,13 +63,13 @@ type SenderDomain struct {
 	Status                    string               `json:"status"`
 	ProviderStatus            *string              `json:"provider_status,omitempty"`
 	VerificationRecords       []VerificationRecord `json:"records"`
-	OpenTracking              bool                 `json:"open_tracking"`
-	ClickTracking             bool                 `json:"click_tracking"`
-	TrackingSubdomain         *string              `json:"tracking_subdomain,omitempty"`
-	ActiveTrackingSubdomain   *string              `json:"active_tracking_subdomain,omitempty"`
+	OpenTracking              bool                 `json:"-"`
+	ClickTracking             bool                 `json:"-"`
+	TrackingSubdomain         *string              `json:"-"`
+	ActiveTrackingSubdomain   *string              `json:"-"`
 	TLS                       string               `json:"tls"`
-	Capabilities              Capabilities         `json:"capabilities"`
-	CustomReturnPath          string               `json:"custom_return_path"`
+	Capabilities              Capabilities         `json:"-"`
+	CustomReturnPath          string               `json:"-"`
 	FailureReason             *string              `json:"failure_reason,omitempty"`
 	HealthStatus              string               `json:"health_status"`
 	ConsecutiveHealthFailures int32                `json:"consecutive_health_failures"`
@@ -80,26 +83,22 @@ type SenderDomain struct {
 	UpdatedAt                 time.Time            `json:"updated_at"`
 }
 
+// CreateRequest intentionally exposes only the sender-domain settings that are
+// part of the supported product contract. MAIL FROM, tracking, and capabilities
+// are platform-owned defaults.
 type CreateRequest struct {
-	Name              string        `json:"name"`
-	Domain            string        `json:"domain,omitempty"`
-	Region            string        `json:"region"`
-	CustomReturnPath  string        `json:"custom_return_path"`
-	OpenTracking      *bool         `json:"open_tracking,omitempty"`
-	ClickTracking     *bool         `json:"click_tracking,omitempty"`
-	TrackingSubdomain *string       `json:"tracking_subdomain,omitempty"`
-	TLS               string        `json:"tls,omitempty"`
-	Capabilities      *Capabilities `json:"capabilities,omitempty"`
+	Name   string `json:"name"`
+	Region string `json:"region"`
+	TLS    string `json:"tls,omitempty"`
 }
 
 type UpdateRequest struct {
-	OpenTracking      *bool         `json:"open_tracking,omitempty"`
-	ClickTracking     *bool         `json:"click_tracking,omitempty"`
-	TrackingSubdomain *string       `json:"tracking_subdomain,omitempty"`
-	TLS               *string       `json:"tls,omitempty"`
-	Capabilities      *Capabilities `json:"capabilities,omitempty"`
+	TLS *string `json:"tls,omitempty"`
 }
 
+// DomainConfiguration keeps legacy persistence fields internal while the
+// public API remains intentionally small. These defaults are not customer
+// configurable.
 type DomainConfiguration struct {
 	OpenTracking      bool
 	ClickTracking     bool
@@ -121,14 +120,9 @@ type ProvisioningResponse struct {
 }
 
 type ClaimRequest struct {
-	Name              string        `json:"name"`
-	Region            string        `json:"region"`
-	CustomReturnPath  string        `json:"custom_return_path"`
-	OpenTracking      *bool         `json:"open_tracking,omitempty"`
-	ClickTracking     *bool         `json:"click_tracking,omitempty"`
-	TrackingSubdomain *string       `json:"tracking_subdomain,omitempty"`
-	TLS               string        `json:"tls,omitempty"`
-	Capabilities      *Capabilities `json:"capabilities,omitempty"`
+	Name   string `json:"name"`
+	Region string `json:"region"`
+	TLS    string `json:"tls,omitempty"`
 }
 
 type DomainClaim struct {
@@ -140,12 +134,12 @@ type DomainClaim struct {
 	SourceTeamID            string             `json:"source_team_id"`
 	TargetTeamID            string             `json:"target_team_id"`
 	Region                  string             `json:"region"`
-	CustomReturnPath        string             `json:"custom_return_path"`
-	OpenTracking            bool               `json:"open_tracking"`
-	ClickTracking           bool               `json:"click_tracking"`
-	TrackingSubdomain       *string            `json:"tracking_subdomain,omitempty"`
+	CustomReturnPath        string             `json:"-"`
+	OpenTracking            bool               `json:"-"`
+	ClickTracking           bool               `json:"-"`
+	TrackingSubdomain       *string            `json:"-"`
 	TLS                     string             `json:"tls"`
-	Capabilities            Capabilities       `json:"capabilities"`
+	Capabilities            Capabilities       `json:"-"`
 	VerificationRecord      VerificationRecord `json:"record"`
 	BlockedReason           *string            `json:"blocked_reason,omitempty"`
 	FailureReason           *string            `json:"failure_reason,omitempty"`
