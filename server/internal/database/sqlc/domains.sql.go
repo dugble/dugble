@@ -34,9 +34,9 @@ WITH candidates AS (
         updated_at = now()
     FROM candidates
     WHERE domain_record.id = candidates.id
-    RETURNING domain_record.id, domain_record.team_id, domain_record.name, domain_record.normalized_name, domain_record.provider, domain_record.provider_account, domain_record.provider_region, domain_record.provider_external_id, domain_record.status, domain_record.provider_status, domain_record.open_tracking, domain_record.click_tracking, domain_record.tracking_subdomain, domain_record.active_tracking_subdomain, domain_record.tls_mode, domain_record.sending_enabled, domain_record.receiving_enabled, domain_record.custom_return_path, domain_record.health_status, domain_record.consecutive_health_failures, domain_record.failure_reason, domain_record.last_error, domain_record.submitted_at, domain_record.verified_at, domain_record.disabled_at, domain_record.last_checked_at, domain_record.next_check_at, domain_record.last_health_checked_at, domain_record.last_health_failure_at, domain_record.reconciliation_attempts, domain_record.reconcile_locked_at, domain_record.reconcile_locked_by, domain_record.created_by, domain_record.created_at, domain_record.updated_at
+    RETURNING domain_record.id, domain_record.team_id, domain_record.name, domain_record.normalized_name, domain_record.provider, domain_record.provider_account, domain_record.provider_region, domain_record.provider_external_id, domain_record.status, domain_record.provider_status, domain_record.tls_mode, domain_record.custom_return_path, domain_record.health_status, domain_record.consecutive_health_failures, domain_record.failure_reason, domain_record.last_error, domain_record.submitted_at, domain_record.verified_at, domain_record.disabled_at, domain_record.last_checked_at, domain_record.next_check_at, domain_record.last_health_checked_at, domain_record.last_health_failure_at, domain_record.reconciliation_attempts, domain_record.reconcile_locked_at, domain_record.reconcile_locked_by, domain_record.created_by, domain_record.created_at, domain_record.updated_at
 )
-SELECT updated.id, updated.team_id, updated.name, updated.normalized_name, updated.provider, updated.provider_account, updated.provider_region, updated.provider_external_id, updated.status, updated.provider_status, updated.open_tracking, updated.click_tracking, updated.tracking_subdomain, updated.active_tracking_subdomain, updated.tls_mode, updated.sending_enabled, updated.receiving_enabled, updated.custom_return_path, updated.health_status, updated.consecutive_health_failures, updated.failure_reason, updated.last_error, updated.submitted_at, updated.verified_at, updated.disabled_at, updated.last_checked_at, updated.next_check_at, updated.last_health_checked_at, updated.last_health_failure_at, updated.reconciliation_attempts, updated.reconcile_locked_at, updated.reconcile_locked_by, updated.created_by, updated.created_at, updated.updated_at
+SELECT updated.id, updated.team_id, updated.name, updated.normalized_name, updated.provider, updated.provider_account, updated.provider_region, updated.provider_external_id, updated.status, updated.provider_status, updated.tls_mode, updated.custom_return_path, updated.health_status, updated.consecutive_health_failures, updated.failure_reason, updated.last_error, updated.submitted_at, updated.verified_at, updated.disabled_at, updated.last_checked_at, updated.next_check_at, updated.last_health_checked_at, updated.last_health_failure_at, updated.reconciliation_attempts, updated.reconcile_locked_at, updated.reconcile_locked_by, updated.created_by, updated.created_at, updated.updated_at
 FROM updated
 ORDER BY updated.next_check_at, updated.created_at
 `
@@ -58,13 +58,7 @@ type ClaimPendingDomainReconciliationsRow struct {
 	ProviderExternalID        *string            `db:"provider_external_id" json:"provider_external_id"`
 	Status                    string             `db:"status" json:"status"`
 	ProviderStatus            *string            `db:"provider_status" json:"provider_status"`
-	OpenTracking              bool               `db:"open_tracking" json:"open_tracking"`
-	ClickTracking             bool               `db:"click_tracking" json:"click_tracking"`
-	TrackingSubdomain         *string            `db:"tracking_subdomain" json:"tracking_subdomain"`
-	ActiveTrackingSubdomain   *string            `db:"active_tracking_subdomain" json:"active_tracking_subdomain"`
 	TlsMode                   string             `db:"tls_mode" json:"tls_mode"`
-	SendingEnabled            bool               `db:"sending_enabled" json:"sending_enabled"`
-	ReceivingEnabled          bool               `db:"receiving_enabled" json:"receiving_enabled"`
 	CustomReturnPath          string             `db:"custom_return_path" json:"custom_return_path"`
 	HealthStatus              string             `db:"health_status" json:"health_status"`
 	ConsecutiveHealthFailures int32              `db:"consecutive_health_failures" json:"consecutive_health_failures"`
@@ -105,13 +99,7 @@ func (q *Queries) ClaimPendingDomainReconciliations(ctx context.Context, arg Cla
 			&i.ProviderExternalID,
 			&i.Status,
 			&i.ProviderStatus,
-			&i.OpenTracking,
-			&i.ClickTracking,
-			&i.TrackingSubdomain,
-			&i.ActiveTrackingSubdomain,
 			&i.TlsMode,
-			&i.SendingEnabled,
-			&i.ReceivingEnabled,
 			&i.CustomReturnPath,
 			&i.HealthStatus,
 			&i.ConsecutiveHealthFailures,
@@ -155,7 +143,7 @@ SET health_status = 'healthy',
 WHERE id = $2
   AND status = 'verified'
   AND reconcile_locked_by = trim($3)
-RETURNING id, team_id, name, normalized_name, provider, provider_account, provider_region, provider_external_id, status, provider_status, open_tracking, click_tracking, tracking_subdomain, active_tracking_subdomain, tls_mode, sending_enabled, receiving_enabled, custom_return_path, health_status, consecutive_health_failures, failure_reason, last_error, submitted_at, verified_at, disabled_at, last_checked_at, next_check_at, last_health_checked_at, last_health_failure_at, reconciliation_attempts, reconcile_locked_at, reconcile_locked_by, created_by, created_at, updated_at
+RETURNING id, team_id, name, normalized_name, provider, provider_account, provider_region, provider_external_id, status, provider_status, tls_mode, custom_return_path, health_status, consecutive_health_failures, failure_reason, last_error, submitted_at, verified_at, disabled_at, last_checked_at, next_check_at, last_health_checked_at, last_health_failure_at, reconciliation_attempts, reconcile_locked_at, reconcile_locked_by, created_by, created_at, updated_at
 `
 
 type CompleteDomainHealthCheckParams struct {
@@ -178,13 +166,7 @@ func (q *Queries) CompleteDomainHealthCheck(ctx context.Context, arg CompleteDom
 		&i.ProviderExternalID,
 		&i.Status,
 		&i.ProviderStatus,
-		&i.OpenTracking,
-		&i.ClickTracking,
-		&i.TrackingSubdomain,
-		&i.ActiveTrackingSubdomain,
 		&i.TlsMode,
-		&i.SendingEnabled,
-		&i.ReceivingEnabled,
 		&i.CustomReturnPath,
 		&i.HealthStatus,
 		&i.ConsecutiveHealthFailures,
@@ -240,7 +222,7 @@ SET status = $1,
     updated_at = now()
 WHERE id = $4
   AND reconcile_locked_by = trim($5)
-RETURNING id, team_id, name, normalized_name, provider, provider_account, provider_region, provider_external_id, status, provider_status, open_tracking, click_tracking, tracking_subdomain, active_tracking_subdomain, tls_mode, sending_enabled, receiving_enabled, custom_return_path, health_status, consecutive_health_failures, failure_reason, last_error, submitted_at, verified_at, disabled_at, last_checked_at, next_check_at, last_health_checked_at, last_health_failure_at, reconciliation_attempts, reconcile_locked_at, reconcile_locked_by, created_by, created_at, updated_at
+RETURNING id, team_id, name, normalized_name, provider, provider_account, provider_region, provider_external_id, status, provider_status, tls_mode, custom_return_path, health_status, consecutive_health_failures, failure_reason, last_error, submitted_at, verified_at, disabled_at, last_checked_at, next_check_at, last_health_checked_at, last_health_failure_at, reconciliation_attempts, reconcile_locked_at, reconcile_locked_by, created_by, created_at, updated_at
 `
 
 type CompleteDomainReconciliationParams struct {
@@ -271,13 +253,7 @@ func (q *Queries) CompleteDomainReconciliation(ctx context.Context, arg Complete
 		&i.ProviderExternalID,
 		&i.Status,
 		&i.ProviderStatus,
-		&i.OpenTracking,
-		&i.ClickTracking,
-		&i.TrackingSubdomain,
-		&i.ActiveTrackingSubdomain,
 		&i.TlsMode,
-		&i.SendingEnabled,
-		&i.ReceivingEnabled,
 		&i.CustomReturnPath,
 		&i.HealthStatus,
 		&i.ConsecutiveHealthFailures,
@@ -311,12 +287,7 @@ INSERT INTO domains (
     provider_region,
     status,
     provider_status,
-    open_tracking,
-    click_tracking,
-    tracking_subdomain,
     tls_mode,
-    sending_enabled,
-    receiving_enabled,
     custom_return_path,
     health_status,
     submitted_at,
@@ -333,35 +304,25 @@ INSERT INTO domains (
     'pending',
     'pending',
     $7,
-    $8,
-    $9,
-    $10,
-    $11,
-    $12,
-    lower(trim($13)),
+    lower(trim($8)),
     'unknown',
     now(),
     now() + interval '1 minute',
-    $14
+    $9
 )
-RETURNING id, team_id, name, normalized_name, provider, provider_account, provider_region, provider_external_id, status, provider_status, open_tracking, click_tracking, tracking_subdomain, active_tracking_subdomain, tls_mode, sending_enabled, receiving_enabled, custom_return_path, health_status, consecutive_health_failures, failure_reason, last_error, submitted_at, verified_at, disabled_at, last_checked_at, next_check_at, last_health_checked_at, last_health_failure_at, reconciliation_attempts, reconcile_locked_at, reconcile_locked_by, created_by, created_at, updated_at
+RETURNING id, team_id, name, normalized_name, provider, provider_account, provider_region, provider_external_id, status, provider_status, tls_mode, custom_return_path, health_status, consecutive_health_failures, failure_reason, last_error, submitted_at, verified_at, disabled_at, last_checked_at, next_check_at, last_health_checked_at, last_health_failure_at, reconciliation_attempts, reconcile_locked_at, reconcile_locked_by, created_by, created_at, updated_at
 `
 
 type CreateClaimedDomainParams struct {
-	ID                uuid.UUID  `db:"id" json:"id"`
-	TeamID            uuid.UUID  `db:"team_id" json:"team_id"`
-	Name              string     `db:"name" json:"name"`
-	Provider          string     `db:"provider" json:"provider"`
-	ProviderAccount   string     `db:"provider_account" json:"provider_account"`
-	ProviderRegion    string     `db:"provider_region" json:"provider_region"`
-	OpenTracking      bool       `db:"open_tracking" json:"open_tracking"`
-	ClickTracking     bool       `db:"click_tracking" json:"click_tracking"`
-	TrackingSubdomain *string    `db:"tracking_subdomain" json:"tracking_subdomain"`
-	TlsMode           string     `db:"tls_mode" json:"tls_mode"`
-	SendingEnabled    bool       `db:"sending_enabled" json:"sending_enabled"`
-	ReceivingEnabled  bool       `db:"receiving_enabled" json:"receiving_enabled"`
-	CustomReturnPath  string     `db:"custom_return_path" json:"custom_return_path"`
-	CreatedBy         *uuid.UUID `db:"created_by" json:"created_by"`
+	ID               uuid.UUID  `db:"id" json:"id"`
+	TeamID           uuid.UUID  `db:"team_id" json:"team_id"`
+	Name             string     `db:"name" json:"name"`
+	Provider         string     `db:"provider" json:"provider"`
+	ProviderAccount  string     `db:"provider_account" json:"provider_account"`
+	ProviderRegion   string     `db:"provider_region" json:"provider_region"`
+	TlsMode          string     `db:"tls_mode" json:"tls_mode"`
+	CustomReturnPath string     `db:"custom_return_path" json:"custom_return_path"`
+	CreatedBy        *uuid.UUID `db:"created_by" json:"created_by"`
 }
 
 func (q *Queries) CreateClaimedDomain(ctx context.Context, arg CreateClaimedDomainParams) (Domain, error) {
@@ -372,12 +333,7 @@ func (q *Queries) CreateClaimedDomain(ctx context.Context, arg CreateClaimedDoma
 		arg.Provider,
 		arg.ProviderAccount,
 		arg.ProviderRegion,
-		arg.OpenTracking,
-		arg.ClickTracking,
-		arg.TrackingSubdomain,
 		arg.TlsMode,
-		arg.SendingEnabled,
-		arg.ReceivingEnabled,
 		arg.CustomReturnPath,
 		arg.CreatedBy,
 	)
@@ -393,13 +349,7 @@ func (q *Queries) CreateClaimedDomain(ctx context.Context, arg CreateClaimedDoma
 		&i.ProviderExternalID,
 		&i.Status,
 		&i.ProviderStatus,
-		&i.OpenTracking,
-		&i.ClickTracking,
-		&i.TrackingSubdomain,
-		&i.ActiveTrackingSubdomain,
 		&i.TlsMode,
-		&i.SendingEnabled,
-		&i.ReceivingEnabled,
 		&i.CustomReturnPath,
 		&i.HealthStatus,
 		&i.ConsecutiveHealthFailures,
@@ -431,12 +381,7 @@ INSERT INTO domains (
     provider_account,
     provider_region,
     custom_return_path,
-    open_tracking,
-    click_tracking,
-    tracking_subdomain,
     tls_mode,
-    sending_enabled,
-    receiving_enabled,
     created_by,
     submitted_at,
     next_check_at
@@ -450,33 +395,23 @@ SELECT team.id,
        lower(trim($5)),
        $6,
        $7,
-       $8,
-       $9,
-       $10,
-       $11,
-       $12,
        now(),
        now() + interval '1 minute'
 FROM teams AS team
-WHERE team.id = $13
+WHERE team.id = $8
   AND team.status = 'active'
-RETURNING id, team_id, name, normalized_name, provider, provider_account, provider_region, provider_external_id, status, provider_status, open_tracking, click_tracking, tracking_subdomain, active_tracking_subdomain, tls_mode, sending_enabled, receiving_enabled, custom_return_path, health_status, consecutive_health_failures, failure_reason, last_error, submitted_at, verified_at, disabled_at, last_checked_at, next_check_at, last_health_checked_at, last_health_failure_at, reconciliation_attempts, reconcile_locked_at, reconcile_locked_by, created_by, created_at, updated_at
+RETURNING id, team_id, name, normalized_name, provider, provider_account, provider_region, provider_external_id, status, provider_status, tls_mode, custom_return_path, health_status, consecutive_health_failures, failure_reason, last_error, submitted_at, verified_at, disabled_at, last_checked_at, next_check_at, last_health_checked_at, last_health_failure_at, reconciliation_attempts, reconcile_locked_at, reconcile_locked_by, created_by, created_at, updated_at
 `
 
 type CreateDomainParams struct {
-	Name              string     `db:"name" json:"name"`
-	Provider          string     `db:"provider" json:"provider"`
-	ProviderAccount   string     `db:"provider_account" json:"provider_account"`
-	ProviderRegion    string     `db:"provider_region" json:"provider_region"`
-	CustomReturnPath  string     `db:"custom_return_path" json:"custom_return_path"`
-	OpenTracking      bool       `db:"open_tracking" json:"open_tracking"`
-	ClickTracking     bool       `db:"click_tracking" json:"click_tracking"`
-	TrackingSubdomain *string    `db:"tracking_subdomain" json:"tracking_subdomain"`
-	TlsMode           string     `db:"tls_mode" json:"tls_mode"`
-	SendingEnabled    bool       `db:"sending_enabled" json:"sending_enabled"`
-	ReceivingEnabled  bool       `db:"receiving_enabled" json:"receiving_enabled"`
-	CreatedBy         *uuid.UUID `db:"created_by" json:"created_by"`
-	TeamID            uuid.UUID  `db:"team_id" json:"team_id"`
+	Name             string     `db:"name" json:"name"`
+	Provider         string     `db:"provider" json:"provider"`
+	ProviderAccount  string     `db:"provider_account" json:"provider_account"`
+	ProviderRegion   string     `db:"provider_region" json:"provider_region"`
+	CustomReturnPath string     `db:"custom_return_path" json:"custom_return_path"`
+	TlsMode          string     `db:"tls_mode" json:"tls_mode"`
+	CreatedBy        *uuid.UUID `db:"created_by" json:"created_by"`
+	TeamID           uuid.UUID  `db:"team_id" json:"team_id"`
 }
 
 func (q *Queries) CreateDomain(ctx context.Context, arg CreateDomainParams) (Domain, error) {
@@ -486,12 +421,7 @@ func (q *Queries) CreateDomain(ctx context.Context, arg CreateDomainParams) (Dom
 		arg.ProviderAccount,
 		arg.ProviderRegion,
 		arg.CustomReturnPath,
-		arg.OpenTracking,
-		arg.ClickTracking,
-		arg.TrackingSubdomain,
 		arg.TlsMode,
-		arg.SendingEnabled,
-		arg.ReceivingEnabled,
 		arg.CreatedBy,
 		arg.TeamID,
 	)
@@ -507,13 +437,7 @@ func (q *Queries) CreateDomain(ctx context.Context, arg CreateDomainParams) (Dom
 		&i.ProviderExternalID,
 		&i.Status,
 		&i.ProviderStatus,
-		&i.OpenTracking,
-		&i.ClickTracking,
-		&i.TrackingSubdomain,
-		&i.ActiveTrackingSubdomain,
 		&i.TlsMode,
-		&i.SendingEnabled,
-		&i.ReceivingEnabled,
 		&i.CustomReturnPath,
 		&i.HealthStatus,
 		&i.ConsecutiveHealthFailures,
@@ -546,7 +470,7 @@ WHERE domain_record.id = $1
       FROM email_messages AS message
       WHERE message.sender_domain_id = domain_record.id
   )
-RETURNING domain_record.id, domain_record.team_id, domain_record.name, domain_record.normalized_name, domain_record.provider, domain_record.provider_account, domain_record.provider_region, domain_record.provider_external_id, domain_record.status, domain_record.provider_status, domain_record.open_tracking, domain_record.click_tracking, domain_record.tracking_subdomain, domain_record.active_tracking_subdomain, domain_record.tls_mode, domain_record.sending_enabled, domain_record.receiving_enabled, domain_record.custom_return_path, domain_record.health_status, domain_record.consecutive_health_failures, domain_record.failure_reason, domain_record.last_error, domain_record.submitted_at, domain_record.verified_at, domain_record.disabled_at, domain_record.last_checked_at, domain_record.next_check_at, domain_record.last_health_checked_at, domain_record.last_health_failure_at, domain_record.reconciliation_attempts, domain_record.reconcile_locked_at, domain_record.reconcile_locked_by, domain_record.created_by, domain_record.created_at, domain_record.updated_at
+RETURNING domain_record.id, domain_record.team_id, domain_record.name, domain_record.normalized_name, domain_record.provider, domain_record.provider_account, domain_record.provider_region, domain_record.provider_external_id, domain_record.status, domain_record.provider_status, domain_record.tls_mode, domain_record.custom_return_path, domain_record.health_status, domain_record.consecutive_health_failures, domain_record.failure_reason, domain_record.last_error, domain_record.submitted_at, domain_record.verified_at, domain_record.disabled_at, domain_record.last_checked_at, domain_record.next_check_at, domain_record.last_health_checked_at, domain_record.last_health_failure_at, domain_record.reconciliation_attempts, domain_record.reconcile_locked_at, domain_record.reconcile_locked_by, domain_record.created_by, domain_record.created_at, domain_record.updated_at
 `
 
 type DeleteDisabledDomainIfUnreferencedParams struct {
@@ -568,13 +492,7 @@ func (q *Queries) DeleteDisabledDomainIfUnreferenced(ctx context.Context, arg De
 		&i.ProviderExternalID,
 		&i.Status,
 		&i.ProviderStatus,
-		&i.OpenTracking,
-		&i.ClickTracking,
-		&i.TrackingSubdomain,
-		&i.ActiveTrackingSubdomain,
 		&i.TlsMode,
-		&i.SendingEnabled,
-		&i.ReceivingEnabled,
 		&i.CustomReturnPath,
 		&i.HealthStatus,
 		&i.ConsecutiveHealthFailures,
@@ -601,7 +519,7 @@ const deleteDomain = `-- name: DeleteDomain :one
 DELETE FROM domains
 WHERE id = $1
   AND team_id = $2
-RETURNING id, team_id, name, normalized_name, provider, provider_account, provider_region, provider_external_id, status, provider_status, open_tracking, click_tracking, tracking_subdomain, active_tracking_subdomain, tls_mode, sending_enabled, receiving_enabled, custom_return_path, health_status, consecutive_health_failures, failure_reason, last_error, submitted_at, verified_at, disabled_at, last_checked_at, next_check_at, last_health_checked_at, last_health_failure_at, reconciliation_attempts, reconcile_locked_at, reconcile_locked_by, created_by, created_at, updated_at
+RETURNING id, team_id, name, normalized_name, provider, provider_account, provider_region, provider_external_id, status, provider_status, tls_mode, custom_return_path, health_status, consecutive_health_failures, failure_reason, last_error, submitted_at, verified_at, disabled_at, last_checked_at, next_check_at, last_health_checked_at, last_health_failure_at, reconciliation_attempts, reconcile_locked_at, reconcile_locked_by, created_by, created_at, updated_at
 `
 
 type DeleteDomainParams struct {
@@ -623,13 +541,7 @@ func (q *Queries) DeleteDomain(ctx context.Context, arg DeleteDomainParams) (Dom
 		&i.ProviderExternalID,
 		&i.Status,
 		&i.ProviderStatus,
-		&i.OpenTracking,
-		&i.ClickTracking,
-		&i.TrackingSubdomain,
-		&i.ActiveTrackingSubdomain,
 		&i.TlsMode,
-		&i.SendingEnabled,
-		&i.ReceivingEnabled,
 		&i.CustomReturnPath,
 		&i.HealthStatus,
 		&i.ConsecutiveHealthFailures,
@@ -655,7 +567,7 @@ func (q *Queries) DeleteDomain(ctx context.Context, arg DeleteDomainParams) (Dom
 const deleteDomainForClaim = `-- name: DeleteDomainForClaim :one
 DELETE FROM domains
 WHERE id = $1
-RETURNING id, team_id, name, normalized_name, provider, provider_account, provider_region, provider_external_id, status, provider_status, open_tracking, click_tracking, tracking_subdomain, active_tracking_subdomain, tls_mode, sending_enabled, receiving_enabled, custom_return_path, health_status, consecutive_health_failures, failure_reason, last_error, submitted_at, verified_at, disabled_at, last_checked_at, next_check_at, last_health_checked_at, last_health_failure_at, reconciliation_attempts, reconcile_locked_at, reconcile_locked_by, created_by, created_at, updated_at
+RETURNING id, team_id, name, normalized_name, provider, provider_account, provider_region, provider_external_id, status, provider_status, tls_mode, custom_return_path, health_status, consecutive_health_failures, failure_reason, last_error, submitted_at, verified_at, disabled_at, last_checked_at, next_check_at, last_health_checked_at, last_health_failure_at, reconciliation_attempts, reconcile_locked_at, reconcile_locked_by, created_by, created_at, updated_at
 `
 
 type DeleteDomainForClaimParams struct {
@@ -676,13 +588,7 @@ func (q *Queries) DeleteDomainForClaim(ctx context.Context, arg DeleteDomainForC
 		&i.ProviderExternalID,
 		&i.Status,
 		&i.ProviderStatus,
-		&i.OpenTracking,
-		&i.ClickTracking,
-		&i.TrackingSubdomain,
-		&i.ActiveTrackingSubdomain,
 		&i.TlsMode,
-		&i.SendingEnabled,
-		&i.ReceivingEnabled,
 		&i.CustomReturnPath,
 		&i.HealthStatus,
 		&i.ConsecutiveHealthFailures,
@@ -715,7 +621,7 @@ SET status = 'disabled',
     updated_at = now()
 WHERE id = $1
   AND team_id = $2
-RETURNING id, team_id, name, normalized_name, provider, provider_account, provider_region, provider_external_id, status, provider_status, open_tracking, click_tracking, tracking_subdomain, active_tracking_subdomain, tls_mode, sending_enabled, receiving_enabled, custom_return_path, health_status, consecutive_health_failures, failure_reason, last_error, submitted_at, verified_at, disabled_at, last_checked_at, next_check_at, last_health_checked_at, last_health_failure_at, reconciliation_attempts, reconcile_locked_at, reconcile_locked_by, created_by, created_at, updated_at
+RETURNING id, team_id, name, normalized_name, provider, provider_account, provider_region, provider_external_id, status, provider_status, tls_mode, custom_return_path, health_status, consecutive_health_failures, failure_reason, last_error, submitted_at, verified_at, disabled_at, last_checked_at, next_check_at, last_health_checked_at, last_health_failure_at, reconciliation_attempts, reconcile_locked_at, reconcile_locked_by, created_by, created_at, updated_at
 `
 
 type DisableDomainParams struct {
@@ -737,13 +643,7 @@ func (q *Queries) DisableDomain(ctx context.Context, arg DisableDomainParams) (D
 		&i.ProviderExternalID,
 		&i.Status,
 		&i.ProviderStatus,
-		&i.OpenTracking,
-		&i.ClickTracking,
-		&i.TrackingSubdomain,
-		&i.ActiveTrackingSubdomain,
 		&i.TlsMode,
-		&i.SendingEnabled,
-		&i.ReceivingEnabled,
 		&i.CustomReturnPath,
 		&i.HealthStatus,
 		&i.ConsecutiveHealthFailures,
@@ -767,7 +667,7 @@ func (q *Queries) DisableDomain(ctx context.Context, arg DisableDomainParams) (D
 }
 
 const getDomain = `-- name: GetDomain :one
-SELECT domain_record.id, domain_record.team_id, domain_record.name, domain_record.normalized_name, domain_record.provider, domain_record.provider_account, domain_record.provider_region, domain_record.provider_external_id, domain_record.status, domain_record.provider_status, domain_record.open_tracking, domain_record.click_tracking, domain_record.tracking_subdomain, domain_record.active_tracking_subdomain, domain_record.tls_mode, domain_record.sending_enabled, domain_record.receiving_enabled, domain_record.custom_return_path, domain_record.health_status, domain_record.consecutive_health_failures, domain_record.failure_reason, domain_record.last_error, domain_record.submitted_at, domain_record.verified_at, domain_record.disabled_at, domain_record.last_checked_at, domain_record.next_check_at, domain_record.last_health_checked_at, domain_record.last_health_failure_at, domain_record.reconciliation_attempts, domain_record.reconcile_locked_at, domain_record.reconcile_locked_by, domain_record.created_by, domain_record.created_at, domain_record.updated_at
+SELECT domain_record.id, domain_record.team_id, domain_record.name, domain_record.normalized_name, domain_record.provider, domain_record.provider_account, domain_record.provider_region, domain_record.provider_external_id, domain_record.status, domain_record.provider_status, domain_record.tls_mode, domain_record.custom_return_path, domain_record.health_status, domain_record.consecutive_health_failures, domain_record.failure_reason, domain_record.last_error, domain_record.submitted_at, domain_record.verified_at, domain_record.disabled_at, domain_record.last_checked_at, domain_record.next_check_at, domain_record.last_health_checked_at, domain_record.last_health_failure_at, domain_record.reconciliation_attempts, domain_record.reconcile_locked_at, domain_record.reconcile_locked_by, domain_record.created_by, domain_record.created_at, domain_record.updated_at
 FROM domains AS domain_record
 WHERE domain_record.id = $1
   AND domain_record.team_id = $2
@@ -792,13 +692,7 @@ func (q *Queries) GetDomain(ctx context.Context, arg GetDomainParams) (Domain, e
 		&i.ProviderExternalID,
 		&i.Status,
 		&i.ProviderStatus,
-		&i.OpenTracking,
-		&i.ClickTracking,
-		&i.TrackingSubdomain,
-		&i.ActiveTrackingSubdomain,
 		&i.TlsMode,
-		&i.SendingEnabled,
-		&i.ReceivingEnabled,
 		&i.CustomReturnPath,
 		&i.HealthStatus,
 		&i.ConsecutiveHealthFailures,
@@ -822,7 +716,7 @@ func (q *Queries) GetDomain(ctx context.Context, arg GetDomainParams) (Domain, e
 }
 
 const getDomainByID = `-- name: GetDomainByID :one
-SELECT domain_record.id, domain_record.team_id, domain_record.name, domain_record.normalized_name, domain_record.provider, domain_record.provider_account, domain_record.provider_region, domain_record.provider_external_id, domain_record.status, domain_record.provider_status, domain_record.open_tracking, domain_record.click_tracking, domain_record.tracking_subdomain, domain_record.active_tracking_subdomain, domain_record.tls_mode, domain_record.sending_enabled, domain_record.receiving_enabled, domain_record.custom_return_path, domain_record.health_status, domain_record.consecutive_health_failures, domain_record.failure_reason, domain_record.last_error, domain_record.submitted_at, domain_record.verified_at, domain_record.disabled_at, domain_record.last_checked_at, domain_record.next_check_at, domain_record.last_health_checked_at, domain_record.last_health_failure_at, domain_record.reconciliation_attempts, domain_record.reconcile_locked_at, domain_record.reconcile_locked_by, domain_record.created_by, domain_record.created_at, domain_record.updated_at
+SELECT domain_record.id, domain_record.team_id, domain_record.name, domain_record.normalized_name, domain_record.provider, domain_record.provider_account, domain_record.provider_region, domain_record.provider_external_id, domain_record.status, domain_record.provider_status, domain_record.tls_mode, domain_record.custom_return_path, domain_record.health_status, domain_record.consecutive_health_failures, domain_record.failure_reason, domain_record.last_error, domain_record.submitted_at, domain_record.verified_at, domain_record.disabled_at, domain_record.last_checked_at, domain_record.next_check_at, domain_record.last_health_checked_at, domain_record.last_health_failure_at, domain_record.reconciliation_attempts, domain_record.reconcile_locked_at, domain_record.reconcile_locked_by, domain_record.created_by, domain_record.created_at, domain_record.updated_at
 FROM domains AS domain_record
 WHERE domain_record.id = $1
 `
@@ -845,13 +739,7 @@ func (q *Queries) GetDomainByID(ctx context.Context, arg GetDomainByIDParams) (D
 		&i.ProviderExternalID,
 		&i.Status,
 		&i.ProviderStatus,
-		&i.OpenTracking,
-		&i.ClickTracking,
-		&i.TrackingSubdomain,
-		&i.ActiveTrackingSubdomain,
 		&i.TlsMode,
-		&i.SendingEnabled,
-		&i.ReceivingEnabled,
 		&i.CustomReturnPath,
 		&i.HealthStatus,
 		&i.ConsecutiveHealthFailures,
@@ -875,7 +763,7 @@ func (q *Queries) GetDomainByID(ctx context.Context, arg GetDomainByIDParams) (D
 }
 
 const getDomainByName = `-- name: GetDomainByName :one
-SELECT domain_record.id, domain_record.team_id, domain_record.name, domain_record.normalized_name, domain_record.provider, domain_record.provider_account, domain_record.provider_region, domain_record.provider_external_id, domain_record.status, domain_record.provider_status, domain_record.open_tracking, domain_record.click_tracking, domain_record.tracking_subdomain, domain_record.active_tracking_subdomain, domain_record.tls_mode, domain_record.sending_enabled, domain_record.receiving_enabled, domain_record.custom_return_path, domain_record.health_status, domain_record.consecutive_health_failures, domain_record.failure_reason, domain_record.last_error, domain_record.submitted_at, domain_record.verified_at, domain_record.disabled_at, domain_record.last_checked_at, domain_record.next_check_at, domain_record.last_health_checked_at, domain_record.last_health_failure_at, domain_record.reconciliation_attempts, domain_record.reconcile_locked_at, domain_record.reconcile_locked_by, domain_record.created_by, domain_record.created_at, domain_record.updated_at
+SELECT domain_record.id, domain_record.team_id, domain_record.name, domain_record.normalized_name, domain_record.provider, domain_record.provider_account, domain_record.provider_region, domain_record.provider_external_id, domain_record.status, domain_record.provider_status, domain_record.tls_mode, domain_record.custom_return_path, domain_record.health_status, domain_record.consecutive_health_failures, domain_record.failure_reason, domain_record.last_error, domain_record.submitted_at, domain_record.verified_at, domain_record.disabled_at, domain_record.last_checked_at, domain_record.next_check_at, domain_record.last_health_checked_at, domain_record.last_health_failure_at, domain_record.reconciliation_attempts, domain_record.reconcile_locked_at, domain_record.reconcile_locked_by, domain_record.created_by, domain_record.created_at, domain_record.updated_at
 FROM domains AS domain_record
 WHERE domain_record.normalized_name = lower(trim($1))
   AND domain_record.team_id = $2
@@ -900,13 +788,7 @@ func (q *Queries) GetDomainByName(ctx context.Context, arg GetDomainByNameParams
 		&i.ProviderExternalID,
 		&i.Status,
 		&i.ProviderStatus,
-		&i.OpenTracking,
-		&i.ClickTracking,
-		&i.TrackingSubdomain,
-		&i.ActiveTrackingSubdomain,
 		&i.TlsMode,
-		&i.SendingEnabled,
-		&i.ReceivingEnabled,
 		&i.CustomReturnPath,
 		&i.HealthStatus,
 		&i.ConsecutiveHealthFailures,
@@ -930,7 +812,7 @@ func (q *Queries) GetDomainByName(ctx context.Context, arg GetDomainByNameParams
 }
 
 const getDomainByNameForClaim = `-- name: GetDomainByNameForClaim :one
-SELECT domain_record.id, domain_record.team_id, domain_record.name, domain_record.normalized_name, domain_record.provider, domain_record.provider_account, domain_record.provider_region, domain_record.provider_external_id, domain_record.status, domain_record.provider_status, domain_record.open_tracking, domain_record.click_tracking, domain_record.tracking_subdomain, domain_record.active_tracking_subdomain, domain_record.tls_mode, domain_record.sending_enabled, domain_record.receiving_enabled, domain_record.custom_return_path, domain_record.health_status, domain_record.consecutive_health_failures, domain_record.failure_reason, domain_record.last_error, domain_record.submitted_at, domain_record.verified_at, domain_record.disabled_at, domain_record.last_checked_at, domain_record.next_check_at, domain_record.last_health_checked_at, domain_record.last_health_failure_at, domain_record.reconciliation_attempts, domain_record.reconcile_locked_at, domain_record.reconcile_locked_by, domain_record.created_by, domain_record.created_at, domain_record.updated_at
+SELECT domain_record.id, domain_record.team_id, domain_record.name, domain_record.normalized_name, domain_record.provider, domain_record.provider_account, domain_record.provider_region, domain_record.provider_external_id, domain_record.status, domain_record.provider_status, domain_record.tls_mode, domain_record.custom_return_path, domain_record.health_status, domain_record.consecutive_health_failures, domain_record.failure_reason, domain_record.last_error, domain_record.submitted_at, domain_record.verified_at, domain_record.disabled_at, domain_record.last_checked_at, domain_record.next_check_at, domain_record.last_health_checked_at, domain_record.last_health_failure_at, domain_record.reconciliation_attempts, domain_record.reconcile_locked_at, domain_record.reconcile_locked_by, domain_record.created_by, domain_record.created_at, domain_record.updated_at
 FROM domains AS domain_record
 WHERE domain_record.normalized_name = lower(trim($1))
 FOR SHARE
@@ -954,13 +836,7 @@ func (q *Queries) GetDomainByNameForClaim(ctx context.Context, arg GetDomainByNa
 		&i.ProviderExternalID,
 		&i.Status,
 		&i.ProviderStatus,
-		&i.OpenTracking,
-		&i.ClickTracking,
-		&i.TrackingSubdomain,
-		&i.ActiveTrackingSubdomain,
 		&i.TlsMode,
-		&i.SendingEnabled,
-		&i.ReceivingEnabled,
 		&i.CustomReturnPath,
 		&i.HealthStatus,
 		&i.ConsecutiveHealthFailures,
@@ -984,7 +860,7 @@ func (q *Queries) GetDomainByNameForClaim(ctx context.Context, arg GetDomainByNa
 }
 
 const listDomains = `-- name: ListDomains :many
-SELECT domain_record.id, domain_record.team_id, domain_record.name, domain_record.normalized_name, domain_record.provider, domain_record.provider_account, domain_record.provider_region, domain_record.provider_external_id, domain_record.status, domain_record.provider_status, domain_record.open_tracking, domain_record.click_tracking, domain_record.tracking_subdomain, domain_record.active_tracking_subdomain, domain_record.tls_mode, domain_record.sending_enabled, domain_record.receiving_enabled, domain_record.custom_return_path, domain_record.health_status, domain_record.consecutive_health_failures, domain_record.failure_reason, domain_record.last_error, domain_record.submitted_at, domain_record.verified_at, domain_record.disabled_at, domain_record.last_checked_at, domain_record.next_check_at, domain_record.last_health_checked_at, domain_record.last_health_failure_at, domain_record.reconciliation_attempts, domain_record.reconcile_locked_at, domain_record.reconcile_locked_by, domain_record.created_by, domain_record.created_at, domain_record.updated_at
+SELECT domain_record.id, domain_record.team_id, domain_record.name, domain_record.normalized_name, domain_record.provider, domain_record.provider_account, domain_record.provider_region, domain_record.provider_external_id, domain_record.status, domain_record.provider_status, domain_record.tls_mode, domain_record.custom_return_path, domain_record.health_status, domain_record.consecutive_health_failures, domain_record.failure_reason, domain_record.last_error, domain_record.submitted_at, domain_record.verified_at, domain_record.disabled_at, domain_record.last_checked_at, domain_record.next_check_at, domain_record.last_health_checked_at, domain_record.last_health_failure_at, domain_record.reconciliation_attempts, domain_record.reconcile_locked_at, domain_record.reconcile_locked_by, domain_record.created_by, domain_record.created_at, domain_record.updated_at
 FROM domains AS domain_record
 WHERE domain_record.team_id = $1
 ORDER BY domain_record.created_at DESC, domain_record.id DESC
@@ -1014,13 +890,7 @@ func (q *Queries) ListDomains(ctx context.Context, arg ListDomainsParams) ([]Dom
 			&i.ProviderExternalID,
 			&i.Status,
 			&i.ProviderStatus,
-			&i.OpenTracking,
-			&i.ClickTracking,
-			&i.TrackingSubdomain,
-			&i.ActiveTrackingSubdomain,
 			&i.TlsMode,
-			&i.SendingEnabled,
-			&i.ReceivingEnabled,
 			&i.CustomReturnPath,
 			&i.HealthStatus,
 			&i.ConsecutiveHealthFailures,
@@ -1069,7 +939,7 @@ SET health_status = CASE
 WHERE id = $4
   AND status = 'verified'
   AND reconcile_locked_by = trim($5)
-RETURNING id, team_id, name, normalized_name, provider, provider_account, provider_region, provider_external_id, status, provider_status, open_tracking, click_tracking, tracking_subdomain, active_tracking_subdomain, tls_mode, sending_enabled, receiving_enabled, custom_return_path, health_status, consecutive_health_failures, failure_reason, last_error, submitted_at, verified_at, disabled_at, last_checked_at, next_check_at, last_health_checked_at, last_health_failure_at, reconciliation_attempts, reconcile_locked_at, reconcile_locked_by, created_by, created_at, updated_at
+RETURNING id, team_id, name, normalized_name, provider, provider_account, provider_region, provider_external_id, status, provider_status, tls_mode, custom_return_path, health_status, consecutive_health_failures, failure_reason, last_error, submitted_at, verified_at, disabled_at, last_checked_at, next_check_at, last_health_checked_at, last_health_failure_at, reconciliation_attempts, reconcile_locked_at, reconcile_locked_by, created_by, created_at, updated_at
 `
 
 type RecordDomainHealthFailureParams struct {
@@ -1100,13 +970,7 @@ func (q *Queries) RecordDomainHealthFailure(ctx context.Context, arg RecordDomai
 		&i.ProviderExternalID,
 		&i.Status,
 		&i.ProviderStatus,
-		&i.OpenTracking,
-		&i.ClickTracking,
-		&i.TrackingSubdomain,
-		&i.ActiveTrackingSubdomain,
 		&i.TlsMode,
-		&i.SendingEnabled,
-		&i.ReceivingEnabled,
 		&i.CustomReturnPath,
 		&i.HealthStatus,
 		&i.ConsecutiveHealthFailures,
@@ -1139,7 +1003,7 @@ SET last_error = $1,
     updated_at = now()
 WHERE id = $3
   AND reconcile_locked_by = trim($4)
-RETURNING id, team_id, name, normalized_name, provider, provider_account, provider_region, provider_external_id, status, provider_status, open_tracking, click_tracking, tracking_subdomain, active_tracking_subdomain, tls_mode, sending_enabled, receiving_enabled, custom_return_path, health_status, consecutive_health_failures, failure_reason, last_error, submitted_at, verified_at, disabled_at, last_checked_at, next_check_at, last_health_checked_at, last_health_failure_at, reconciliation_attempts, reconcile_locked_at, reconcile_locked_by, created_by, created_at, updated_at
+RETURNING id, team_id, name, normalized_name, provider, provider_account, provider_region, provider_external_id, status, provider_status, tls_mode, custom_return_path, health_status, consecutive_health_failures, failure_reason, last_error, submitted_at, verified_at, disabled_at, last_checked_at, next_check_at, last_health_checked_at, last_health_failure_at, reconciliation_attempts, reconcile_locked_at, reconcile_locked_by, created_by, created_at, updated_at
 `
 
 type RecordDomainReconciliationFailureParams struct {
@@ -1168,13 +1032,7 @@ func (q *Queries) RecordDomainReconciliationFailure(ctx context.Context, arg Rec
 		&i.ProviderExternalID,
 		&i.Status,
 		&i.ProviderStatus,
-		&i.OpenTracking,
-		&i.ClickTracking,
-		&i.TrackingSubdomain,
-		&i.ActiveTrackingSubdomain,
 		&i.TlsMode,
-		&i.SendingEnabled,
-		&i.ReceivingEnabled,
 		&i.CustomReturnPath,
 		&i.HealthStatus,
 		&i.ConsecutiveHealthFailures,
@@ -1235,41 +1093,22 @@ func (q *Queries) ResolveEmailSenderDomain(ctx context.Context, arg ResolveEmail
 
 const updateDomainConfiguration = `-- name: UpdateDomainConfiguration :one
 UPDATE domains
-SET open_tracking = $1,
-    click_tracking = $2,
-    tracking_subdomain = $3,
-    tls_mode = $4,
-    sending_enabled = $5,
-    receiving_enabled = $6,
+SET tls_mode = $1,
     updated_at = now()
-WHERE id = $7
-  AND team_id = $8
+WHERE id = $2
+  AND team_id = $3
   AND disabled_at IS NULL
-RETURNING id, team_id, name, normalized_name, provider, provider_account, provider_region, provider_external_id, status, provider_status, open_tracking, click_tracking, tracking_subdomain, active_tracking_subdomain, tls_mode, sending_enabled, receiving_enabled, custom_return_path, health_status, consecutive_health_failures, failure_reason, last_error, submitted_at, verified_at, disabled_at, last_checked_at, next_check_at, last_health_checked_at, last_health_failure_at, reconciliation_attempts, reconcile_locked_at, reconcile_locked_by, created_by, created_at, updated_at
+RETURNING id, team_id, name, normalized_name, provider, provider_account, provider_region, provider_external_id, status, provider_status, tls_mode, custom_return_path, health_status, consecutive_health_failures, failure_reason, last_error, submitted_at, verified_at, disabled_at, last_checked_at, next_check_at, last_health_checked_at, last_health_failure_at, reconciliation_attempts, reconcile_locked_at, reconcile_locked_by, created_by, created_at, updated_at
 `
 
 type UpdateDomainConfigurationParams struct {
-	OpenTracking      bool      `db:"open_tracking" json:"open_tracking"`
-	ClickTracking     bool      `db:"click_tracking" json:"click_tracking"`
-	TrackingSubdomain *string   `db:"tracking_subdomain" json:"tracking_subdomain"`
-	TlsMode           string    `db:"tls_mode" json:"tls_mode"`
-	SendingEnabled    bool      `db:"sending_enabled" json:"sending_enabled"`
-	ReceivingEnabled  bool      `db:"receiving_enabled" json:"receiving_enabled"`
-	ID                uuid.UUID `db:"id" json:"id"`
-	TeamID            uuid.UUID `db:"team_id" json:"team_id"`
+	TlsMode string    `db:"tls_mode" json:"tls_mode"`
+	ID      uuid.UUID `db:"id" json:"id"`
+	TeamID  uuid.UUID `db:"team_id" json:"team_id"`
 }
 
 func (q *Queries) UpdateDomainConfiguration(ctx context.Context, arg UpdateDomainConfigurationParams) (Domain, error) {
-	row := q.db.QueryRow(ctx, updateDomainConfiguration,
-		arg.OpenTracking,
-		arg.ClickTracking,
-		arg.TrackingSubdomain,
-		arg.TlsMode,
-		arg.SendingEnabled,
-		arg.ReceivingEnabled,
-		arg.ID,
-		arg.TeamID,
-	)
+	row := q.db.QueryRow(ctx, updateDomainConfiguration, arg.TlsMode, arg.ID, arg.TeamID)
 	var i Domain
 	err := row.Scan(
 		&i.ID,
@@ -1282,13 +1121,7 @@ func (q *Queries) UpdateDomainConfiguration(ctx context.Context, arg UpdateDomai
 		&i.ProviderExternalID,
 		&i.Status,
 		&i.ProviderStatus,
-		&i.OpenTracking,
-		&i.ClickTracking,
-		&i.TrackingSubdomain,
-		&i.ActiveTrackingSubdomain,
 		&i.TlsMode,
-		&i.SendingEnabled,
-		&i.ReceivingEnabled,
 		&i.CustomReturnPath,
 		&i.HealthStatus,
 		&i.ConsecutiveHealthFailures,
@@ -1334,7 +1167,7 @@ SET health_status = CASE
 WHERE id = $3
   AND team_id = $4
   AND status = 'verified'
-RETURNING id, team_id, name, normalized_name, provider, provider_account, provider_region, provider_external_id, status, provider_status, open_tracking, click_tracking, tracking_subdomain, active_tracking_subdomain, tls_mode, sending_enabled, receiving_enabled, custom_return_path, health_status, consecutive_health_failures, failure_reason, last_error, submitted_at, verified_at, disabled_at, last_checked_at, next_check_at, last_health_checked_at, last_health_failure_at, reconciliation_attempts, reconcile_locked_at, reconcile_locked_by, created_by, created_at, updated_at
+RETURNING id, team_id, name, normalized_name, provider, provider_account, provider_region, provider_external_id, status, provider_status, tls_mode, custom_return_path, health_status, consecutive_health_failures, failure_reason, last_error, submitted_at, verified_at, disabled_at, last_checked_at, next_check_at, last_health_checked_at, last_health_failure_at, reconciliation_attempts, reconcile_locked_at, reconcile_locked_by, created_by, created_at, updated_at
 `
 
 type UpdateDomainManualHealthCheckParams struct {
@@ -1363,13 +1196,7 @@ func (q *Queries) UpdateDomainManualHealthCheck(ctx context.Context, arg UpdateD
 		&i.ProviderExternalID,
 		&i.Status,
 		&i.ProviderStatus,
-		&i.OpenTracking,
-		&i.ClickTracking,
-		&i.TrackingSubdomain,
-		&i.ActiveTrackingSubdomain,
 		&i.TlsMode,
-		&i.SendingEnabled,
-		&i.ReceivingEnabled,
 		&i.CustomReturnPath,
 		&i.HealthStatus,
 		&i.ConsecutiveHealthFailures,
@@ -1422,7 +1249,7 @@ SET status = $1,
     updated_at = now()
 WHERE id = $3
   AND team_id = $4
-RETURNING id, team_id, name, normalized_name, provider, provider_account, provider_region, provider_external_id, status, provider_status, open_tracking, click_tracking, tracking_subdomain, active_tracking_subdomain, tls_mode, sending_enabled, receiving_enabled, custom_return_path, health_status, consecutive_health_failures, failure_reason, last_error, submitted_at, verified_at, disabled_at, last_checked_at, next_check_at, last_health_checked_at, last_health_failure_at, reconciliation_attempts, reconcile_locked_at, reconcile_locked_by, created_by, created_at, updated_at
+RETURNING id, team_id, name, normalized_name, provider, provider_account, provider_region, provider_external_id, status, provider_status, tls_mode, custom_return_path, health_status, consecutive_health_failures, failure_reason, last_error, submitted_at, verified_at, disabled_at, last_checked_at, next_check_at, last_health_checked_at, last_health_failure_at, reconciliation_attempts, reconcile_locked_at, reconcile_locked_by, created_by, created_at, updated_at
 `
 
 type UpdateDomainVerificationParams struct {
@@ -1451,13 +1278,7 @@ func (q *Queries) UpdateDomainVerification(ctx context.Context, arg UpdateDomain
 		&i.ProviderExternalID,
 		&i.Status,
 		&i.ProviderStatus,
-		&i.OpenTracking,
-		&i.ClickTracking,
-		&i.TrackingSubdomain,
-		&i.ActiveTrackingSubdomain,
 		&i.TlsMode,
-		&i.SendingEnabled,
-		&i.ReceivingEnabled,
 		&i.CustomReturnPath,
 		&i.HealthStatus,
 		&i.ConsecutiveHealthFailures,

@@ -189,13 +189,7 @@ type Domain struct {
 	ProviderExternalID        *string            `db:"provider_external_id" json:"provider_external_id"`
 	Status                    string             `db:"status" json:"status"`
 	ProviderStatus            *string            `db:"provider_status" json:"provider_status"`
-	OpenTracking              bool               `db:"open_tracking" json:"open_tracking"`
-	ClickTracking             bool               `db:"click_tracking" json:"click_tracking"`
-	TrackingSubdomain         *string            `db:"tracking_subdomain" json:"tracking_subdomain"`
-	ActiveTrackingSubdomain   *string            `db:"active_tracking_subdomain" json:"active_tracking_subdomain"`
 	TlsMode                   string             `db:"tls_mode" json:"tls_mode"`
-	SendingEnabled            bool               `db:"sending_enabled" json:"sending_enabled"`
-	ReceivingEnabled          bool               `db:"receiving_enabled" json:"receiving_enabled"`
 	CustomReturnPath          string             `db:"custom_return_path" json:"custom_return_path"`
 	HealthStatus              string             `db:"health_status" json:"health_status"`
 	ConsecutiveHealthFailures int32              `db:"consecutive_health_failures" json:"consecutive_health_failures"`
@@ -225,12 +219,7 @@ type DomainClaim struct {
 	TargetTeamID            uuid.UUID          `db:"target_team_id" json:"target_team_id"`
 	ProviderRegion          string             `db:"provider_region" json:"provider_region"`
 	CustomReturnPath        string             `db:"custom_return_path" json:"custom_return_path"`
-	OpenTracking            bool               `db:"open_tracking" json:"open_tracking"`
-	ClickTracking           bool               `db:"click_tracking" json:"click_tracking"`
-	TrackingSubdomain       *string            `db:"tracking_subdomain" json:"tracking_subdomain"`
 	TlsMode                 string             `db:"tls_mode" json:"tls_mode"`
-	SendingEnabled          bool               `db:"sending_enabled" json:"sending_enabled"`
-	ReceivingEnabled        bool               `db:"receiving_enabled" json:"receiving_enabled"`
 	Status                  string             `db:"status" json:"status"`
 	BlockedReason           *string            `db:"blocked_reason" json:"blocked_reason"`
 	FailureReason           *string            `db:"failure_reason" json:"failure_reason"`

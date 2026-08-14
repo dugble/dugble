@@ -44,11 +44,6 @@ const (
 
 type VerificationRecord = platformemail.VerificationRecord
 
-type Capabilities struct {
-	Sending   bool `json:"sending"`
-	Receiving bool `json:"receiving"`
-}
-
 type SenderDomain struct {
 	ID                        string               `json:"id"`
 	TeamID                    string               `json:"team_id"`
@@ -60,13 +55,8 @@ type SenderDomain struct {
 	Status                    string               `json:"status"`
 	ProviderStatus            *string              `json:"provider_status,omitempty"`
 	VerificationRecords       []VerificationRecord `json:"records"`
-	OpenTracking              bool                 `json:"open_tracking"`
-	ClickTracking             bool                 `json:"click_tracking"`
-	TrackingSubdomain         *string              `json:"tracking_subdomain,omitempty"`
-	ActiveTrackingSubdomain   *string              `json:"active_tracking_subdomain,omitempty"`
 	TLS                       string               `json:"tls"`
-	Capabilities              Capabilities         `json:"capabilities"`
-	CustomReturnPath          string               `json:"custom_return_path"`
+	CustomReturnPath          string               `json:"-"`
 	FailureReason             *string              `json:"failure_reason,omitempty"`
 	HealthStatus              string               `json:"health_status"`
 	ConsecutiveHealthFailures int32                `json:"consecutive_health_failures"`
@@ -94,32 +84,18 @@ func NotificationStatus(previous, updated SenderDomain) string {
 }
 
 type CreateRequest struct {
-	Name              string        `json:"name"`
-	Domain            string        `json:"domain,omitempty"`
-	Region            string        `json:"region"`
-	CustomReturnPath  string        `json:"custom_return_path"`
-	OpenTracking      *bool         `json:"open_tracking,omitempty"`
-	ClickTracking     *bool         `json:"click_tracking,omitempty"`
-	TrackingSubdomain *string       `json:"tracking_subdomain,omitempty"`
-	TLS               string        `json:"tls,omitempty"`
-	Capabilities      *Capabilities `json:"capabilities,omitempty"`
+	Name   string `json:"name"`
+	Region string `json:"region"`
+	TLS    string `json:"tls,omitempty"`
 }
 
 type UpdateRequest struct {
-	OpenTracking      *bool         `json:"open_tracking,omitempty"`
-	ClickTracking     *bool         `json:"click_tracking,omitempty"`
-	TrackingSubdomain *string       `json:"tracking_subdomain,omitempty"`
-	TLS               *string       `json:"tls,omitempty"`
-	Capabilities      *Capabilities `json:"capabilities,omitempty"`
+	TLS *string `json:"tls,omitempty"`
 }
 
 type DomainConfiguration struct {
-	OpenTracking      bool
-	ClickTracking     bool
-	TrackingSubdomain *string
-	TLS               string
-	Capabilities      Capabilities
-	CustomReturnPath  string
+	TLS              string
+	CustomReturnPath string
 }
 
 type CreateResult struct {
@@ -134,14 +110,9 @@ type ProvisioningResponse struct {
 }
 
 type ClaimRequest struct {
-	Name              string        `json:"name"`
-	Region            string        `json:"region"`
-	CustomReturnPath  string        `json:"custom_return_path"`
-	OpenTracking      *bool         `json:"open_tracking,omitempty"`
-	ClickTracking     *bool         `json:"click_tracking,omitempty"`
-	TrackingSubdomain *string       `json:"tracking_subdomain,omitempty"`
-	TLS               string        `json:"tls,omitempty"`
-	Capabilities      *Capabilities `json:"capabilities,omitempty"`
+	Name   string `json:"name"`
+	Region string `json:"region"`
+	TLS    string `json:"tls,omitempty"`
 }
 
 type DomainClaim struct {
@@ -153,12 +124,8 @@ type DomainClaim struct {
 	SourceTeamID            string             `json:"source_team_id"`
 	TargetTeamID            string             `json:"target_team_id"`
 	Region                  string             `json:"region"`
-	CustomReturnPath        string             `json:"custom_return_path"`
-	OpenTracking            bool               `json:"open_tracking"`
-	ClickTracking           bool               `json:"click_tracking"`
-	TrackingSubdomain       *string            `json:"tracking_subdomain,omitempty"`
+	CustomReturnPath        string             `json:"-"`
 	TLS                     string             `json:"tls"`
-	Capabilities            Capabilities       `json:"capabilities"`
 	VerificationRecord      VerificationRecord `json:"record"`
 	BlockedReason           *string            `json:"blocked_reason,omitempty"`
 	FailureReason           *string            `json:"failure_reason,omitempty"`

@@ -2,6 +2,7 @@ package domain
 
 import (
 	"encoding/json"
+	"io"
 	"strconv"
 
 	"github.com/labstack/echo/v5"
@@ -72,7 +73,12 @@ func (h *Handler) Delete(c *echo.Context) error {
 }
 
 func decodeJSON(c *echo.Context, dst any) error {
-	if err := json.NewDecoder(c.Request().Body).Decode(dst); err != nil {
+	decoder := json.NewDecoder(c.Request().Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(dst); err != nil {
+		return httputil.Error(c, apperrors.NewBadRequest("Invalid JSON request body"))
+	}
+	if err := decoder.Decode(&struct{}{}); err != io.EOF {
 		return httputil.Error(c, apperrors.NewBadRequest("Invalid JSON request body"))
 	}
 	return nil

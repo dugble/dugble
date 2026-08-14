@@ -7,12 +7,7 @@ INSERT INTO domains (
     provider_account,
     provider_region,
     custom_return_path,
-    open_tracking,
-    click_tracking,
-    tracking_subdomain,
     tls_mode,
-    sending_enabled,
-    receiving_enabled,
     created_by,
     submitted_at,
     next_check_at
@@ -24,12 +19,7 @@ SELECT team.id,
        lower(trim(sqlc.arg(provider_account))),
        lower(trim(sqlc.arg(provider_region))),
        lower(trim(sqlc.arg(custom_return_path))),
-       sqlc.arg(open_tracking),
-       sqlc.arg(click_tracking),
-       sqlc.narg(tracking_subdomain),
        sqlc.arg(tls_mode),
-       sqlc.arg(sending_enabled),
-       sqlc.arg(receiving_enabled),
        sqlc.arg(created_by),
        now(),
        now() + interval '1 minute'
@@ -49,12 +39,7 @@ INSERT INTO domains (
     provider_region,
     status,
     provider_status,
-    open_tracking,
-    click_tracking,
-    tracking_subdomain,
     tls_mode,
-    sending_enabled,
-    receiving_enabled,
     custom_return_path,
     health_status,
     submitted_at,
@@ -70,12 +55,7 @@ INSERT INTO domains (
     lower(trim(sqlc.arg(provider_region))),
     'pending',
     'pending',
-    sqlc.arg(open_tracking),
-    sqlc.arg(click_tracking),
-    sqlc.narg(tracking_subdomain),
     sqlc.arg(tls_mode),
-    sqlc.arg(sending_enabled),
-    sqlc.arg(receiving_enabled),
     lower(trim(sqlc.arg(custom_return_path))),
     'unknown',
     now(),
@@ -115,12 +95,7 @@ FOR SHARE;
 
 -- name: UpdateDomainConfiguration :one
 UPDATE domains
-SET open_tracking = sqlc.arg(open_tracking),
-    click_tracking = sqlc.arg(click_tracking),
-    tracking_subdomain = sqlc.narg(tracking_subdomain),
-    tls_mode = sqlc.arg(tls_mode),
-    sending_enabled = sqlc.arg(sending_enabled),
-    receiving_enabled = sqlc.arg(receiving_enabled),
+SET tls_mode = sqlc.arg(tls_mode),
     updated_at = now()
 WHERE id = sqlc.arg(id)
   AND team_id = sqlc.arg(team_id)
@@ -326,11 +301,11 @@ WHERE domain_record.id = sqlc.arg(id)
   )
 RETURNING domain_record.*;
 
-
 -- name: DeleteDomainForClaim :one
 DELETE FROM domains
 WHERE id = sqlc.arg(id)
 RETURNING *;
+
 -- name: ResolveEmailSenderDomain :one
 SELECT id, provider, provider_region, status, health_status, disabled_at
 FROM domains
