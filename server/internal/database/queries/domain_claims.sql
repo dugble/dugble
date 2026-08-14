@@ -7,12 +7,7 @@ INSERT INTO domain_claims (
     target_team_id,
     provider_region,
     custom_return_path,
-    open_tracking,
-    click_tracking,
-    tracking_subdomain,
     tls_mode,
-    sending_enabled,
-    receiving_enabled,
     record_name,
     record_value,
     record_ttl,
@@ -26,12 +21,7 @@ INSERT INTO domain_claims (
     sqlc.arg(target_team_id),
     lower(trim(sqlc.arg(provider_region))),
     lower(trim(sqlc.arg(custom_return_path))),
-    sqlc.arg(open_tracking),
-    sqlc.arg(click_tracking),
-    sqlc.narg(tracking_subdomain),
     sqlc.arg(tls_mode),
-    sqlc.arg(sending_enabled),
-    sqlc.arg(receiving_enabled),
     sqlc.arg(record_name),
     sqlc.arg(record_value),
     sqlc.arg(record_ttl),
@@ -168,7 +158,6 @@ SELECT EXISTS (
       AND message.scheduled_at IS NOT NULL
       AND message.scheduled_at > now()
 );
-
 
 -- name: ReleaseDomainClaim :one
 UPDATE domain_claims
