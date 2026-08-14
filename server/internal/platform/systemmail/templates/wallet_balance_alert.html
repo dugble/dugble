@@ -1,0 +1,6 @@
+{{template "email.header" .}}
+    <p>Hi {{.Name}},</p>
+    <p>The wallet balance for <strong>{{.Team}}</strong> is <strong>{{.Balance}}</strong>.</p>
+    <p>{{.Message}}</p>
+    <p><a href="{{.BillingURL}}">Review wallet and add funds</a></p>
+{{template "email.footer" .}}

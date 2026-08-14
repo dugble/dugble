@@ -38,3 +38,14 @@ type CompleteInput struct {
 	ProviderTransactionID string
 	AmountUnits           int64
 }
+
+type FailInput struct {
+	Provider        string
+	ClientReference string
+}
+
+type Recipient struct {
+	Name     string
+	Email    string
+	TeamName string
+}

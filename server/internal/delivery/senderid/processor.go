@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	platformsenderid "github.com/dugble/dugble/server/internal/platform/senderid"
+	"github.com/dugble/dugble/server/internal/platform/systemmail"
 )
 
 func (consumer *Consumer) process(
@@ -48,7 +49,7 @@ func (consumer *Consumer) submit(
 			response.Status,
 			consumer.now().Add(consumer.config.PendingCheckInterval),
 		)
-	case platformsenderid.StatusApproved, platformsenderid.StatusRejected:
+	case platformsenderid.StatusApproved, platformsenderid.StatusRejected, platformsenderid.StatusSuspended:
 		return consumer.completeStatus(ctx, claim, &platformsenderid.StatusResponse{
 			ProviderID:     response.ProviderID,
 			SenderID:       response.SenderID,
@@ -100,6 +101,7 @@ func (consumer *Consumer) completeStatus(
 	case platformsenderid.StatusRejected:
 		reason := "Sender ID was rejected by " + response.ProviderID
 		rejectionReason = &reason
+	case platformsenderid.StatusSuspended:
 	default:
 		return consumer.recordFailure(
 			ctx,
@@ -108,7 +110,7 @@ func (consumer *Consumer) completeStatus(
 			fmt.Errorf("provider returned unknown Sender ID status %q", response.Status),
 		)
 	}
-	return consumer.repository.CompleteStatus(
+	err := consumer.repository.CompleteStatus(
 		ctx,
 		claim.ID,
 		consumer.workerID,
@@ -118,6 +120,37 @@ func (consumer *Consumer) completeStatus(
 		rejectionReason,
 		nextCheckAt,
 	)
+	if err != nil {
+		return err
+	}
+	consumer.notify(ctx, claim, response.Status, rejectionReason)
+	return nil
+}
+
+func (consumer *Consumer) notify(ctx context.Context, claim RegistrationClaim, status string, reason *string) {
+	if consumer.notifier == nil || !notifiableStatus(status) {
+		return
+	}
+	recipients, err := consumer.repository.ListNotificationRecipients(ctx, claim.TeamID)
+	if err != nil {
+		return
+	}
+	reasonText := ""
+	if reason != nil {
+		reasonText = *reason
+	}
+	for _, recipient := range recipients {
+		_ = consumer.notifier.SendSenderIDStatus(ctx, systemmail.SendSenderIDStatusInput{ToEmail: recipient.Email, Name: recipient.Name, SenderID: claim.Name, Status: status, Reason: reasonText})
+	}
+}
+
+func notifiableStatus(status string) bool {
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case platformsenderid.StatusApproved, platformsenderid.StatusRejected, platformsenderid.StatusSuspended:
+		return true
+	default:
+		return false
+	}
 }
 
 func validateCreateResponse(

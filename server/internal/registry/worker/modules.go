@@ -42,6 +42,7 @@ import (
 	platformevent "github.com/dugble/dugble/server/internal/platform/event"
 	"github.com/dugble/dugble/server/internal/platform/outbox"
 	platformsms "github.com/dugble/dugble/server/internal/platform/sms"
+	"github.com/dugble/dugble/server/internal/platform/systemmail"
 	platformwebhook "github.com/dugble/dugble/server/internal/platform/webhook"
 )
 
@@ -128,6 +129,12 @@ func (registry *Registry) newModules(startupCtx context.Context) (modules, error
 		emailSender,
 		systememail.ConsumerConfig{Concurrency: 3, AckWait: time.Minute, HandlerTimeout: 30 * time.Second, MaxDeliver: 6},
 	)
+	systemEmailRenderer, err := systemmail.NewRenderer()
+	if err != nil {
+		return modules{}, fmt.Errorf("initialize system email renderer: %w", err)
+	}
+	systemEmailQueue := systememail.NewQueue(outboxRepository, platformemail.Message{Provider: awsses.ProviderSES, Region: cfg.AWS.Region, Stream: "transactional", ConfigurationSet: platformemail.TransactionalConfigurationSet, SESTenantName: platformemail.SystemSESTenantName})
+	notificationEmailService := systemmail.NewEmailService(systemEmailQueue, systemEmailRenderer, cfg.FrontendURL, cfg.AWS.FromEmail)
 	emailTenantConsumer := tenantprovision.NewConsumer(
 		messagingClient,
 		processedEvents,
@@ -179,6 +186,7 @@ func (registry *Registry) newModules(startupCtx context.Context) (modules, error
 		},
 		"sender-domain-reconciliation-"+uuid.NewString(),
 	)
+	domainConsumer.WithNotifier(notificationEmailService)
 
 	senderIDRun := disabledSenderIDReconciliation
 	if cfg.Moolre.VASKey == "" {
@@ -194,6 +202,7 @@ func (registry *Registry) newModules(startupCtx context.Context) (modules, error
 		if consumerErr != nil {
 			return modules{}, fmt.Errorf("initialize Sender ID reconciliation: %w", consumerErr)
 		}
+		senderIDConsumer.WithNotifier(notificationEmailService)
 		senderIDRun = senderIDConsumer.Run
 	}
 
@@ -250,7 +259,7 @@ func (registry *Registry) newModules(startupCtx context.Context) (modules, error
 		webhookdelivery.NewClient(10*time.Second),
 		webhookdelivery.DefaultRetryPolicy(),
 		webhookWorkerID,
-	)
+	).WithNotifier(notificationEmailService)
 	webhookConsumer := webhookdelivery.NewConsumer(
 		webhookRepository,
 		webhookProcessor,
@@ -263,6 +272,8 @@ func (registry *Registry) newModules(startupCtx context.Context) (modules, error
 		chargeSubscription.NewService(chargeSubscription.NewRepository()),
 		subscriptionLifecycle.NewService(),
 	).WithEventPublisher(subscriptionRenewal.NewEventPublisher(outboxRepository))
+	renewalService.WithPastDueNotifier(notificationEmailService)
+	renewalService.WithPlanChangeNotifier(notificationEmailService)
 	renewalConfig := subscriptionRenewal.DefaultConfig()
 	renewalConfig.OnFailure = func(ctx context.Context, failure subscriptionRenewal.Failure) {
 		sentrymonitoring.ErrorContext(ctx, "subscription renewal failed", "team_id", failure.TeamID, "error", failure.Err)

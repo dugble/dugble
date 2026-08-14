@@ -263,6 +263,47 @@ func (q *Queries) GetTeamMember(ctx context.Context, arg GetTeamMemberParams) (T
 	return i, err
 }
 
+const listActiveTeamOwnerRecipients = `-- name: ListActiveTeamOwnerRecipients :many
+SELECT users.name, users.email, teams.name AS team_name
+FROM team_members
+JOIN users ON users.id = team_members.user_id
+JOIN teams ON teams.id = team_members.team_id
+WHERE team_members.team_id = $1
+  AND team_members.role = 'owner'
+  AND team_members.status = 'active'
+ORDER BY users.id
+`
+
+type ListActiveTeamOwnerRecipientsParams struct {
+	TeamID uuid.UUID `db:"team_id" json:"team_id"`
+}
+
+type ListActiveTeamOwnerRecipientsRow struct {
+	Name     string `db:"name" json:"name"`
+	Email    string `db:"email" json:"email"`
+	TeamName string `db:"team_name" json:"team_name"`
+}
+
+func (q *Queries) ListActiveTeamOwnerRecipients(ctx context.Context, arg ListActiveTeamOwnerRecipientsParams) ([]ListActiveTeamOwnerRecipientsRow, error) {
+	rows, err := q.db.Query(ctx, listActiveTeamOwnerRecipients, arg.TeamID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListActiveTeamOwnerRecipientsRow{}
+	for rows.Next() {
+		var i ListActiveTeamOwnerRecipientsRow
+		if err := rows.Scan(&i.Name, &i.Email, &i.TeamName); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listTeamMembers = `-- name: ListTeamMembers :many
 SELECT team_id, user_id, role, status, created_at, updated_at
 FROM team_members

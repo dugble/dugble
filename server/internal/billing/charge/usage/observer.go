@@ -2,8 +2,10 @@ package usage
 
 import (
 	"context"
+	"fmt"
 
 	sentrymonitoring "github.com/dugble/dugble/server/internal/adapters/monitoring/sentry"
+	"github.com/dugble/dugble/server/internal/platform/systemmail"
 )
 
 var (
@@ -34,4 +36,40 @@ func (s *Service) ObserveCommittedCharge(ctx context.Context, committed Committe
 		"remaining_credit_units", committed.RemainingCreditUnits,
 		"remaining_balance_units", committed.RemainingBalance,
 	)
+	if s.balanceNotifier != nil && s.recipients != nil {
+		if err := s.notifyBalance(ctx, committed); err != nil {
+			sentrymonitoring.Warn("failed to send wallet balance notification", "team_id", committed.TeamID, "error", err)
+		}
+	}
+}
+
+func (s *Service) notifyBalance(ctx context.Context, charge CommittedCharge) error {
+	level := balanceLevel(charge)
+	if level == "" {
+		return nil
+	}
+	recipients, err := s.recipients.ListBalanceRecipients(ctx, charge.TeamID)
+	if err != nil {
+		return err
+	}
+	for _, recipient := range recipients {
+		input := systemmail.SendWalletBalanceAlertInput{
+			ToEmail: recipient.Email, Name: recipient.Name, TeamName: recipient.TeamName,
+			Currency: charge.Currency, BalanceUnits: charge.RemainingBalance, Level: level,
+		}
+		if err := s.balanceNotifier.SendWalletBalanceAlert(ctx, input); err != nil {
+			return fmt.Errorf("send wallet balance notification: %w", err)
+		}
+	}
+	return nil
+}
+
+func balanceLevel(charge CommittedCharge) string {
+	if charge.WalletDebitUnits > 0 && charge.RemainingBalance <= 0 {
+		return "exhausted"
+	}
+	if charge.WalletDebitUnits > 0 && charge.RemainingBalance < charge.WalletDebitUnits {
+		return "low"
+	}
+	return ""
 }

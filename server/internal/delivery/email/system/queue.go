@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 
 	platformemail "github.com/dugble/dugble/server/internal/platform/awsses"
 	"github.com/dugble/dugble/server/internal/platform/outbox"
@@ -13,6 +14,7 @@ import (
 
 type eventStore interface {
 	Enqueue(context.Context, outbox.Event) (uuid.UUID, error)
+	EnqueueTx(context.Context, pgx.Tx, outbox.Event) (uuid.UUID, error)
 }
 
 type Queue struct {
@@ -37,6 +39,19 @@ func NewQueue(store eventStore, defaults ...platformemail.Message) *Queue {
 }
 
 func (queue *Queue) Send(ctx context.Context, message platformemail.Message) (platformemail.Result, error) {
+	return queue.send(ctx, nil, message)
+}
+
+// SendTx queues a system email in the caller's transaction so it is only
+// published when the state change that caused it commits.
+func (queue *Queue) SendTx(ctx context.Context, tx pgx.Tx, message platformemail.Message) (platformemail.Result, error) {
+	if tx == nil {
+		return platformemail.Result{}, ErrQueueNotConfigured
+	}
+	return queue.send(ctx, tx, message)
+}
+
+func (queue *Queue) send(ctx context.Context, tx pgx.Tx, message platformemail.Message) (platformemail.Result, error) {
 	if queue == nil || queue.store == nil {
 		return platformemail.Result{}, ErrQueueNotConfigured
 	}
@@ -61,7 +76,7 @@ func (queue *Queue) Send(ctx context.Context, message platformemail.Message) (pl
 	if err != nil {
 		return platformemail.Result{}, err
 	}
-	_, err = queue.store.Enqueue(ctx, outbox.Event{
+	event := outbox.Event{
 		ID:            eventID,
 		Subject:       DeliverSubject,
 		AggregateType: "system_email",
@@ -70,7 +85,12 @@ func (queue *Queue) Send(ctx context.Context, message platformemail.Message) (pl
 		Headers: map[string]string{
 			"Dugble-Event-Type": "email.system.send.requested.v1",
 		},
-	})
+	}
+	if tx == nil {
+		_, err = queue.store.Enqueue(ctx, event)
+	} else {
+		_, err = queue.store.EnqueueTx(ctx, tx, event)
+	}
 	if err != nil {
 		return platformemail.Result{}, err
 	}

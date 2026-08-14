@@ -173,6 +173,40 @@ func (q *Queries) ListPaymentTransactionsByTeam(ctx context.Context, arg ListPay
 	return items, nil
 }
 
+const markPaymentTransactionFailed = `-- name: MarkPaymentTransactionFailed :one
+UPDATE payment_transactions
+SET status = 'failed',
+    updated_at = now()
+WHERE id = $1
+  AND team_id = $2
+  AND status = 'pending'
+RETURNING id, team_id, provider, client_reference, currency, amount_units, status, provider_transaction_id, paid_at, created_at, updated_at
+`
+
+type MarkPaymentTransactionFailedParams struct {
+	ID     uuid.UUID `db:"id" json:"id"`
+	TeamID uuid.UUID `db:"team_id" json:"team_id"`
+}
+
+func (q *Queries) MarkPaymentTransactionFailed(ctx context.Context, arg MarkPaymentTransactionFailedParams) (PaymentTransaction, error) {
+	row := q.db.QueryRow(ctx, markPaymentTransactionFailed, arg.ID, arg.TeamID)
+	var i PaymentTransaction
+	err := row.Scan(
+		&i.ID,
+		&i.TeamID,
+		&i.Provider,
+		&i.ClientReference,
+		&i.Currency,
+		&i.AmountUnits,
+		&i.Status,
+		&i.ProviderTransactionID,
+		&i.PaidAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const markPaymentTransactionPaid = `-- name: MarkPaymentTransactionPaid :one
 UPDATE payment_transactions
 SET status = 'paid',

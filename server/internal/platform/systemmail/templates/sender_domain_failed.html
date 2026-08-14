@@ -1,0 +1,7 @@
+{{template "email.header" .}}
+    <p>Hi {{.Name}},</p>
+    <p>We could not verify your sender domain <strong>{{.Domain}}</strong>.</p>
+    <p>Reason: <strong>{{.Reason}}</strong></p>
+    <p>Review the DNS records and retry verification.</p>
+    <p><a href="{{.DomainsURL}}">Review sender domain</a></p>
+{{template "email.footer" .}}

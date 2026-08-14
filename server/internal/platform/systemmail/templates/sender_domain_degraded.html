@@ -1,0 +1,7 @@
+{{template "email.header" .}}
+    <p>Hi {{.Name}},</p>
+    <p>Verification checks for <strong>{{.Domain}}</strong> are no longer passing.</p>
+    <p>Reason: <strong>{{.Reason}}</strong></p>
+    <p>Review the domain's DNS configuration to prevent sending disruption.</p>
+    <p><a href="{{.DomainsURL}}">Review sender domain</a></p>
+{{template "email.footer" .}}

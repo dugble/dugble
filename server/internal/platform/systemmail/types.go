@@ -1,6 +1,12 @@
 package systemmail
 
-import platformemail "github.com/dugble/dugble/server/internal/platform/awsses"
+import (
+	"context"
+
+	"github.com/jackc/pgx/v5"
+
+	platformemail "github.com/dugble/dugble/server/internal/platform/awsses"
+)
 
 type Recipient struct {
 	Name  string
@@ -67,4 +73,71 @@ type SendTeamInvitationInput struct {
 	Token       string
 }
 
+type SendSubscriptionPastDueInput struct {
+	ToEmail      string
+	Name         string
+	TeamName     string
+	PlanCode     string
+	Currency     string
+	AmountUnits  int64
+	BalanceUnits int64
+}
+
+type SendWalletBalanceAlertInput struct {
+	ToEmail      string
+	Name         string
+	TeamName     string
+	Currency     string
+	BalanceUnits int64
+	Level        string
+}
+
+type SendWalletTopUpResultInput struct {
+	ToEmail         string
+	Name            string
+	TeamName        string
+	Currency        string
+	AmountUnits     int64
+	ClientReference string
+	Status          string
+}
+
+type SendSenderDomainStatusInput struct {
+	ToEmail string
+	Name    string
+	Domain  string
+	Status  string
+	Reason  string
+}
+
+type SendSenderIDStatusInput struct {
+	ToEmail  string
+	Name     string
+	SenderID string
+	Status   string
+	Reason   string
+}
+
+type SendSubscriptionChangeInput struct {
+	ToEmail     string
+	Name        string
+	CurrentPlan string
+	NewPlan     string
+	Event       string
+	EffectiveAt string
+}
+
+type SendWebhookEndpointDisabledInput struct {
+	ToEmail        string
+	Name           string
+	EndpointURL    string
+	FailureCount   int32
+	ResponseStatus string
+	LastError      string
+}
+
 type EmailSender = platformemail.Sender
+
+type TransactionalEmailSender interface {
+	SendTx(context.Context, pgx.Tx, platformemail.Message) (platformemail.Result, error)
+}

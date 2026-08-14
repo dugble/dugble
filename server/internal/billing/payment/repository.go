@@ -41,6 +41,34 @@ func (r *Repository) GetByClientReference(ctx context.Context, provider, referen
 	return transactionFromSQLC(row), nil
 }
 
+func (r *Repository) MarkFailed(ctx context.Context, transaction Transaction) (Transaction, error) {
+	id, err := uuid.Parse(transaction.ID)
+	if err != nil {
+		return Transaction{}, fmt.Errorf("parse payment transaction id: %w", err)
+	}
+	teamID, err := uuid.Parse(transaction.TeamID)
+	if err != nil {
+		return Transaction{}, fmt.Errorf("parse payment team id: %w", err)
+	}
+	row, err := r.queries.MarkPaymentTransactionFailed(ctx, dbsqlc.MarkPaymentTransactionFailedParams{ID: id, TeamID: teamID})
+	if err != nil {
+		return Transaction{}, fmt.Errorf("mark payment failed: %w", err)
+	}
+	return transactionFromSQLC(row), nil
+}
+
+func (r *Repository) ListRecipients(ctx context.Context, teamID uuid.UUID) ([]Recipient, error) {
+	rows, err := r.queries.ListActiveTeamOwnerRecipients(ctx, dbsqlc.ListActiveTeamOwnerRecipientsParams{TeamID: teamID})
+	if err != nil {
+		return nil, fmt.Errorf("list payment recipients: %w", err)
+	}
+	recipients := make([]Recipient, 0, len(rows))
+	for _, row := range rows {
+		recipients = append(recipients, Recipient{Name: row.Name, Email: row.Email, TeamName: row.TeamName})
+	}
+	return recipients, nil
+}
+
 // MarkPaidAndCredit records the provider result and credits the wallet in one
 // database transaction. The ledger uniqueness constraints make retries safe.
 func (r *Repository) MarkPaidAndCredit(ctx context.Context, transaction Transaction, providerTransactionID string) (Transaction, error) {

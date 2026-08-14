@@ -11,6 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/dugble/dugble/server/internal/billing/subscription/lifecycle"
+	dbsqlc "github.com/dugble/dugble/server/internal/database/sqlc"
 )
 
 const getDueSQL = `
@@ -45,12 +46,6 @@ SET status = CASE WHEN $2 THEN 'active' ELSE 'past_due' END,
 WHERE id = $1
 RETURNING plan_code, current_period_start, current_period_end
 `
-
-type Due struct {
-	SubscriptionID uuid.UUID
-	TeamID         uuid.UUID
-	State          lifecycle.State
-}
 
 type Repository struct{}
 
@@ -91,6 +86,18 @@ func (*Repository) ApplyCharge(ctx context.Context, tx pgx.Tx, id uuid.UUID, app
 	var state appliedState
 	err := tx.QueryRow(ctx, applyChargeSQL, id, applied, plan, start, end).Scan(&state.Plan, &state.Period.Start, &state.Period.End)
 	return state, err
+}
+
+func (*Repository) ListBillingRecipients(ctx context.Context, tx pgx.Tx, teamID uuid.UUID) ([]BillingRecipient, error) {
+	rows, err := dbsqlc.New(tx).ListActiveTeamOwnerRecipients(ctx, dbsqlc.ListActiveTeamOwnerRecipientsParams{TeamID: teamID})
+	if err != nil {
+		return nil, fmt.Errorf("list subscription billing recipients: %w", err)
+	}
+	recipients := make([]BillingRecipient, 0, len(rows))
+	for _, row := range rows {
+		recipients = append(recipients, BillingRecipient{Name: row.Name, Email: row.Email, TeamName: row.TeamName})
+	}
+	return recipients, nil
 }
 
 type timeRange struct{ Start, End time.Time }

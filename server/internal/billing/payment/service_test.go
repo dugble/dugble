@@ -5,11 +5,33 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
+
+	"github.com/dugble/dugble/server/internal/platform/systemmail"
 )
 
 type storeStub struct {
 	transaction Transaction
 	completed   bool
+	failed      bool
+	recipients  []Recipient
+}
+
+func (s *storeStub) MarkFailed(_ context.Context, transaction Transaction) (Transaction, error) {
+	s.failed = true
+	transaction.Status = StatusFailed
+	return transaction, nil
+}
+func (s *storeStub) ListRecipients(context.Context, uuid.UUID) ([]Recipient, error) {
+	return s.recipients, nil
+}
+
+type notifierStub struct {
+	inputs []systemmail.SendWalletTopUpResultInput
+}
+
+func (s *notifierStub) SendWalletTopUpResult(_ context.Context, input systemmail.SendWalletTopUpResultInput) error {
+	s.inputs = append(s.inputs, input)
+	return nil
 }
 
 func (s *storeStub) Create(context.Context, uuid.UUID, CreateInput) (Transaction, error) {
@@ -39,6 +61,44 @@ func TestCompleteIsIdempotent(t *testing.T) {
 	got, err := NewService(store).Complete(context.Background(), CompleteInput{Provider: ProviderHubtel, ClientReference: "ref", ProviderTransactionID: id, AmountUnits: 100})
 	if err != nil || got.Status != StatusPaid || store.completed {
 		t.Fatalf("result=%+v completed=%v err=%v", got, store.completed, err)
+	}
+}
+
+func TestCompleteNotifiesOwners(t *testing.T) {
+	store := &storeStub{
+		transaction: Transaction{ID: uuid.NewString(), TeamID: uuid.NewString(), AmountUnits: 2500, Currency: CurrencyGHS, ClientReference: "ref", Status: StatusPending},
+		recipients:  []Recipient{{Name: "Ada", Email: "ada@example.com", TeamName: "Acme"}},
+	}
+	notifier := &notifierStub{}
+	transaction, err := NewService(store).WithNotifier(notifier).Complete(context.Background(), CompleteInput{Provider: ProviderHubtel, ClientReference: "ref", ProviderTransactionID: "txn", AmountUnits: 2500})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if transaction.Status != StatusPaid || len(notifier.inputs) != 1 || notifier.inputs[0].Status != StatusPaid {
+		t.Fatalf("transaction=%+v notifications=%+v", transaction, notifier.inputs)
+	}
+}
+
+func TestFailIsIdempotentAndNotifiesOnlyOnTransition(t *testing.T) {
+	store := &storeStub{
+		transaction: Transaction{ID: uuid.NewString(), TeamID: uuid.NewString(), AmountUnits: 2500, Currency: CurrencyGHS, ClientReference: "ref", Status: StatusPending},
+		recipients:  []Recipient{{Email: "owner@example.com"}},
+	}
+	notifier := &notifierStub{}
+	service := NewService(store).WithNotifier(notifier)
+	transaction, err := service.Fail(context.Background(), FailInput{Provider: ProviderHubtel, ClientReference: "ref"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if transaction.Status != StatusFailed || !store.failed || len(notifier.inputs) != 1 {
+		t.Fatalf("transaction=%+v failed=%v notifications=%d", transaction, store.failed, len(notifier.inputs))
+	}
+	store.transaction = transaction
+	if _, err := service.Fail(context.Background(), FailInput{Provider: ProviderHubtel, ClientReference: "ref"}); err != nil {
+		t.Fatal(err)
+	}
+	if len(notifier.inputs) != 1 {
+		t.Fatalf("notifications=%d, want 1", len(notifier.inputs))
 	}
 }
 

@@ -10,10 +10,14 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	dbsqlc "github.com/dugble/dugble/server/internal/database/sqlc"
+	"github.com/dugble/dugble/server/internal/platform/systemmail"
 )
 
 type RegistrationClaim struct {
 	ID                  uuid.UUID
+	TeamID              uuid.UUID
 	Name                string
 	CountryCode         string
 	Provider            string
@@ -27,14 +31,28 @@ type registrationRepository interface {
 	CompleteSubmission(context.Context, uuid.UUID, string, string, time.Time) error
 	CompleteStatus(context.Context, uuid.UUID, string, string, string, bool, *string, time.Time) error
 	RecordProviderFailure(context.Context, uuid.UUID, string, string, error, time.Time) error
+	ListNotificationRecipients(context.Context, uuid.UUID) ([]systemmail.Recipient, error)
 }
 
 type Repository struct {
-	db *pgxpool.Pool
+	db      *pgxpool.Pool
+	queries *dbsqlc.Queries
 }
 
 func NewRepository(db *pgxpool.Pool) *Repository {
-	return &Repository{db: db}
+	return &Repository{db: db, queries: dbsqlc.New(db)}
+}
+
+func (repository *Repository) ListNotificationRecipients(ctx context.Context, teamID uuid.UUID) ([]systemmail.Recipient, error) {
+	rows, err := repository.queries.ListActiveTeamOwnerRecipients(ctx, dbsqlc.ListActiveTeamOwnerRecipientsParams{TeamID: teamID})
+	if err != nil {
+		return nil, fmt.Errorf("list Sender ID notification recipients: %w", err)
+	}
+	recipients := make([]systemmail.Recipient, 0, len(rows))
+	for _, row := range rows {
+		recipients = append(recipients, systemmail.Recipient{Name: row.Name, Email: row.Email})
+	}
+	return recipients, nil
 }
 
 func (repository *Repository) ClaimPendingRegistrations(
@@ -81,7 +99,7 @@ func (repository *Repository) ClaimPendingRegistrations(
 			WHERE sender_id.id = candidates.id
 			RETURNING sender_id.*
 		)
-		SELECT sender_id.id, sender_id.name, sender_id.country_code::text,
+		SELECT sender_id.id, sender_id.team_id, sender_id.name, sender_id.country_code::text,
 			COALESCE(sender_id.provider, ''), COALESCE(sender_id.provider_status, ''),
 			sender_id.submitted_at, sender_id.reconciliation_attempts
 		FROM updated AS sender_id
@@ -98,6 +116,7 @@ func (repository *Repository) ClaimPendingRegistrations(
 		var submittedAt pgtype.Timestamptz
 		if err := rows.Scan(
 			&claim.ID,
+			&claim.TeamID,
 			&claim.Name,
 			&claim.CountryCode,
 			&claim.Provider,

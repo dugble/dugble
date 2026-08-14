@@ -5,29 +5,43 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"strconv"
 	"strings"
 
 	sentrymonitoring "github.com/dugble/dugble/server/internal/adapters/monitoring/sentry"
+	"github.com/jackc/pgx/v5"
 
 	platformemail "github.com/dugble/dugble/server/internal/platform/awsses"
 )
 
 const (
-	verifyEmailTemplate           = "verify_email.html"
-	forgotPasswordTemplate        = "forgot_password.html"
-	passwordChangedTemplate       = "password_changed.html"
-	emailChangedTemplate          = "email_changed.html"
-	mfaEnabledTemplate            = "mfa_enabled.html"
-	mfaDisabledTemplate           = "mfa_disabled.html"
-	recoveryCodeUsedTemplate      = "recovery_code_used.html"
-	mfaLoginFailedTemplate        = "mfa_login_failed.html"
-	newLoginTemplate              = "new_login.html"
-	accountDeletedTemplate        = "account_deleted.html"
-	teamMemberRemovedTemplate     = "team_member_removed.html"
-	teamMemberRoleChangedTemplate = "team_member_role_changed.html"
-	teamTokenCreatedTemplate      = "team_token_created.html"
-	teamTokenRevokedTemplate      = "team_token_revoked.html"
-	teamInvitationTemplate        = "team_invitation.html"
+	verifyEmailTemplate             = "verify_email.html"
+	forgotPasswordTemplate          = "forgot_password.html"
+	passwordChangedTemplate         = "password_changed.html"
+	emailChangedTemplate            = "email_changed.html"
+	mfaEnabledTemplate              = "mfa_enabled.html"
+	mfaDisabledTemplate             = "mfa_disabled.html"
+	recoveryCodeUsedTemplate        = "recovery_code_used.html"
+	mfaLoginFailedTemplate          = "mfa_login_failed.html"
+	newLoginTemplate                = "new_login.html"
+	accountDeletedTemplate          = "account_deleted.html"
+	teamMemberRemovedTemplate       = "team_member_removed.html"
+	teamMemberRoleChangedTemplate   = "team_member_role_changed.html"
+	teamTokenCreatedTemplate        = "team_token_created.html"
+	teamTokenRevokedTemplate        = "team_token_revoked.html"
+	teamInvitationTemplate          = "team_invitation.html"
+	subscriptionPastDueTemplate     = "subscription_past_due.html"
+	walletBalanceAlertTemplate      = "wallet_balance_alert.html"
+	walletTopUpSucceededTemplate    = "wallet_top_up_succeeded.html"
+	walletTopUpFailedTemplate       = "wallet_top_up_failed.html"
+	senderDomainVerifiedTemplate    = "sender_domain_verified.html"
+	senderDomainFailedTemplate      = "sender_domain_failed.html"
+	senderDomainDegradedTemplate    = "sender_domain_degraded.html"
+	senderIDApprovedTemplate        = "sender_id_approved.html"
+	senderIDRejectedTemplate        = "sender_id_rejected.html"
+	senderIDSuspendedTemplate       = "sender_id_suspended.html"
+	subscriptionChangeTemplate      = "subscription_change.html"
+	webhookEndpointDisabledTemplate = "webhook_endpoint_disabled.html"
 )
 
 type EmailService struct {
@@ -54,6 +68,10 @@ type SendTemplateEmailInput struct {
 }
 
 func (s *EmailService) SendTemplateEmail(ctx context.Context, input SendTemplateEmailInput) error {
+	return s.sendTemplateEmail(ctx, nil, input)
+}
+
+func (s *EmailService) sendTemplateEmail(ctx context.Context, tx pgx.Tx, input SendTemplateEmailInput) error {
 	if s == nil {
 		return errors.New("email service is not configured")
 	}
@@ -67,17 +85,179 @@ func (s *EmailService) SendTemplateEmail(ctx context.Context, input SendTemplate
 	if err != nil {
 		return err
 	}
-	_, err = s.sender.Send(ctx, platformemail.Message{
+	message := platformemail.Message{
 		From:    platformemail.Address{Email: s.fromEmail, Name: "Dugble"},
 		To:      []platformemail.Address{{Email: input.To}},
 		Subject: input.Subject,
 		HTML:    body,
-	})
+	}
+	if tx == nil {
+		_, err = s.sender.Send(ctx, message)
+	} else if sender, ok := s.sender.(TransactionalEmailSender); ok {
+		_, err = sender.SendTx(ctx, tx, message)
+	} else {
+		return errors.New("transactional email sender is not configured")
+	}
 	if err != nil {
 		sentrymonitoring.Warn("failed to send email", "error", err, "to", input.To, "template", input.TemplateName)
 		return fmt.Errorf("send email %s to %s: %w", input.TemplateName, input.To, err)
 	}
 	return nil
+}
+
+func (s *EmailService) SendSubscriptionPastDue(ctx context.Context, tx pgx.Tx, input SendSubscriptionPastDueInput) error {
+	data := map[string]string{
+		"Name": displayName(input.Name), "PreviewText": "Your Dugble subscription payment failed.",
+		"Team": displayName(input.TeamName), "Plan": displayValue(input.PlanCode),
+		"Amount": formatMoney(input.Currency, input.AmountUnits), "Balance": formatMoney(input.Currency, input.BalanceUnits),
+		"BillingURL": s.frontendURL + "/settings/billing",
+	}
+	return s.sendTemplateEmail(ctx, tx, SendTemplateEmailInput{To: input.ToEmail, Subject: "Action required: your Dugble subscription is past due", TemplateName: subscriptionPastDueTemplate, Data: data})
+}
+
+func formatMoney(currency string, units int64) string {
+	negative := units < 0
+	if negative {
+		units = -units
+	}
+	value := strconv.FormatInt(units/100, 10) + "." + fmt.Sprintf("%02d", units%100)
+	if negative {
+		value = "-" + value
+	}
+	return strings.TrimSpace(currency) + " " + value
+}
+
+func (s *EmailService) SendWalletBalanceAlert(ctx context.Context, input SendWalletBalanceAlertInput) error {
+	exhausted := strings.EqualFold(strings.TrimSpace(input.Level), "exhausted")
+	subject := "Your Dugble wallet balance is low"
+	preview := "Add funds to your Dugble wallet to avoid interrupted service."
+	message := "Your wallet is running low. Add funds soon to keep your messages sending."
+	if exhausted {
+		subject = "Action required: your Dugble wallet is empty"
+		preview = "Your Dugble wallet is empty."
+		message = "Your wallet is empty. Add funds now to restore paid message sending."
+	}
+	data := map[string]string{
+		"Name": displayName(input.Name), "PreviewText": preview,
+		"Team": displayName(input.TeamName), "Balance": formatMoney(input.Currency, input.BalanceUnits),
+		"Message": message, "BillingURL": s.frontendURL + "/settings/billing",
+	}
+	return s.SendTemplateEmail(ctx, SendTemplateEmailInput{To: input.ToEmail, Subject: subject, TemplateName: walletBalanceAlertTemplate, Data: data})
+}
+
+func (s *EmailService) SendWalletTopUpResult(ctx context.Context, input SendWalletTopUpResultInput) error {
+	succeeded := strings.EqualFold(strings.TrimSpace(input.Status), "paid")
+	subject := "Your Dugble wallet top-up failed"
+	templateName := walletTopUpFailedTemplate
+	preview := "Your Dugble wallet top-up was not completed."
+	if succeeded {
+		subject = "Your Dugble wallet top-up succeeded"
+		templateName = walletTopUpSucceededTemplate
+		preview = "Funds were added to your Dugble wallet."
+	}
+	data := map[string]string{
+		"Name": displayName(input.Name), "PreviewText": preview,
+		"Team": displayName(input.TeamName), "Amount": formatMoney(input.Currency, input.AmountUnits),
+		"Reference": displayValue(input.ClientReference), "BillingURL": s.frontendURL + "/dashboard/billing/transactions",
+	}
+	return s.SendTemplateEmail(ctx, SendTemplateEmailInput{To: input.ToEmail, Subject: subject, TemplateName: templateName, Data: data})
+}
+
+func (s *EmailService) SendSenderDomainStatus(ctx context.Context, input SendSenderDomainStatusInput) error {
+	status := strings.ToLower(strings.TrimSpace(input.Status))
+	reason := strings.TrimSpace(input.Reason)
+	if reason == "" {
+		reason = "DNS verification checks did not pass"
+	}
+	subject := "Your Dugble sender domain verification failed"
+	templateName := senderDomainFailedTemplate
+	preview := "Your sender domain could not be verified."
+	switch status {
+	case "verified":
+		subject = "Your Dugble sender domain is verified"
+		templateName = senderDomainVerifiedTemplate
+		preview = "Your sender domain is ready to send email."
+	case "degraded":
+		subject = "Action required: your Dugble sender domain is degraded"
+		templateName = senderDomainDegradedTemplate
+		preview = "Your sender domain verification checks are failing."
+	}
+	data := map[string]string{
+		"Name": displayName(input.Name), "PreviewText": preview,
+		"Domain": displayValue(input.Domain), "Reason": reason,
+		"DomainsURL": s.frontendURL + "/dashboard/domains",
+	}
+	return s.SendTemplateEmail(ctx, SendTemplateEmailInput{To: input.ToEmail, Subject: subject, TemplateName: templateName, Data: data})
+}
+
+func (s *EmailService) SendSenderIDStatus(ctx context.Context, input SendSenderIDStatusInput) error {
+	status := strings.ToLower(strings.TrimSpace(input.Status))
+	reason := strings.TrimSpace(input.Reason)
+	if reason == "" {
+		reason = "The provider did not supply a reason"
+	}
+	subject := "Your Dugble Sender ID was rejected"
+	templateName := senderIDRejectedTemplate
+	preview := "Your Sender ID registration was rejected."
+	switch status {
+	case "approved":
+		subject = "Your Dugble Sender ID was approved"
+		templateName = senderIDApprovedTemplate
+		preview = "Your Sender ID is ready to use."
+	case "suspended":
+		subject = "Action required: your Dugble Sender ID was suspended"
+		templateName = senderIDSuspendedTemplate
+		preview = "Your Sender ID was suspended."
+	}
+	data := map[string]string{
+		"Name": displayName(input.Name), "PreviewText": preview,
+		"SenderID": displayValue(input.SenderID), "Reason": reason,
+		"SenderIDsURL": s.frontendURL + "/dashboard/sender-ids",
+	}
+	return s.SendTemplateEmail(ctx, SendTemplateEmailInput{To: input.ToEmail, Subject: subject, TemplateName: templateName, Data: data})
+}
+
+func (s *EmailService) SendSubscriptionChange(ctx context.Context, input SendSubscriptionChangeInput) error {
+	return s.sendSubscriptionChange(ctx, nil, input)
+}
+
+func (s *EmailService) SendWebhookEndpointDisabled(ctx context.Context, input SendWebhookEndpointDisabledInput) error {
+	data := map[string]string{
+		"Name": displayName(input.Name), "PreviewText": "A Dugble webhook endpoint was automatically disabled.",
+		"EndpointURL": displayValue(input.EndpointURL), "FailureCount": strconv.FormatInt(int64(input.FailureCount), 10),
+		"ResponseStatus": displayValue(input.ResponseStatus), "LastError": displayValue(input.LastError),
+		"WebhooksURL": s.frontendURL + "/dashboard/webhooks",
+	}
+	return s.SendTemplateEmail(ctx, SendTemplateEmailInput{To: input.ToEmail, Subject: "Action required: a Dugble webhook endpoint was disabled", TemplateName: webhookEndpointDisabledTemplate, Data: data})
+}
+
+func (s *EmailService) SendSubscriptionChangeTx(ctx context.Context, tx pgx.Tx, input SendSubscriptionChangeInput) error {
+	return s.sendSubscriptionChange(ctx, tx, input)
+}
+
+func (s *EmailService) sendSubscriptionChange(ctx context.Context, tx pgx.Tx, input SendSubscriptionChangeInput) error {
+	event := strings.ToLower(strings.TrimSpace(input.Event))
+	subject := "Your Dugble subscription changed"
+	message := "Your subscription settings were updated."
+	switch event {
+	case "plan_change_scheduled":
+		subject = "Your Dugble plan change is scheduled"
+		message = fmt.Sprintf("Your plan will change from %s to %s on %s.", displayValue(input.CurrentPlan), displayValue(input.NewPlan), displayValue(input.EffectiveAt))
+	case "plan_change_activated":
+		subject = "Your Dugble plan change is active"
+		message = fmt.Sprintf("Your plan changed from %s to %s.", displayValue(input.CurrentPlan), displayValue(input.NewPlan))
+	case "plan_change_canceled":
+		subject = "Your Dugble plan change was canceled"
+		message = fmt.Sprintf("The scheduled change to %s was canceled. Your %s plan will continue.", displayValue(input.NewPlan), displayValue(input.CurrentPlan))
+	case "cancellation_scheduled":
+		subject = "Your Dugble subscription cancellation is scheduled"
+		message = fmt.Sprintf("Your %s subscription will be canceled on %s.", displayValue(input.CurrentPlan), displayValue(input.EffectiveAt))
+	case "cancellation_reversed":
+		subject = "Your Dugble subscription cancellation was reversed"
+		message = fmt.Sprintf("Your %s subscription will remain active.", displayValue(input.CurrentPlan))
+	}
+	data := map[string]string{"Name": displayName(input.Name), "PreviewText": subject, "Message": message, "BillingURL": s.frontendURL + "/dashboard/billing"}
+	return s.sendTemplateEmail(ctx, tx, SendTemplateEmailInput{To: input.ToEmail, Subject: subject, TemplateName: subscriptionChangeTemplate, Data: data})
 }
 
 func (s *EmailService) SendEmailVerification(ctx context.Context, input SendEmailVerificationInput) error {

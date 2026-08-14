@@ -32,6 +32,7 @@ type PaymentProvider interface {
 type paymentService interface {
 	Create(context.Context, payment.CreateInput) (payment.Transaction, error)
 	Complete(context.Context, payment.CompleteInput) (payment.Transaction, error)
+	Fail(context.Context, payment.FailInput) (payment.Transaction, error)
 }
 
 type Service struct {
@@ -129,6 +130,9 @@ func (s *Service) TopUp(ctx context.Context, req TopUpRequest) (TopUpResponse, e
 		return TopUpResponse{}, apperrors.NewServiceUnavailable("Unable to initiate Hubtel checkout", err)
 	}
 	if checkout.ResponseCode != "0000" || !strings.EqualFold(strings.TrimSpace(checkout.Status), "Success") {
+		if _, err := s.payments.Fail(ctx, payment.FailInput{Provider: payment.ProviderHubtel, ClientReference: clientReference}); err != nil {
+			return TopUpResponse{}, err
+		}
 		return TopUpResponse{}, apperrors.NewBadRequest("Hubtel checkout was not accepted")
 	}
 
@@ -145,10 +149,6 @@ func (s *Service) HandleHubtelCallback(ctx context.Context, payload hubteladapte
 	if s.hubtel == nil || s.payments == nil {
 		return nil, apperrors.NewServiceUnavailable("Wallet top-ups are not configured", nil)
 	}
-	if payload.ResponseCode != "0000" || !strings.EqualFold(strings.TrimSpace(payload.Status), "Success") || !hubteladapter.IsPaidStatus(payload.Data.Status) {
-		return nil, nil
-	}
-
 	callbackStatus, err := s.hubtel.MapCallback(payload)
 	if err != nil {
 		return nil, apperrors.NewBadRequest("Invalid Hubtel callback payload")
@@ -156,6 +156,13 @@ func (s *Service) HandleHubtelCallback(ctx context.Context, payload hubteladapte
 	callbackStatus.ClientReference = strings.TrimSpace(callbackStatus.ClientReference)
 	if callbackStatus.ClientReference == "" {
 		return nil, apperrors.NewBadRequest("Hubtel callback client reference is required")
+	}
+	if payload.ResponseCode != "0000" || !strings.EqualFold(strings.TrimSpace(payload.Status), "Success") || !hubteladapter.IsPaidStatus(callbackStatus.Status) {
+		transaction, err := s.payments.Fail(ctx, payment.FailInput{Provider: payment.ProviderHubtel, ClientReference: callbackStatus.ClientReference})
+		if err != nil {
+			return nil, err
+		}
+		return &transaction, nil
 	}
 
 	verifiedStatus, err := s.hubtel.VerifyTransaction(ctx, callbackStatus.ClientReference)

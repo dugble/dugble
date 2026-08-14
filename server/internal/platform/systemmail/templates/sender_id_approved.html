@@ -1,0 +1,5 @@
+{{template "email.header" .}}
+    <p>Hi {{.Name}},</p>
+    <p>Your Sender ID <strong>{{.SenderID}}</strong> was approved and is ready to use.</p>
+    <p><a href="{{.SenderIDsURL}}">View Sender IDs</a></p>
+{{template "email.footer" .}}

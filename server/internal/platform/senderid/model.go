@@ -8,10 +8,11 @@ const (
 	ProviderMoolre  = "moolre"
 	ProviderRunnage = "runnage"
 
-	StatusPending  = "pending"
-	StatusApproved = "approved"
-	StatusRejected = "rejected"
-	StatusUnknown  = "unknown"
+	StatusPending   = "pending"
+	StatusApproved  = "approved"
+	StatusRejected  = "rejected"
+	StatusSuspended = "suspended"
+	StatusUnknown   = "unknown"
 )
 
 type CreateRequest struct {

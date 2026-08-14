@@ -48,3 +48,12 @@ WHERE id = sqlc.arg(id)
   AND amount_units = sqlc.arg(amount_units)
   AND status = 'pending'
 RETURNING *;
+
+-- name: MarkPaymentTransactionFailed :one
+UPDATE payment_transactions
+SET status = 'failed',
+    updated_at = now()
+WHERE id = sqlc.arg(id)
+  AND team_id = sqlc.arg(team_id)
+  AND status = 'pending'
+RETURNING *;

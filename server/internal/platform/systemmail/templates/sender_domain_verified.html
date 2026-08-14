@@ -1,0 +1,5 @@
+{{template "email.header" .}}
+    <p>Hi {{.Name}},</p>
+    <p>Your sender domain <strong>{{.Domain}}</strong> is verified and ready to send email.</p>
+    <p><a href="{{.DomainsURL}}">View sender domain</a></p>
+{{template "email.footer" .}}

@@ -52,6 +52,13 @@ func NewConsumer(repository repository, checker checker, config Config, workerID
 	}
 }
 
+func (c *Consumer) WithNotifier(notifier notifier) *Consumer {
+	if c != nil && c.processor != nil {
+		c.processor.WithNotifier(notifier)
+	}
+	return c
+}
+
 func (c *Consumer) Run(ctx context.Context) error {
 	if c == nil || c.repository == nil || c.processor == nil || c.processor.checker == nil {
 		return ErrConsumerNotConfigured

@@ -7,12 +7,17 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/dugble/dugble/server/internal/authz"
+	"github.com/dugble/dugble/server/internal/platform/systemmail"
 )
 
 type planSelectionStore struct {
 	scheduledPlan string
 	listedLimit   int32
 	listedOffset  int32
+}
+
+func (store *planSelectionStore) ListNotificationRecipients(context.Context, uuid.UUID) ([]systemmail.Recipient, error) {
+	return nil, nil
 }
 
 func (store *planSelectionStore) ListCharges(_ context.Context, _ uuid.UUID, limit, offset int32) ([]Charge, error) {

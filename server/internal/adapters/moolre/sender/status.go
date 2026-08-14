@@ -60,6 +60,8 @@ func normalizeStatus(status string) string {
 		return platformsenderid.StatusApproved
 	case "rejected":
 		return platformsenderid.StatusRejected
+	case "suspended":
+		return platformsenderid.StatusSuspended
 	default:
 		return platformsenderid.StatusUnknown
 	}

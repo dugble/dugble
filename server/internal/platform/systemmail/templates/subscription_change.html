@@ -1,0 +1,5 @@
+{{template "email.header" .}}
+    <p>Hi {{.Name}},</p>
+    <p>{{.Message}}</p>
+    <p><a href="{{.BillingURL}}">Review subscription</a></p>
+{{template "email.footer" .}}

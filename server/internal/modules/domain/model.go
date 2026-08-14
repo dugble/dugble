@@ -80,6 +80,19 @@ type SenderDomain struct {
 	UpdatedAt                 time.Time            `json:"updated_at"`
 }
 
+func NotificationStatus(previous, updated SenderDomain) string {
+	if updated.Status == StatusVerified && previous.Status != StatusVerified {
+		return StatusVerified
+	}
+	if updated.Status == StatusFailed && previous.Status != StatusFailed {
+		return StatusFailed
+	}
+	if updated.HealthStatus == HealthStatusDegraded && previous.HealthStatus != HealthStatusDegraded {
+		return HealthStatusDegraded
+	}
+	return ""
+}
+
 type CreateRequest struct {
 	Name              string        `json:"name"`
 	Domain            string        `json:"domain,omitempty"`

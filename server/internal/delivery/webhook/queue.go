@@ -16,7 +16,7 @@ type ClaimQueue interface {
 type ResultQueue interface {
 	MarkSucceeded(context.Context, uuid.UUID, string, int32, *string) error
 	ScheduleRetry(context.Context, uuid.UUID, string, time.Time, *int32, *string, string) error
-	MarkFailed(context.Context, uuid.UUID, string, *int32, *string, string) error
+	MarkFailed(context.Context, uuid.UUID, string, *int32, *string, string) (FailureResult, error)
 	ReleaseClaim(context.Context, uuid.UUID, string) error
 }
 
