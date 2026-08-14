@@ -44,14 +44,6 @@ const (
 
 type VerificationRecord = platformemail.VerificationRecord
 
-// Capabilities is retained internally for compatibility with the existing
-// persistence model. Sender domains are outbound-only, so callers cannot
-// configure capabilities through the public API.
-type Capabilities struct {
-	Sending   bool `json:"-"`
-	Receiving bool `json:"-"`
-}
-
 type SenderDomain struct {
 	ID                        string               `json:"id"`
 	TeamID                    string               `json:"team_id"`
@@ -63,12 +55,7 @@ type SenderDomain struct {
 	Status                    string               `json:"status"`
 	ProviderStatus            *string              `json:"provider_status,omitempty"`
 	VerificationRecords       []VerificationRecord `json:"records"`
-	OpenTracking              bool                 `json:"-"`
-	ClickTracking             bool                 `json:"-"`
-	TrackingSubdomain         *string              `json:"-"`
-	ActiveTrackingSubdomain   *string              `json:"-"`
 	TLS                       string               `json:"tls"`
-	Capabilities              Capabilities         `json:"-"`
 	CustomReturnPath          string               `json:"-"`
 	FailureReason             *string              `json:"failure_reason,omitempty"`
 	HealthStatus              string               `json:"health_status"`
@@ -83,9 +70,6 @@ type SenderDomain struct {
 	UpdatedAt                 time.Time            `json:"updated_at"`
 }
 
-// CreateRequest intentionally exposes only the sender-domain settings that are
-// part of the supported product contract. MAIL FROM, tracking, and capabilities
-// are platform-owned defaults.
 type CreateRequest struct {
 	Name   string `json:"name"`
 	Region string `json:"region"`
@@ -96,16 +80,9 @@ type UpdateRequest struct {
 	TLS *string `json:"tls,omitempty"`
 }
 
-// DomainConfiguration keeps legacy persistence fields internal while the
-// public API remains intentionally small. These defaults are not customer
-// configurable.
 type DomainConfiguration struct {
-	OpenTracking      bool
-	ClickTracking     bool
-	TrackingSubdomain *string
-	TLS               string
-	Capabilities      Capabilities
-	CustomReturnPath  string
+	TLS              string
+	CustomReturnPath string
 }
 
 type CreateResult struct {
@@ -135,11 +112,7 @@ type DomainClaim struct {
 	TargetTeamID            string             `json:"target_team_id"`
 	Region                  string             `json:"region"`
 	CustomReturnPath        string             `json:"-"`
-	OpenTracking            bool               `json:"-"`
-	ClickTracking           bool               `json:"-"`
-	TrackingSubdomain       *string            `json:"-"`
 	TLS                     string             `json:"tls"`
-	Capabilities            Capabilities       `json:"-"`
 	VerificationRecord      VerificationRecord `json:"record"`
 	BlockedReason           *string            `json:"blocked_reason,omitempty"`
 	FailureReason           *string            `json:"failure_reason,omitempty"`
