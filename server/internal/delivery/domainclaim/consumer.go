@@ -52,10 +52,10 @@ func NewConsumer(repository *domainclaim.Repository, service *domainclaim.Servic
 	}
 	return &Consumer{
 		repository: repository,
-		service: service,
-		config: config,
-		workerID: strings.TrimSpace(workerID),
-		now: func() time.Time { return time.Now().UTC() },
+		service:    service,
+		config:     config,
+		workerID:   strings.TrimSpace(workerID),
+		now:        func() time.Time { return time.Now().UTC() },
 	}, nil
 }
 

@@ -253,7 +253,9 @@ func (r *Repository) CompleteTransfer(ctx context.Context, claim Claim, workerID
 	return claimFromSQLC(completed), nil
 }
 
-func loadActiveSourceByName(ctx context.Context, q interface{ QueryRow(context.Context, string, ...any) pgx.Row }, name string) (sourceDomain, error) {
+func loadActiveSourceByName(ctx context.Context, q interface {
+	QueryRow(context.Context, string, ...any) pgx.Row
+}, name string) (sourceDomain, error) {
 	var id, teamID uuid.UUID
 	var createdBy *uuid.UUID
 	var verifiedAt *time.Time
@@ -280,7 +282,9 @@ func loadActiveSourceByName(ctx context.Context, q interface{ QueryRow(context.C
 	return source, nil
 }
 
-func loadSourceByID(ctx context.Context, q interface{ QueryRow(context.Context, string, ...any) pgx.Row }, id uuid.UUID) (sourceDomain, error) {
+func loadSourceByID(ctx context.Context, q interface {
+	QueryRow(context.Context, string, ...any) pgx.Row
+}, id uuid.UUID) (sourceDomain, error) {
 	var sourceID, teamID uuid.UUID
 	var createdBy *uuid.UUID
 	var verifiedAt *time.Time
@@ -353,9 +357,9 @@ func claimFromSQLC(row dbsqlc.DomainClaim) Claim {
 		TargetTeamID: row.TargetTeamID.String(), Region: row.ProviderRegion,
 		CustomReturnPath: row.CustomReturnPath, TLS: row.TlsMode,
 		VerificationRecord: VerificationRecord{Record: "claim", Name: row.RecordName, Value: row.RecordValue, Type: platformemail.RecordTypeTXT, Status: claimRecordStatus(row.Status), TTL: row.RecordTtl},
-		BlockedReason: row.BlockedReason, FailureReason: row.FailureReason,
+		BlockedReason:      row.BlockedReason, FailureReason: row.FailureReason,
 		VerificationRequestedAt: pgconv.TimestamptzToTimePtr(row.VerificationRequestedAt),
-		VerifiedAt: pgconv.TimestamptzToTimePtr(row.VerifiedAt), CompletedAt: pgconv.TimestamptzToTimePtr(row.CompletedAt),
+		VerifiedAt:              pgconv.TimestamptzToTimePtr(row.VerifiedAt), CompletedAt: pgconv.TimestamptzToTimePtr(row.CompletedAt),
 		ExpiresAt: row.ExpiresAt.Time, CreatedAt: row.CreatedAt.Time, UpdatedAt: row.UpdatedAt.Time,
 	}
 }
