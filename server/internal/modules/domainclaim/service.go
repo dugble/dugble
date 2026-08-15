@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/dugble/dugble/server/internal/authz"
 	"github.com/dugble/dugble/server/internal/modules/emailtenant"
@@ -20,6 +21,7 @@ type emailTenantProvisioner interface {
 }
 
 type Service struct {
+	db              *pgxpool.Pool
 	repository      *Repository
 	provider        platformemail.DomainProvider
 	dns             platformemail.DNSVerifier
@@ -27,9 +29,9 @@ type Service struct {
 	now             func() time.Time
 }
 
-func NewService(repository *Repository, provider platformemail.DomainProvider, dns platformemail.DNSVerifier, tenantProvision emailTenantProvisioner) *Service {
+func NewService(db *pgxpool.Pool, repository *Repository, provider platformemail.DomainProvider, dns platformemail.DNSVerifier, tenantProvision emailTenantProvisioner) *Service {
 	return &Service{
-		repository: repository, provider: provider, dns: dns, tenantProvision: tenantProvision,
+		db: db, repository: repository, provider: provider, dns: dns, tenantProvision: tenantProvision,
 		now: func() time.Time { return time.Now().UTC() },
 	}
 }
@@ -43,19 +45,43 @@ func (s *Service) Start(ctx context.Context, req Request) (Claim, error) {
 	if err != nil {
 		return Claim{}, err
 	}
-	claim, err := s.repository.Create(ctx, access.Scope.TeamID, access.Actor.UserID, name, region, cfg)
-	switch {
-	case errors.Is(err, pgx.ErrNoRows):
+	if s == nil || s.db == nil || s.repository == nil {
+		return Claim{}, apperrors.NewInternal("Sender domain claim service is not configured", nil)
+	}
+
+	tx, err := s.db.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return Claim{}, apperrors.NewInternal("Unable to begin sender domain claim", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	repository := s.repository.WithTx(tx)
+
+	source, err := repository.ActiveSourceByName(ctx, name)
+	if errors.Is(err, pgx.ErrNoRows) {
 		return Claim{}, apperrors.NewNotFound("Sender domain is not currently owned by another team")
-	case errors.Is(err, ErrAlreadyOwned):
+	}
+	if err != nil {
+		return Claim{}, apperrors.NewInternal("Unable to load sender domain ownership", err)
+	}
+	sourceTeamID, err := uuid.Parse(source.TeamID)
+	if err != nil {
+		return Claim{}, apperrors.NewInternal("Unable to resolve sender domain ownership", err)
+	}
+	if sourceTeamID == access.Scope.TeamID {
 		return Claim{}, apperrors.NewConflict("Sender domain is already owned by this team")
+	}
+
+	claim, err := repository.Create(ctx, access.Scope.TeamID, access.Actor.UserID, source, region, cfg, s.now())
+	switch {
 	case errors.Is(err, ErrClaimAlreadyExists):
 		return Claim{}, apperrors.NewConflict("An active claim already exists for this sender domain")
 	case err != nil:
 		return Claim{}, apperrors.NewInternal("Unable to create sender domain claim", err)
-	default:
-		return claim, nil
 	}
+	if err := tx.Commit(ctx); err != nil {
+		return Claim{}, apperrors.NewInternal("Unable to commit sender domain claim", err)
+	}
+	return claim, nil
 }
 
 func (s *Service) Get(ctx context.Context, domainID string) (Claim, error) {
@@ -108,7 +134,7 @@ func (s *Service) Cancel(ctx context.Context, domainID string) (Claim, error) {
 
 // Reconcile performs one idempotent ownership-transfer iteration for a locked claim.
 func (s *Service) Reconcile(ctx context.Context, claim Claim, workerID string) (Claim, error) {
-	if s == nil || s.repository == nil || s.provider == nil || s.dns == nil || s.tenantProvision == nil {
+	if s == nil || s.db == nil || s.repository == nil || s.provider == nil || s.dns == nil || s.tenantProvision == nil {
 		return Claim{}, errors.New("domain claim reconciliation is not configured")
 	}
 	claimID, err := uuid.Parse(claim.ID)
@@ -196,9 +222,18 @@ func (s *Service) Reconcile(ctx context.Context, claim Claim, workerID string) (
 	if err != nil {
 		return Claim{}, fmt.Errorf("provision claimed domain for target team: %w", err)
 	}
-	completed, err := s.repository.CompleteTransfer(ctx, verified, workerID, records)
+
+	tx, err := s.db.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return Claim{}, fmt.Errorf("begin domain claim transfer completion: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	completed, err := s.repository.WithTx(tx).CompleteTransfer(ctx, verified, workerID, records)
 	if err != nil {
 		return Claim{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return Claim{}, fmt.Errorf("commit domain claim transfer: %w", err)
 	}
 	return completed, nil
 }
