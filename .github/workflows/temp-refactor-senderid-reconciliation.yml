@@ -1,0 +1,67 @@
+name: Temporary Refactor Sender ID Reconciliation
+
+on:
+  push:
+    branches:
+      - agent/refactor-senderid-reconciliation-job
+
+permissions:
+  contents: write
+
+jobs:
+  refactor:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/refactor-senderid-reconciliation-job
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: server/go.mod
+      - name: Install sqlc
+        run: go install github.com/sqlc-dev/sqlc/cmd/sqlc@v1.31.1
+      - name: Move worker wiring to sender ID module
+        run: |
+          sed -i 's#senderidreconciliation "github.com/dugble/dugble/server/internal/delivery/senderid"#senderidmodule "github.com/dugble/dugble/server/internal/modules/senderid"#' server/internal/registry/worker/modules.go
+          sed -i 's/senderIDConsumer, consumerErr := senderidreconciliation.NewConsumer(/senderIDJob, jobErr := senderidmodule.NewJob(/' server/internal/registry/worker/modules.go
+          sed -i 's/senderidreconciliation.NewRepository(db)/senderidmodule.NewRepository(db)/' server/internal/registry/worker/modules.go
+          sed -i 's/senderidreconciliation.DefaultConfig()/senderidmodule.DefaultJobConfig()/' server/internal/registry/worker/modules.go
+          sed -i 's/if consumerErr != nil {/if jobErr != nil {/' server/internal/registry/worker/modules.go
+          sed -i 's/consumerErr)/jobErr)/' server/internal/registry/worker/modules.go
+          sed -i 's/senderIDConsumer.WithNotifier(notificationEmailService)/senderIDJob.WithNotifier(notificationEmailService)/' server/internal/registry/worker/modules.go
+          sed -i 's/senderIDRun = senderIDConsumer.Run/senderIDRun = senderIDJob.Run/' server/internal/registry/worker/modules.go
+      - name: Move reconciliation test into module
+        run: |
+          cp server/internal/delivery/senderid/processor_test.go server/internal/modules/senderid/service_reconciliation_test.go
+          sed -i 's/package senderidreconciliation/package senderid/' server/internal/modules/senderid/service_reconciliation_test.go
+          rm -rf server/internal/delivery/senderid
+      - name: Regenerate sqlc
+        working-directory: server
+        run: sqlc generate
+      - name: Format
+        run: gofmt -w server/internal/modules/senderid server/internal/registry/worker/modules.go server/internal/database/sqlc
+      - name: Assert vertical ownership
+        run: |
+          test ! -d server/internal/delivery/senderid
+          test -f server/internal/modules/senderid/jobs.go
+          if grep -R 'internal/delivery/senderid' -n server --include='*.go'; then
+            echo 'delivery/senderid import remains' >&2
+            exit 1
+          fi
+          if grep -Eq '\.Query(Row)?\(|\.Exec\(' server/internal/modules/senderid/repository.go; then
+            echo 'senderid repository contains raw database calls' >&2
+            exit 1
+          fi
+      - name: Run full server tests
+        working-directory: server
+        run: go test ./...
+      - name: Commit refactor
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -A server
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m "Verticalize sender ID reconciliation job"
+          git push origin HEAD:agent/refactor-senderid-reconciliation-job
