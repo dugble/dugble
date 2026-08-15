@@ -7,9 +7,8 @@ import (
 )
 
 type fakeJobProcessor struct {
-	calls     int
-	batchSize int
-	err       error
+	calls int
+	err   error
 }
 
 func (p *fakeJobProcessor) ProcessBatch(context.Context, int) error {
