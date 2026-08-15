@@ -34,9 +34,6 @@ jobs:
           s = service.read_text()
           s = s.replace('"github.com/jackc/pgx/v5"\n', '"github.com/jackc/pgx/v5"\n\t"github.com/jackc/pgx/v5/pgxpool"\n')
           s = s.replace('type Service struct {\n\trepository', 'type Service struct {\n\tdb                *pgxpool.Pool\n\trepository')
-          marker = 'func NewService(\n\trepository *Repository,'
-          if marker not in s:
-              raise SystemExit('email NewService signature not found')
           end = '\treturn service\n}\n\nfunc requireTenant'
           replacement = '\treturn service\n}\n\nfunc (s *Service) WithDatabase(db *pgxpool.Pool) *Service {\n\tif s != nil {\n\t\ts.db = db\n\t}\n\treturn s\n}\n\nfunc requireTenant'
           if end not in s:
@@ -47,16 +44,10 @@ jobs:
 
           registry = Path('server/internal/registry/server/modules.go')
           r = registry.read_text()
-          old = '''emailAPIService := emailmodule.NewService(
-		emailmodule.NewRepository(db),
-		emaildelivery.NewQueue(registry.outbox),
-		emailmodule.ServiceConfig{DefaultFromEmail: cfg.AWS.FromEmail, DefaultProvider: domainmodule.DefaultProvider, DefaultRegion: cfg.AWS.Region},
-		billingService,
-	)'''
-          new = old + '.WithDatabase(db)'
+          old = 'emailAPIService := emailmodule.NewService(\n\t\temailmodule.NewRepository(db),\n\t\temaildelivery.NewQueue(registry.outbox),\n\t\temailmodule.ServiceConfig{DefaultFromEmail: cfg.AWS.FromEmail, DefaultProvider: domainmodule.DefaultProvider, DefaultRegion: cfg.AWS.Region},\n\t\tbillingService,\n\t)'
           if old not in r:
               raise SystemExit('email service registry wiring not found')
-          registry.write_text(r.replace(old, new, 1))
+          registry.write_text(r.replace(old, old + '.WithDatabase(db)', 1))
           PY
           gofmt -w server/internal/modules/email/repository.go server/internal/modules/email/service.go server/internal/registry/server/modules.go server/internal/database/sqlc
       - name: Assert repository boundary
