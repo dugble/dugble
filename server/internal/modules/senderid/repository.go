@@ -68,7 +68,7 @@ func (r *Repository) List(ctx context.Context, teamID uuid.UUID) ([]SenderID, er
 	if r == nil || r.queries == nil {
 		return nil, errors.New("sender id repository is not configured")
 	}
-	rows, err := r.queries.ListSenderIDs(ctx, teamID)
+	rows, err := r.queries.ListSenderIDs(ctx, dbsqlc.ListSenderIDsParams{TeamID: teamID})
 	if err != nil {
 		return nil, fmt.Errorf("list sender ids: %w", err)
 	}
