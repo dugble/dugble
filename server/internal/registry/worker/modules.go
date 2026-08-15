@@ -23,6 +23,7 @@ import (
 	subscriptionRenewal "github.com/dugble/dugble/server/internal/billing/subscription/renewal"
 	broadcastexecution "github.com/dugble/dugble/server/internal/delivery/broadcast"
 	domainreconciliation "github.com/dugble/dugble/server/internal/delivery/domain"
+	domainclaimreconciliation "github.com/dugble/dugble/server/internal/delivery/domainclaim"
 	emailfeedback "github.com/dugble/dugble/server/internal/delivery/email/feedback"
 	emaildelivery "github.com/dugble/dugble/server/internal/delivery/email/outbound"
 	systememail "github.com/dugble/dugble/server/internal/delivery/email/system"
@@ -34,6 +35,7 @@ import (
 	broadcastmodule "github.com/dugble/dugble/server/internal/modules/broadcast"
 	smscampaignmodule "github.com/dugble/dugble/server/internal/modules/campaign"
 	domainmodule "github.com/dugble/dugble/server/internal/modules/domain"
+	domainclaimmodule "github.com/dugble/dugble/server/internal/modules/domainclaim"
 	"github.com/dugble/dugble/server/internal/modules/emailtenant"
 	tenantprovision "github.com/dugble/dugble/server/internal/modules/emailtenant/provisioning"
 	smsmodule "github.com/dugble/dugble/server/internal/modules/sms"
@@ -47,22 +49,23 @@ import (
 )
 
 type modules struct {
-	subscriptionRenewal     func(context.Context) error
-	outboxRelay             func(context.Context) error
-	transactionalEmail      func(context.Context) error
-	marketingEmail          func(context.Context) error
-	systemEmail             func(context.Context) error
-	emailTenantProvisioning func(context.Context) error
-	emailFeedback           func(context.Context) error
-	emailFeedbackReconciler func(context.Context) error
-	emailFeedbackMetrics    func(context.Context) error
-	smsDelivery             func(context.Context) error
-	smsFeedback             func(context.Context) error
-	smsCampaign             func(context.Context) error
-	webhookDelivery         func(context.Context) error
-	domainReconciliation    func(context.Context) error
-	broadcastExecution      func(context.Context) error
-	senderIDReconciliation  func(context.Context) error
+	subscriptionRenewal       func(context.Context) error
+	outboxRelay               func(context.Context) error
+	transactionalEmail        func(context.Context) error
+	marketingEmail            func(context.Context) error
+	systemEmail               func(context.Context) error
+	emailTenantProvisioning   func(context.Context) error
+	emailFeedback             func(context.Context) error
+	emailFeedbackReconciler   func(context.Context) error
+	emailFeedbackMetrics      func(context.Context) error
+	smsDelivery               func(context.Context) error
+	smsFeedback               func(context.Context) error
+	smsCampaign               func(context.Context) error
+	webhookDelivery           func(context.Context) error
+	domainReconciliation      func(context.Context) error
+	domainClaimReconciliation func(context.Context) error
+	broadcastExecution        func(context.Context) error
+	senderIDReconciliation    func(context.Context) error
 }
 
 func (registry *Registry) newModules(startupCtx context.Context) (modules, error) {
@@ -135,10 +138,12 @@ func (registry *Registry) newModules(startupCtx context.Context) (modules, error
 	}
 	systemEmailQueue := systememail.NewQueue(outboxRepository, platformemail.Message{Provider: awsses.ProviderSES, Region: cfg.AWS.Region, Stream: "transactional", ConfigurationSet: platformemail.TransactionalConfigurationSet, SESTenantName: platformemail.SystemSESTenantName})
 	notificationEmailService := systemmail.NewEmailService(systemEmailQueue, systemEmailRenderer, cfg.FrontendURL, cfg.AWS.FromEmail)
+	emailTenantRepository := emailtenant.NewRepository(db)
+	emailTenantService := emailtenant.NewService(emailTenantRepository, tenantprovision.NewQueue(outboxRepository))
 	emailTenantConsumer := tenantprovision.NewConsumer(
 		messagingClient,
 		processedEvents,
-		tenantprovision.NewProcessor(emailtenant.NewRepository(db), emailSender),
+		tenantprovision.NewProcessor(emailTenantRepository, emailSender),
 		tenantprovision.Config{Concurrency: 3, AckWait: 2 * time.Minute, HandlerTimeout: 60 * time.Second, RetryBackOff: tenantprovision.DefaultRetryBackOff()},
 	)
 
@@ -169,8 +174,9 @@ func (registry *Registry) newModules(startupCtx context.Context) (modules, error
 	)
 	emailFeedbackMetricsCollector := emailfeedback.NewMetricsCollector(db, feedbackMetrics, 15*time.Second)
 
+	dnsVerifier := netdns.New()
 	domainRepository := domainmodule.NewRepository(db)
-	domainService := domainmodule.NewService(domainRepository, emailSender, netdns.New())
+	domainService := domainmodule.NewService(domainRepository, emailSender, dnsVerifier)
 	domainConsumer := domainreconciliation.NewConsumer(
 		domainRepository,
 		domainService,
@@ -187,6 +193,18 @@ func (registry *Registry) newModules(startupCtx context.Context) (modules, error
 		"sender-domain-reconciliation-"+uuid.NewString(),
 	)
 	domainConsumer.WithNotifier(notificationEmailService)
+
+	domainClaimRepository := domainclaimmodule.NewRepository(db)
+	domainClaimService := domainclaimmodule.NewService(domainClaimRepository, emailSender, dnsVerifier, emailTenantService)
+	domainClaimConsumer, err := domainclaimreconciliation.NewConsumer(
+		domainClaimRepository,
+		domainClaimService,
+		domainclaimreconciliation.DefaultConfig(),
+		"sender-domain-claim-reconciliation-"+uuid.NewString(),
+	)
+	if err != nil {
+		return modules{}, fmt.Errorf("initialize domain claim reconciliation: %w", err)
+	}
 
 	senderIDRun := disabledSenderIDReconciliation
 	if cfg.Moolre.VASKey == "" {
@@ -284,22 +302,23 @@ func (registry *Registry) newModules(startupCtx context.Context) (modules, error
 	}
 
 	return modules{
-		subscriptionRenewal:     renewalWorker.Run,
-		outboxRelay:             outboxRelay.Run,
-		transactionalEmail:      transactionalEmailConsumer.Run,
-		marketingEmail:          marketingEmailConsumer.Run,
-		systemEmail:             systemEmailConsumer.Run,
-		emailTenantProvisioning: emailTenantConsumer.Run,
-		emailFeedback:           emailFeedbackConsumer.Run,
-		emailFeedbackReconciler: emailFeedbackReconciler.Run,
-		emailFeedbackMetrics:    emailFeedbackMetricsCollector.Run,
-		smsDelivery:             smsConsumer.Run,
-		smsFeedback:             smsFeedbackConsumer.Run,
-		smsCampaign:             smsCampaignConsumer.Run,
-		webhookDelivery:         webhookConsumer.Run,
-		domainReconciliation:    domainConsumer.Run,
-		broadcastExecution:      broadcastExecutionConsumer.Run,
-		senderIDReconciliation:  senderIDRun,
+		subscriptionRenewal:       renewalWorker.Run,
+		outboxRelay:               outboxRelay.Run,
+		transactionalEmail:        transactionalEmailConsumer.Run,
+		marketingEmail:            marketingEmailConsumer.Run,
+		systemEmail:               systemEmailConsumer.Run,
+		emailTenantProvisioning:   emailTenantConsumer.Run,
+		emailFeedback:             emailFeedbackConsumer.Run,
+		emailFeedbackReconciler:   emailFeedbackReconciler.Run,
+		emailFeedbackMetrics:      emailFeedbackMetricsCollector.Run,
+		smsDelivery:               smsConsumer.Run,
+		smsFeedback:               smsFeedbackConsumer.Run,
+		smsCampaign:               smsCampaignConsumer.Run,
+		webhookDelivery:           webhookConsumer.Run,
+		domainReconciliation:      domainConsumer.Run,
+		domainClaimReconciliation: domainClaimConsumer.Run,
+		broadcastExecution:        broadcastExecutionConsumer.Run,
+		senderIDReconciliation:    senderIDRun,
 	}, nil
 }
 
