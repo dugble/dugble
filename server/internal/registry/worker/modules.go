@@ -23,7 +23,6 @@ import (
 	subscriptionRenewal "github.com/dugble/dugble/server/internal/billing/subscription/renewal"
 	broadcastexecution "github.com/dugble/dugble/server/internal/delivery/broadcast"
 	domainreconciliation "github.com/dugble/dugble/server/internal/delivery/domain"
-	domainclaimreconciliation "github.com/dugble/dugble/server/internal/delivery/domainclaim"
 	emailfeedback "github.com/dugble/dugble/server/internal/delivery/email/feedback"
 	emaildelivery "github.com/dugble/dugble/server/internal/delivery/email/outbound"
 	systememail "github.com/dugble/dugble/server/internal/delivery/email/system"
@@ -195,11 +194,11 @@ func (registry *Registry) newModules(startupCtx context.Context) (modules, error
 	domainConsumer.WithNotifier(notificationEmailService)
 
 	domainClaimRepository := domainclaimmodule.NewRepository(db)
-	domainClaimService := domainclaimmodule.NewService(domainClaimRepository, emailSender, dnsVerifier, emailTenantService)
-	domainClaimConsumer, err := domainclaimreconciliation.NewConsumer(
+	domainClaimService := domainclaimmodule.NewService(db, domainClaimRepository, emailSender, dnsVerifier, emailTenantService)
+	domainClaimJob, err := domainclaimmodule.NewJob(
 		domainClaimRepository,
 		domainClaimService,
-		domainclaimreconciliation.DefaultConfig(),
+		domainclaimmodule.DefaultJobConfig(),
 		"sender-domain-claim-reconciliation-"+uuid.NewString(),
 	)
 	if err != nil {
@@ -316,7 +315,7 @@ func (registry *Registry) newModules(startupCtx context.Context) (modules, error
 		smsCampaign:               smsCampaignConsumer.Run,
 		webhookDelivery:           webhookConsumer.Run,
 		domainReconciliation:      domainConsumer.Run,
-		domainClaimReconciliation: domainClaimConsumer.Run,
+		domainClaimReconciliation: domainClaimJob.Run,
 		broadcastExecution:        broadcastExecutionConsumer.Run,
 		senderIDReconciliation:    senderIDRun,
 	}, nil

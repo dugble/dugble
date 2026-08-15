@@ -108,7 +108,7 @@ func (registry *Registry) registerModules(router *echo.Echo) error {
 	dnsVerifier := netdns.New()
 	domainService := domainmodule.NewService(domainRepository, registry.emailClient, dnsVerifier, emailTenantService).WithNotifier(notificationEmailService)
 	domainClaimRepository := domainclaimmodule.NewRepository(db)
-	domainClaimService := domainclaimmodule.NewService(domainClaimRepository, registry.emailClient, dnsVerifier, emailTenantService)
+	domainClaimService := domainclaimmodule.NewService(db, domainClaimRepository, registry.emailClient, dnsVerifier, emailTenantService)
 	walletService := walletmodule.NewService(
 		walletmodule.NewRepository(db),
 		walletmodule.ServiceConfig{FrontendURL: cfg.FrontendURL, BackendURL: cfg.BackendURL},
