@@ -24,38 +24,25 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
+          import re
 
           repo = Path('server/internal/modules/emailtenant/repository.go')
           s = repo.read_text()
           s = s.replace('type Repository struct {\n\tdb      *pgxpool.Pool\n\tqueries *dbsqlc.Queries\n}', 'type Repository struct {\n\tqueries *dbsqlc.Queries\n}')
           s = s.replace('return &Repository{db: db, queries: dbsqlc.New(db)}', 'return &Repository{queries: dbsqlc.New(db)}')
-          begin = '''func (r *Repository) BeginTx(ctx context.Context) (Transaction, error) {
-	if r == nil || r.db == nil {
-		return nil, errors.New("email tenant repository is not configured")
-	}
-	return r.db.BeginTx(ctx, pgx.TxOptions{})
-}
-
-'''
-          s = s.replace(begin, '')
+          s = re.sub(r'func \(r \*Repository\) BeginTx\(ctx context\.Context\) \(Transaction, error\) \{.*?\n\}\n\n', '', s, count=1, flags=re.S)
           repo.write_text(s)
 
           server = Path('server/internal/registry/server/modules.go')
           s = server.read_text()
           s = s.replace('\ttenantprovision "github.com/dugble/dugble/server/internal/modules/emailtenant/provisioning"\n', '')
-          s = s.replace(
-              'emailTenantService := emailtenant.NewService(emailtenant.NewRepository(db), tenantprovision.NewQueue(registry.outbox))',
-              'emailTenantService := emailtenant.NewService(db, emailtenant.NewRepository(db), emailtenant.NewProvisioningQueue(registry.outbox))',
-          )
+          s = s.replace('emailTenantService := emailtenant.NewService(emailtenant.NewRepository(db), tenantprovision.NewQueue(registry.outbox))', 'emailTenantService := emailtenant.NewService(db, emailtenant.NewRepository(db), emailtenant.NewProvisioningQueue(registry.outbox))')
           server.write_text(s)
 
           worker = Path('server/internal/registry/worker/modules.go')
           s = worker.read_text()
           s = s.replace('\ttenantprovision "github.com/dugble/dugble/server/internal/modules/emailtenant/provisioning"\n', '')
-          s = s.replace(
-              'emailTenantService := emailtenant.NewService(emailTenantRepository, tenantprovision.NewQueue(outboxRepository))',
-              'emailTenantService := emailtenant.NewService(db, emailTenantRepository, emailtenant.NewProvisioningQueue(outboxRepository))',
-          )
+          s = s.replace('emailTenantService := emailtenant.NewService(emailTenantRepository, tenantprovision.NewQueue(outboxRepository))', 'emailTenantService := emailtenant.NewService(db, emailTenantRepository, emailtenant.NewProvisioningQueue(outboxRepository))')
           s = s.replace(
               'emailTenantConsumer := tenantprovision.NewConsumer(\n\t\tmessagingClient,\n\t\tprocessedEvents,\n\t\ttenantprovision.NewProcessor(emailTenantRepository, emailSender),\n\t\ttenantprovision.Config{Concurrency: 3, AckWait: 2 * time.Minute, HandlerTimeout: 60 * time.Second, RetryBackOff: tenantprovision.DefaultRetryBackOff()},\n\t)',
               'emailTenantConsumer := emailtenant.NewProvisioningConsumer(\n\t\tmessagingClient,\n\t\tprocessedEvents,\n\t\temailtenant.NewProvisioningProcessor(emailTenantRepository, emailSender),\n\t\temailtenant.ProvisioningConsumerConfig{Concurrency: 3, AckWait: 2 * time.Minute, HandlerTimeout: 60 * time.Second, RetryBackOff: emailtenant.DefaultProvisioningRetryBackOff()},\n\t)',
