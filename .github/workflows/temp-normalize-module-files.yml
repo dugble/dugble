@@ -1,0 +1,77 @@
+name: Temporary Normalize Module Files
+
+on:
+  push:
+    branches:
+      - agent/fix-domain-lifecycle-claims
+
+permissions:
+  contents: write
+
+jobs:
+  normalize:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/fix-domain-lifecycle-claims
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: server/go.mod
+      - name: Fold capability code into canonical files
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          moves = [
+              ('server/internal/modules/broadcast/duplicate.go', 'server/internal/modules/broadcast/handler.go'),
+              ('server/internal/modules/campaign/communication_credit_preflight.go', 'server/internal/modules/campaign/repository.go'),
+              ('server/internal/modules/contact/events.go', 'server/internal/modules/contact/service.go'),
+              ('server/internal/modules/domain/reconciliation_attempts.go', 'server/internal/modules/domain/repository.go'),
+              ('server/internal/modules/emailtenant/provider.go', 'server/internal/modules/emailtenant/model.go'),
+              ('server/internal/modules/emailtenant/naming.go', 'server/internal/modules/emailtenant/service.go'),
+              ('server/internal/modules/messagetemplate/render.go', 'server/internal/modules/messagetemplate/service.go'),
+              ('server/internal/modules/mfa/cryptography.go', 'server/internal/modules/mfa/service.go'),
+              ('server/internal/modules/suppression/channel.go', 'server/internal/modules/suppression/model.go'),
+              ('server/internal/modules/suppression/channel_repository.go', 'server/internal/modules/suppression/repository.go'),
+              ('server/internal/modules/suppression/events.go', 'server/internal/modules/suppression/service.go'),
+          ]
+
+          for source_name, target_name in moves:
+              source = Path(source_name)
+              target = Path(target_name)
+              if not source.exists():
+                  continue
+              text = source.read_text()
+              text = re.sub(r'^package\s+\w+\s*\n', '', text, count=1)
+              target.write_text(target.read_text().rstrip() + '\n\n' + text.lstrip())
+              source.unlink()
+          PY
+      - name: Normalize imports and formatting
+        run: |
+          go run golang.org/x/tools/cmd/goimports@v0.37.0 -w \
+            server/internal/modules/broadcast/handler.go \
+            server/internal/modules/campaign/repository.go \
+            server/internal/modules/contact/service.go \
+            server/internal/modules/domain/repository.go \
+            server/internal/modules/emailtenant/model.go \
+            server/internal/modules/emailtenant/service.go \
+            server/internal/modules/messagetemplate/service.go \
+            server/internal/modules/mfa/service.go \
+            server/internal/modules/suppression/model.go \
+            server/internal/modules/suppression/repository.go \
+            server/internal/modules/suppression/service.go
+      - name: Run full server tests
+        working-directory: server
+        run: go test ./...
+      - name: Commit normalized module files
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -A server
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m "Normalize module files by capability responsibility"
+          git push origin HEAD:agent/fix-domain-lifecycle-claims
