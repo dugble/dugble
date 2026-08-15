@@ -111,7 +111,6 @@ type Querier interface {
 	CreateChannelSuppression(ctx context.Context, arg CreateChannelSuppressionParams) (ChannelSuppression, error)
 	CreateClaimTargetDNSRecord(ctx context.Context, arg CreateClaimTargetDNSRecordParams) (DomainDnsRecord, error)
 	CreateClaimTargetDomain(ctx context.Context, arg CreateClaimTargetDomainParams) (Domain, error)
-	CreateClaimedDomain(ctx context.Context, arg CreateClaimedDomainParams) (Domain, error)
 	CreateContact(ctx context.Context, arg CreateContactParams) (Contact, error)
 	CreateContactProperty(ctx context.Context, arg CreateContactPropertyParams) (ContactProperty, error)
 	CreateDomain(ctx context.Context, arg CreateDomainParams) (Domain, error)
@@ -160,7 +159,6 @@ type Querier interface {
 	DeleteDisabledDomainIfUnreferenced(ctx context.Context, arg DeleteDisabledDomainIfUnreferencedParams) (Domain, error)
 	DeleteDomain(ctx context.Context, arg DeleteDomainParams) (Domain, error)
 	DeleteDomainDNSRecords(ctx context.Context, arg DeleteDomainDNSRecordsParams) error
-	DeleteDomainForClaim(ctx context.Context, arg DeleteDomainForClaimParams) (Domain, error)
 	DeleteEmailTenant(ctx context.Context, arg DeleteEmailTenantParams) (int64, error)
 	DeleteExpiredVerificationTokens(ctx context.Context) error
 	DeleteIdempotencyKey(ctx context.Context, arg DeleteIdempotencyKeyParams) error
@@ -211,7 +209,6 @@ type Querier interface {
 	GetDomain(ctx context.Context, arg GetDomainParams) (Domain, error)
 	GetDomainByID(ctx context.Context, arg GetDomainByIDParams) (Domain, error)
 	GetDomainByName(ctx context.Context, arg GetDomainByNameParams) (Domain, error)
-	GetDomainByNameForClaim(ctx context.Context, arg GetDomainByNameForClaimParams) (Domain, error)
 	GetDomainClaim(ctx context.Context, arg GetDomainClaimParams) (DomainClaim, error)
 	GetDomainClaimByID(ctx context.Context, arg GetDomainClaimByIDParams) (DomainClaim, error)
 	GetDomainForClaimByID(ctx context.Context, arg GetDomainForClaimByIDParams) (Domain, error)
