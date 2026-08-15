@@ -174,7 +174,7 @@ func (r *Repository) RecordProviderFailure(ctx context.Context, id uuid.UUID, wo
 		message = providerError.Error()
 	}
 	rows, err := r.queries.RecordSenderIDProviderFailure(ctx, dbsqlc.RecordSenderIDProviderFailureParams{
-		ID: id, WorkerID: strings.TrimSpace(workerID), ProviderStatus: strings.TrimSpace(providerStatus), LastError: message, NextCheckAt: pgconv.TimestamptzFromTime(nextCheckAt),
+		ID: id, WorkerID: strings.TrimSpace(workerID), ProviderStatus: strings.TrimSpace(providerStatus), LastError: &message, NextCheckAt: pgconv.TimestamptzFromTime(nextCheckAt),
 	})
 	if err != nil {
 		return fmt.Errorf("record Sender ID provider failure: %w", err)
