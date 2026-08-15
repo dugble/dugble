@@ -23,10 +23,13 @@ const (
 	ReputationPolicyNone     = "none"
 	ReputationPolicyStandard = "standard"
 	ReputationPolicyStrict   = "strict"
+
+	ProvisionSubject   = "dugble.job.email.tenant.provision.v1"
+	ProvisionEventType = "email.tenant.provision.requested.v1"
+	ProvisionConsumer  = "dugble-email-tenant-provision-v1"
+	ProvisionDLQSubject = "dugble.dlq.email.tenant.provision.v1"
 )
 
-// Tenant is the provider-neutral record that binds a Dugble team to an email
-// provider's regional tenant or reputation-isolation boundary.
 type Tenant struct {
 	ID               uuid.UUID `json:"id"`
 	TeamID           uuid.UUID `json:"team_id"`
@@ -43,8 +46,6 @@ type Tenant struct {
 	UpdatedAt        time.Time `json:"updated_at"`
 }
 
-// CreateParams contains server-owned values used to reserve an email tenant
-// before asynchronous provider provisioning begins.
 type CreateParams struct {
 	TeamID           uuid.UUID
 	Provider         string
@@ -54,8 +55,6 @@ type CreateParams struct {
 	ReputationPolicy string
 }
 
-// ProvisionRequest describes the provider-neutral desired state for one
-// regional email tenant.
 type ProvisionRequest struct {
 	Region           string
 	ExternalName     string
@@ -63,14 +62,23 @@ type ProvisionRequest struct {
 	ReputationPolicy string
 }
 
-// ProvisionResult identifies the tenant created or converged by a provider
-// adapter.
 type ProvisionResult struct {
 	ExternalID string
 	TenantARN  string
 }
 
-// Provisioner converges one provider tenant to the requested state.
 type Provisioner interface {
 	ProvisionTenant(context.Context, ProvisionRequest) (ProvisionResult, error)
+}
+
+type ProvisioningCommand struct {
+	EventID          uuid.UUID `json:"event_id"`
+	TenantID         uuid.UUID `json:"tenant_id"`
+	TeamID           uuid.UUID `json:"team_id"`
+	Provider         string    `json:"provider"`
+	Region           string    `json:"region"`
+	ExternalName     string    `json:"external_name"`
+	SuppressionScope string    `json:"suppression_scope"`
+	ReputationPolicy string    `json:"reputation_policy"`
+	SchemaVersion    int       `json:"schema_version"`
 }
