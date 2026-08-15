@@ -56,6 +56,12 @@ func (verifiedDNS) Verify(context.Context, string, platformemail.VerificationRec
 	return true
 }
 
+type spfTXTOnlyDNS struct{}
+
+func (spfTXTOnlyDNS) Verify(_ context.Context, _ string, record platformemail.VerificationRecord) bool {
+	return record.Record == platformemail.RecordSPF && record.Type == platformemail.RecordTypeTXT
+}
+
 func TestCheckConfiguresMailFromAfterIdentityVerification(t *testing.T) {
 	provider := &checkProvider{status: platformemail.DomainStatus{
 		IdentityVerified: true,
@@ -132,6 +138,59 @@ func TestCheckAssociatesVerifiedDomainWithTenant(t *testing.T) {
 	expectedTenant := emailtenant.AWSExternalName(teamID)
 	if provider.associatedTenant != expectedTenant {
 		t.Fatalf("expected tenant %q, got %q", expectedTenant, provider.associatedTenant)
+	}
+}
+
+func TestCheckUsesSESForDKIMAndMailFromMX(t *testing.T) {
+	teamID := uuid.New()
+	provider := &checkProvider{status: platformemail.DomainStatus{
+		IdentityVerified:   true,
+		DKIMVerified:       true,
+		MailFromConfigured: true,
+		MailFromVerified:   true,
+	}}
+	service := NewService(nil, provider, spfTXTOnlyDNS{})
+	domain := SenderDomain{
+		TeamID:         teamID.String(),
+		Domain:         "runnage.dev",
+		ProviderRegion: "us-east-1",
+		VerificationRecords: []VerificationRecord{
+			{Record: platformemail.RecordDKIM, Name: "selector._domainkey", Type: platformemail.RecordTypeTXT},
+			{Record: platformemail.RecordSPF, Name: "send", Type: platformemail.RecordTypeTXT},
+			{Record: platformemail.RecordSPF, Name: "send", Type: platformemail.RecordTypeMX},
+		},
+	}
+
+	result, err := service.Check(context.Background(), domain)
+	if err != nil {
+		t.Fatalf("Check returned error: %v", err)
+	}
+	if result.Status != StatusVerified {
+		t.Fatalf("expected status %q, got %q", StatusVerified, result.Status)
+	}
+	for _, record := range result.VerificationRecords {
+		if record.Status != platformemail.RecordStatusVerified {
+			t.Fatalf("expected %s/%s record to be verified, got %q", record.Record, record.Type, record.Status)
+		}
+	}
+}
+
+func TestManualHealthObservationKeepsVerifiedRecordsStable(t *testing.T) {
+	domain := SenderDomain{VerificationRecords: []VerificationRecord{
+		{Record: platformemail.RecordDKIM, Type: platformemail.RecordTypeTXT, Status: platformemail.RecordStatusVerified},
+		{Record: platformemail.RecordSPF, Type: platformemail.RecordTypeTXT, Status: platformemail.RecordStatusPending},
+		{Record: platformemail.RecordSPF, Type: platformemail.RecordTypeMX, Status: platformemail.RecordStatusPending},
+	}}
+	result := ReconciliationResult{Status: StatusPending, VerificationRecords: domain.VerificationRecords}
+
+	records, reason := manualHealthObservation(domain, result, nil)
+	if reason == nil || *reason != manualHealthFailureReason {
+		t.Fatalf("expected manual health failure reason, got %v", reason)
+	}
+	for _, record := range records {
+		if record.Status != platformemail.RecordStatusVerified {
+			t.Fatalf("expected historical verification record to remain verified, got %q", record.Status)
+		}
 	}
 }
 
