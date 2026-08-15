@@ -40,14 +40,32 @@ jobs:
               ('server/internal/modules/suppression/events.go', 'server/internal/modules/suppression/service.go'),
           ]
 
+          package_re = re.compile(r'^(package\s+\w+\s*\n)')
+          import_block_re = re.compile(r'^\s*(import\s*\(.*?\)\s*\n|import\s+[^\n]+\n)', re.S)
+
           for source_name, target_name in moves:
               source = Path(source_name)
               target = Path(target_name)
               if not source.exists():
                   continue
-              text = source.read_text()
-              text = re.sub(r'^package\s+\w+\s*\n', '', text, count=1)
-              target.write_text(target.read_text().rstrip() + '\n\n' + text.lstrip())
+
+              source_text = source.read_text()
+              source_text = package_re.sub('', source_text, count=1)
+              match = import_block_re.match(source_text)
+              imports = ''
+              body = source_text
+              if match:
+                  imports = match.group(1).strip() + '\n'
+                  body = source_text[match.end():].lstrip()
+
+              target_text = target.read_text()
+              package_match = package_re.match(target_text)
+              if package_match is None:
+                  raise RuntimeError(f'missing package declaration: {target}')
+              package_decl = package_match.group(1)
+              remainder = target_text[package_match.end():].lstrip()
+              merged = package_decl + '\n' + imports + remainder.rstrip() + '\n\n' + body
+              target.write_text(merged)
               source.unlink()
           PY
       - name: Normalize imports and formatting
