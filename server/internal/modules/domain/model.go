@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"errors"
 	"time"
 
 	platformemail "github.com/dugble/dugble/server/internal/platform/awsses"
@@ -26,6 +27,12 @@ const (
 	HealthStatusDegraded = "degraded"
 
 	DefaultHealthFailureThreshold int32 = 3
+)
+
+var (
+	ErrJobNotConfigured = errors.New("sender domain reconciliation job is not configured")
+	ErrInvalidJobConfig = errors.New("sender domain reconciliation configuration is invalid")
+	ErrWorkerIDRequired = errors.New("sender domain reconciliation worker ID is required")
 )
 
 type VerificationRecord = platformemail.VerificationRecord
