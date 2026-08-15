@@ -35,7 +35,6 @@ CREATE TABLE IF NOT EXISTS domains (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
 
     CONSTRAINT uq_domains_id_team UNIQUE (id, team_id),
-    CONSTRAINT uq_domains_normalized_name UNIQUE (normalized_name),
     CONSTRAINT chk_domains_name CHECK (
         length(trim(name)) > 0
         AND normalized_name = lower(trim(name))
@@ -69,6 +68,12 @@ CREATE TABLE IF NOT EXISTS domains (
 
 CREATE INDEX IF NOT EXISTS idx_domains_team_created
     ON domains (team_id, created_at DESC, id DESC);
+
+-- Disabled sender-domain rows are retained for history, but only one active
+-- ownership record may reserve a normalized domain name at a time.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_domains_active_normalized_name
+    ON domains (normalized_name)
+    WHERE disabled_at IS NULL;
 
 CREATE INDEX IF NOT EXISTS idx_domains_reconciliation
     ON domains (next_check_at, created_at)
