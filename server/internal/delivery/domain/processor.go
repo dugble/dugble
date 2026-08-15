@@ -58,23 +58,32 @@ func (p *Processor) Process(ctx context.Context, claim domainmodule.Reconciliati
 		return p.completeHealthCheck(ctx, id, claim.Domain, result, checkErr)
 	}
 
+	delay := nextVerificationDelay(result.Status, checkErr, claim.Attempt, id, p.config)
+	nextCheckAt := p.now().Add(delay)
 	if checkErr != nil {
-		nextCheckAt := p.now().Add(nextCheckDelay(max(claim.Attempt-1, 0), id))
 		_, recordErr := p.repository.RecordReconciliationFailure(ctx, id, p.workerID, checkErr, nextCheckAt)
 		return errors.Join(checkErr, recordErr)
 	}
 
-	delay := jitter(p.config.PendingCheckInterval, id)
-	if result.Status == domainmodule.StatusVerified {
-		delay = jitter(p.config.HealthCheckInterval, id)
-	}
-	nextCheckAt := p.now().Add(delay)
 	updated, err := p.repository.CompleteReconciliation(ctx, id, p.workerID, result.Status, result.VerificationRecords, nextCheckAt)
 	if err != nil {
 		return err
 	}
+	if err := p.repository.ResetReconciliationAttempts(ctx, id); err != nil {
+		return err
+	}
 	p.notify(ctx, claim.Domain, updated)
 	return nil
+}
+
+func nextVerificationDelay(status string, checkErr error, attempt int32, id uuid.UUID, config Config) time.Duration {
+	if checkErr != nil {
+		return nextCheckDelay(max(attempt-1, 0), id)
+	}
+	if status == domainmodule.StatusVerified {
+		return jitter(config.HealthCheckInterval, id)
+	}
+	return jitter(config.PendingCheckInterval, id)
 }
 
 func (p *Processor) completeHealthCheck(ctx context.Context, id uuid.UUID, previous domainmodule.SenderDomain, result domainmodule.ReconciliationResult, checkErr error) error {
