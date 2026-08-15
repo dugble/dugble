@@ -14,11 +14,11 @@ import (
 )
 
 type domainIdentityStub struct {
-	createErr      error
-	dkimErr        error
-	dkimInput      *sesv2.PutEmailIdentityDkimSigningAttributesInput
-	createCalls    int
-	dkimCalls      int
+	createErr   error
+	dkimErr     error
+	dkimInput   *sesv2.PutEmailIdentityDkimSigningAttributesInput
+	createCalls int
+	dkimCalls   int
 }
 
 func (stub *domainIdentityStub) CreateEmailIdentity(
