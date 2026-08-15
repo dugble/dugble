@@ -137,14 +137,6 @@ func (r *Repository) GetByName(ctx context.Context, teamID uuid.UUID, name strin
 	return r.domainWithRecords(ctx, row)
 }
 
-func (r *Repository) getByID(ctx context.Context, id uuid.UUID) (SenderDomain, error) {
-	row, err := r.queries.GetDomainByID(ctx, dbsqlc.GetDomainByIDParams{ID: id})
-	if err != nil {
-		return SenderDomain{}, err
-	}
-	return r.domainWithRecords(ctx, row)
-}
-
 func (r *Repository) UpdateConfiguration(
 	ctx context.Context,
 	id, teamID uuid.UUID,
