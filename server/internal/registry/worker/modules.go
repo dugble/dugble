@@ -243,9 +243,9 @@ func (registry *Registry) newModules(startupCtx context.Context) (modules, error
 		smsdelivery.NewQueue(outboxRepository),
 		platformbilling.NewService(platformbilling.NewRepository(db)),
 	)
-	smsCampaignConsumer := smscampaignexecution.NewConsumer(
+	smsCampaignJob := smscampaignmodule.NewJob(
 		smscampaignexecution.NewProcessor(smscampaignmodule.NewRepository(db), smsCampaignSMSService),
-		smscampaignexecution.Config{PollInterval: time.Second, BatchSize: 100},
+		smscampaignmodule.JobConfig{PollInterval: time.Second, BatchSize: 100},
 	)
 	smsConsumer := smsdelivery.NewConsumer(
 		messagingClient,
@@ -311,7 +311,7 @@ func (registry *Registry) newModules(startupCtx context.Context) (modules, error
 		emailFeedbackMetrics:      emailFeedbackMetricsCollector.Run,
 		smsDelivery:               smsConsumer.Run,
 		smsFeedback:               smsFeedbackConsumer.Run,
-		smsCampaign:               smsCampaignConsumer.Run,
+		smsCampaign:               smsCampaignJob.Run,
 		webhookDelivery:           webhookConsumer.Run,
 		domainReconciliation:      domainConsumer.Run,
 		domainClaimReconciliation: domainClaimJob.Run,
