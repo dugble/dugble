@@ -14,6 +14,7 @@ import (
 
 type Config struct {
 	PollInterval           time.Duration
+	PendingCheckInterval   time.Duration
 	BatchSize              int32
 	Concurrency            int
 	LockTimeout            time.Duration
@@ -24,7 +25,7 @@ type Config struct {
 }
 
 func (config Config) validate() error {
-	if config.PollInterval <= 0 || config.BatchSize <= 0 || config.Concurrency <= 0 ||
+	if config.PollInterval <= 0 || config.PendingCheckInterval <= 0 || config.BatchSize <= 0 || config.Concurrency <= 0 ||
 		config.LockTimeout <= 0 || config.CheckTimeout <= 0 ||
 		config.HealthCheckInterval <= 0 || config.HealthRetryInterval <= 0 ||
 		config.HealthFailureThreshold <= 0 {
@@ -42,6 +43,9 @@ type Consumer struct {
 }
 
 func NewConsumer(repository repository, checker checker, config Config, workerID string) *Consumer {
+	if config.PendingCheckInterval <= 0 {
+		config.PendingCheckInterval = 30 * time.Second
+	}
 	processor := NewProcessor(repository, checker, config, workerID)
 	return &Consumer{
 		repository: repository,
