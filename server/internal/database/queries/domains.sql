@@ -157,6 +157,12 @@ WHERE id = sqlc.arg(id)
   AND reconcile_locked_by = trim(sqlc.arg(worker_id))
 RETURNING *;
 
+-- name: ResetDomainReconciliationAttempts :execrows
+UPDATE domains
+SET reconciliation_attempts = 0,
+    updated_at = now()
+WHERE id = sqlc.arg(id);
+
 -- name: RecordDomainReconciliationFailure :one
 UPDATE domains
 SET last_error = sqlc.arg(last_error),
@@ -259,4 +265,66 @@ WHERE domain_record.id = sqlc.arg(id)
       FROM email_messages AS message
       WHERE message.sender_domain_id = domain_record.id
   )
-RETURNING domain_record.*;
+RETURNING domain_record.id;
+
+-- name: DeleteCurrentDomainDNSRecords :exec
+DELETE FROM domain_dns_records
+WHERE domain_id = sqlc.arg(domain_id)
+  AND is_current
+  AND purpose <> 'tracking';
+
+-- name: CreateDomainDNSRecord :one
+INSERT INTO domain_dns_records (
+    domain_id,
+    purpose,
+    record,
+    name,
+    type,
+    value,
+    ttl,
+    priority,
+    status,
+    is_current,
+    verified_at
+) VALUES (
+    sqlc.arg(domain_id),
+    lower(trim(sqlc.arg(purpose))),
+    sqlc.arg(record),
+    sqlc.arg(name),
+    sqlc.arg(type),
+    sqlc.arg(value),
+    sqlc.arg(ttl),
+    sqlc.narg(priority),
+    sqlc.arg(status),
+    true,
+    CASE WHEN sqlc.arg(status) = 'verified' THEN now() ELSE NULL END
+)
+ON CONFLICT (domain_id, purpose, name, type, value)
+DO UPDATE SET record = EXCLUDED.record,
+              ttl = EXCLUDED.ttl,
+              priority = EXCLUDED.priority,
+              status = EXCLUDED.status,
+              is_current = true,
+              verified_at = CASE
+                  WHEN EXCLUDED.status = 'verified'
+                      THEN COALESCE(domain_dns_records.verified_at, now())
+                  ELSE domain_dns_records.verified_at
+              END,
+              superseded_at = NULL,
+              updated_at = now()
+RETURNING *;
+
+-- name: ListDomainDNSRecords :many
+SELECT dns_record.*
+FROM domain_dns_records AS dns_record
+WHERE dns_record.domain_id = sqlc.arg(domain_id)
+  AND dns_record.is_current
+ORDER BY CASE dns_record.purpose
+             WHEN 'dkim' THEN 1
+             WHEN 'spf' THEN 2
+             WHEN 'mail_from' THEN 3
+             WHEN 'tracking' THEN 4
+             ELSE 5
+         END,
+         dns_record.created_at,
+         dns_record.id;
