@@ -31,6 +31,9 @@ func (p *Processor) WithNotifier(notifier notifier) *Processor {
 }
 
 func NewProcessor(repository repository, checker checker, config Config, workerID string) *Processor {
+	if config.PendingCheckInterval <= 0 {
+		config.PendingCheckInterval = 30 * time.Second
+	}
 	return &Processor{
 		repository: repository,
 		checker:    checker,
@@ -55,15 +58,17 @@ func (p *Processor) Process(ctx context.Context, claim domainmodule.Reconciliati
 		return p.completeHealthCheck(ctx, id, claim.Domain, result, checkErr)
 	}
 
-	delay := nextCheckDelay(max(claim.Attempt-1, 0), id)
-	if checkErr == nil && result.Status == domainmodule.StatusVerified {
-		delay = jitter(p.config.HealthCheckInterval, id)
-	}
-	nextCheckAt := p.now().Add(delay)
 	if checkErr != nil {
+		nextCheckAt := p.now().Add(nextCheckDelay(max(claim.Attempt-1, 0), id))
 		_, recordErr := p.repository.RecordReconciliationFailure(ctx, id, p.workerID, checkErr, nextCheckAt)
 		return errors.Join(checkErr, recordErr)
 	}
+
+	delay := jitter(p.config.PendingCheckInterval, id)
+	if result.Status == domainmodule.StatusVerified {
+		delay = jitter(p.config.HealthCheckInterval, id)
+	}
+	nextCheckAt := p.now().Add(delay)
 	updated, err := p.repository.CompleteReconciliation(ctx, id, p.workerID, result.Status, result.VerificationRecords, nextCheckAt)
 	if err != nil {
 		return err
