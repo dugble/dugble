@@ -40,32 +40,61 @@ jobs:
               ('server/internal/modules/suppression/events.go', 'server/internal/modules/suppression/service.go'),
           ]
 
-          package_re = re.compile(r'^(package\s+\w+\s*\n)')
-          import_block_re = re.compile(r'^\s*(import\s*\(.*?\)\s*\n|import\s+[^\n]+\n)', re.S)
+          package_re = re.compile(r'^(package\s+\w+)\s*\n')
+          block_re = re.compile(r'^\s*import\s*\((.*?)\)\s*\n', re.S)
+          single_re = re.compile(r'^\s*import\s+([^\n]+)\n')
+          path_re = re.compile(r'"([^"]+)"')
+
+          def split_file(text):
+              package_match = package_re.match(text)
+              if package_match is None:
+                  raise RuntimeError('missing package declaration')
+              package_decl = package_match.group(1)
+              rest = text[package_match.end():]
+              imports = []
+              block_match = block_re.match(rest)
+              if block_match:
+                  for line in block_match.group(1).splitlines():
+                      spec = line.strip()
+                      if spec and not spec.startswith('//'):
+                          imports.append(spec)
+                  rest = rest[block_match.end():]
+              else:
+                  single_match = single_re.match(rest)
+                  if single_match:
+                      imports.append(single_match.group(1).strip())
+                      rest = rest[single_match.end():]
+              return package_decl, imports, rest.lstrip()
+
+          def dedupe_imports(specs):
+              seen = set()
+              result = []
+              for spec in specs:
+                  match = path_re.search(spec)
+                  key = match.group(1) if match else spec
+                  if key in seen:
+                      continue
+                  seen.add(key)
+                  result.append(spec)
+              return result
 
           for source_name, target_name in moves:
               source = Path(source_name)
               target = Path(target_name)
               if not source.exists():
                   continue
-
-              source_text = source.read_text()
-              source_text = package_re.sub('', source_text, count=1)
-              match = import_block_re.match(source_text)
-              imports = ''
-              body = source_text
-              if match:
-                  imports = match.group(1).strip() + '\n'
-                  body = source_text[match.end():].lstrip()
-
-              target_text = target.read_text()
-              package_match = package_re.match(target_text)
-              if package_match is None:
-                  raise RuntimeError(f'missing package declaration: {target}')
-              package_decl = package_match.group(1)
-              remainder = target_text[package_match.end():].lstrip()
-              merged = package_decl + '\n' + imports + remainder.rstrip() + '\n\n' + body
-              target.write_text(merged)
+              target_package, target_imports, target_body = split_file(target.read_text())
+              source_package, source_imports, source_body = split_file(source.read_text())
+              if target_package != source_package:
+                  raise RuntimeError(f'package mismatch: {source} -> {target}')
+              imports = dedupe_imports(target_imports + source_imports)
+              import_text = ''
+              if imports:
+                  import_text = 'import (\n' + ''.join(f'\t{spec}\n' for spec in imports) + ')\n\n'
+              target.write_text(
+                  target_package + '\n\n' + import_text +
+                  target_body.rstrip() + '\n\n' + source_body.rstrip() + '\n'
+              )
               source.unlink()
           PY
       - name: Normalize imports and formatting
