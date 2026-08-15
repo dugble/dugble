@@ -1,4 +1,4 @@
-package campaign
+package smscampaign
 
 import (
 	"context"
