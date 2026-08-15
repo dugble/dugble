@@ -20,6 +20,10 @@ import (
 	platformemail "github.com/dugble/dugble/server/internal/platform/awsses"
 )
 
+type sesIdentityDkimSigningAPI interface {
+	PutEmailIdentityDkimSigningAttributes(context.Context, *sesv2.PutEmailIdentityDkimSigningAttributesInput, ...func(*sesv2.Options)) (*sesv2.PutEmailIdentityDkimSigningAttributesOutput, error)
+}
+
 func (c *Client) ProvisionDomain(ctx context.Context, req platformemail.DomainProvisionRequest) ([]platformemail.VerificationRecord, error) {
 	client, err := c.identityClient(req.Region)
 	if err != nil {
@@ -40,9 +44,33 @@ func (c *Client) ProvisionDomain(ctx context.Context, req platformemail.DomainPr
 		},
 	})
 	if err != nil {
-		return nil, fmt.Errorf("create SES email identity: %w", err)
+		if !isAlreadyExists(err) {
+			return nil, fmt.Errorf("create SES email identity: %w", err)
+		}
+		if err := configureExistingDomainBYODKIM(ctx, client, req.Domain, selector, privateKey); err != nil {
+			return nil, err
+		}
 	}
 	return mapVerificationRecords(req, selector, publicKey), nil
+}
+
+func configureExistingDomainBYODKIM(ctx context.Context, client sesIdentityAPI, domainName, selector, privateKey string) error {
+	dkimClient, ok := client.(sesIdentityDkimSigningAPI)
+	if !ok {
+		return errors.New("SES identity client does not support DKIM signing attributes")
+	}
+	_, err := dkimClient.PutEmailIdentityDkimSigningAttributes(ctx, &sesv2.PutEmailIdentityDkimSigningAttributesInput{
+		EmailIdentity:           aws.String(strings.TrimSpace(domainName)),
+		SigningAttributesOrigin: sesv2types.DkimSigningAttributesOriginExternal,
+		SigningAttributes: &sesv2types.DkimSigningAttributes{
+			DomainSigningPrivateKey: aws.String(privateKey),
+			DomainSigningSelector:   aws.String(selector),
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("configure existing SES email identity DKIM: %w", err)
+	}
+	return nil
 }
 
 // ConfigureDomainMailFrom configures the custom MAIL FROM domain after SES has
