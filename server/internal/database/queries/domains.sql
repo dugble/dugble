@@ -260,11 +260,3 @@ WHERE domain_record.id = sqlc.arg(id)
       WHERE message.sender_domain_id = domain_record.id
   )
 RETURNING domain_record.*;
-
--- name: ResolveEmailSenderDomain :one
-SELECT id, provider, provider_region, status, health_status, disabled_at
-FROM domains
-WHERE team_id = sqlc.arg(team_id)
-  AND normalized_name = lower(trim(sqlc.arg(domain_name)))
-  AND disabled_at IS NULL
-LIMIT 1;

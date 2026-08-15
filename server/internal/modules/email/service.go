@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/dugble/dugble/server/internal/authn"
 	"github.com/dugble/dugble/server/internal/authz"
@@ -54,7 +55,7 @@ func (s *Service) Update(ctx context.Context, value string, req UpdateRequest) (
 	if !ok {
 		return MutationResponse{}, apperrors.NewInternal("Email delivery queue does not support rescheduling", nil)
 	}
-	tx, err := s.repository.BeginTx(ctx)
+	tx, err := s.db.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return MutationResponse{}, apperrors.NewInternal("Unable to begin email update transaction", err)
 	}
@@ -90,7 +91,7 @@ func (s *Service) Cancel(ctx context.Context, value string) (MutationResponse, e
 	if !ok {
 		return MutationResponse{}, apperrors.NewInternal("Email delivery queue does not support cancellation", nil)
 	}
-	tx, err := s.repository.BeginTx(ctx)
+	tx, err := s.db.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return MutationResponse{}, apperrors.NewInternal("Unable to begin email cancellation transaction", err)
 	}
@@ -114,6 +115,7 @@ func (s *Service) Cancel(ctx context.Context, value string) (MutationResponse, e
 }
 
 type Service struct {
+	db                *pgxpool.Pool
 	repository        *Repository
 	delivery          DeliveryQueue
 	config            ServiceConfig
@@ -167,6 +169,13 @@ func NewService(
 	return service
 }
 
+func (s *Service) WithDatabase(db *pgxpool.Pool) *Service {
+	if s != nil {
+		s.db = db
+	}
+	return s
+}
+
 func requireTenant(ctx context.Context, permission authz.Permission) (authz.Access, error) {
 	tc, decision := authz.ResolveAccess(ctx, permission)
 	if !decision.Allowed {
@@ -183,7 +192,7 @@ func (s *Service) Send(ctx context.Context, req SendRequest) (Message, error) {
 	if s == nil || s.repository == nil {
 		return Message{}, apperrors.NewInternal("Customer email routing is not configured", nil)
 	}
-	tx, err := s.repository.BeginTx(ctx)
+	tx, err := s.db.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return Message{}, apperrors.NewInternal("Unable to begin email transaction", err)
 	}
@@ -314,7 +323,7 @@ func (s *Service) BatchSend(ctx context.Context, req BatchSendRequest) ([]Messag
 		}
 	}
 
-	tx, err := s.repository.BeginTx(ctx)
+	tx, err := s.db.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return nil, apperrors.NewInternal("Unable to begin email batch transaction", err)
 	}

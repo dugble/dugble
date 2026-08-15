@@ -866,43 +866,6 @@ func (q *Queries) RecordDomainReconciliationFailure(ctx context.Context, arg Rec
 	return i, err
 }
 
-const resolveEmailSenderDomain = `-- name: ResolveEmailSenderDomain :one
-SELECT id, provider, provider_region, status, health_status, disabled_at
-FROM domains
-WHERE team_id = $1
-  AND normalized_name = lower(trim($2))
-  AND disabled_at IS NULL
-LIMIT 1
-`
-
-type ResolveEmailSenderDomainParams struct {
-	TeamID     uuid.UUID `db:"team_id" json:"team_id"`
-	DomainName string    `db:"domain_name" json:"domain_name"`
-}
-
-type ResolveEmailSenderDomainRow struct {
-	ID             uuid.UUID          `db:"id" json:"id"`
-	Provider       string             `db:"provider" json:"provider"`
-	ProviderRegion string             `db:"provider_region" json:"provider_region"`
-	Status         string             `db:"status" json:"status"`
-	HealthStatus   string             `db:"health_status" json:"health_status"`
-	DisabledAt     pgtype.Timestamptz `db:"disabled_at" json:"disabled_at"`
-}
-
-func (q *Queries) ResolveEmailSenderDomain(ctx context.Context, arg ResolveEmailSenderDomainParams) (ResolveEmailSenderDomainRow, error) {
-	row := q.db.QueryRow(ctx, resolveEmailSenderDomain, arg.TeamID, arg.DomainName)
-	var i ResolveEmailSenderDomainRow
-	err := row.Scan(
-		&i.ID,
-		&i.Provider,
-		&i.ProviderRegion,
-		&i.Status,
-		&i.HealthStatus,
-		&i.DisabledAt,
-	)
-	return i, err
-}
-
 const updateDomainConfiguration = `-- name: UpdateDomainConfiguration :one
 UPDATE domains
 SET tls_mode = $1,
