@@ -100,7 +100,7 @@ func (registry *Registry) registerModules(router *echo.Echo) error {
 		emaildelivery.NewQueue(registry.outbox),
 		emailmodule.ServiceConfig{DefaultFromEmail: cfg.AWS.FromEmail, DefaultProvider: domainmodule.DefaultProvider, DefaultRegion: cfg.AWS.Region},
 		billingService,
-	)
+	).WithDatabase(db)
 	messageTemplateService := messagetemplatemodule.NewService(messageTemplateRepository, emailAPIService)
 	broadcastService := broadcastmodule.NewService(broadcastRepository, messageTemplateService)
 	webhookService := webhooksmodule.NewService(webhookRepository, webhookEmitter)

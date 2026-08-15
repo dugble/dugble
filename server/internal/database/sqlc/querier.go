@@ -357,6 +357,7 @@ type Querier interface {
 	RescheduleEmailMessage(ctx context.Context, arg RescheduleEmailMessageParams) error
 	RescheduleEmailProviderEvent(ctx context.Context, arg RescheduleEmailProviderEventParams) (int64, error)
 	ResetPasswordWithToken(ctx context.Context, arg ResetPasswordWithTokenParams) (ResetPasswordWithTokenRow, error)
+	ResolveEmailSandboxRecipientForToken(ctx context.Context, arg ResolveEmailSandboxRecipientForTokenParams) (ResolveEmailSandboxRecipientForTokenRow, error)
 	ResolveEmailSenderDomain(ctx context.Context, arg ResolveEmailSenderDomainParams) (ResolveEmailSenderDomainRow, error)
 	RetryBroadcastRecipientFanout(ctx context.Context, arg RetryBroadcastRecipientFanoutParams) (BroadcastRecipient, error)
 	RetryWebhookDelivery(ctx context.Context, arg RetryWebhookDeliveryParams) (WebhookDelivery, error)

@@ -434,3 +434,70 @@ func (q *Queries) RescheduleEmailMessage(ctx context.Context, arg RescheduleEmai
 	_, err := q.db.Exec(ctx, rescheduleEmailMessage, arg.ScheduledAt, arg.ID, arg.TeamID)
 	return err
 }
+
+const resolveEmailSandboxRecipientForToken = `-- name: ResolveEmailSandboxRecipientForToken :one
+SELECT users.email, users.email_verified
+FROM team_tokens AS token
+JOIN users ON users.id = token.created_by
+WHERE token.id = $1
+  AND token.team_id = $2
+  AND token.revoked_at IS NULL
+  AND (token.expires_at IS NULL OR token.expires_at > now())
+`
+
+type ResolveEmailSandboxRecipientForTokenParams struct {
+	TokenID uuid.UUID `db:"token_id" json:"token_id"`
+	TeamID  uuid.UUID `db:"team_id" json:"team_id"`
+}
+
+type ResolveEmailSandboxRecipientForTokenRow struct {
+	Email         string `db:"email" json:"email"`
+	EmailVerified bool   `db:"email_verified" json:"email_verified"`
+}
+
+func (q *Queries) ResolveEmailSandboxRecipientForToken(ctx context.Context, arg ResolveEmailSandboxRecipientForTokenParams) (ResolveEmailSandboxRecipientForTokenRow, error) {
+	row := q.db.QueryRow(ctx, resolveEmailSandboxRecipientForToken, arg.TokenID, arg.TeamID)
+	var i ResolveEmailSandboxRecipientForTokenRow
+	err := row.Scan(&i.Email, &i.EmailVerified)
+	return i, err
+}
+
+const resolveEmailSenderDomain = `-- name: ResolveEmailSenderDomain :one
+SELECT domain_record.id,
+       domain_record.provider,
+       domain_record.provider_region,
+       domain_record.status,
+       domain_record.health_status
+FROM domains AS domain_record
+WHERE domain_record.team_id = $1
+  AND domain_record.normalized_name = lower(trim($2))
+  AND domain_record.disabled_at IS NULL
+ORDER BY domain_record.created_at DESC
+LIMIT 1
+`
+
+type ResolveEmailSenderDomainParams struct {
+	TeamID     uuid.UUID `db:"team_id" json:"team_id"`
+	DomainName string    `db:"domain_name" json:"domain_name"`
+}
+
+type ResolveEmailSenderDomainRow struct {
+	ID             uuid.UUID `db:"id" json:"id"`
+	Provider       string    `db:"provider" json:"provider"`
+	ProviderRegion string    `db:"provider_region" json:"provider_region"`
+	Status         string    `db:"status" json:"status"`
+	HealthStatus   string    `db:"health_status" json:"health_status"`
+}
+
+func (q *Queries) ResolveEmailSenderDomain(ctx context.Context, arg ResolveEmailSenderDomainParams) (ResolveEmailSenderDomainRow, error) {
+	row := q.db.QueryRow(ctx, resolveEmailSenderDomain, arg.TeamID, arg.DomainName)
+	var i ResolveEmailSenderDomainRow
+	err := row.Scan(
+		&i.ID,
+		&i.Provider,
+		&i.ProviderRegion,
+		&i.Status,
+		&i.HealthStatus,
+	)
+	return i, err
+}
