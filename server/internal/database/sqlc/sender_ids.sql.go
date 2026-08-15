@@ -9,7 +9,200 @@ import (
 	"context"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
+
+const claimPendingSenderIDRegistrations = `-- name: ClaimPendingSenderIDRegistrations :many
+WITH candidates AS (
+    SELECT sender_id.id
+    FROM sender_ids AS sender_id
+    WHERE sender_id.country_code = 'GH'
+      AND lower(sender_id.provider) = lower(trim($1))
+      AND sender_id.status = 'pending'
+      AND sender_id.next_check_at <= now()
+      AND (
+          sender_id.reconcile_locked_at IS NULL
+          OR sender_id.reconcile_locked_at < $2
+      )
+    ORDER BY sender_id.next_check_at, sender_id.created_at, sender_id.id
+    FOR UPDATE OF sender_id SKIP LOCKED
+    LIMIT $3
+), updated AS (
+    UPDATE sender_ids AS sender_id
+    SET reconcile_locked_at = now(),
+        reconcile_locked_by = trim($4),
+        reconciliation_attempts = sender_id.reconciliation_attempts + 1,
+        updated_at = now()
+    FROM candidates
+    WHERE sender_id.id = candidates.id
+    RETURNING sender_id.id, sender_id.team_id, sender_id.name, sender_id.normalized_name, sender_id.country_code, sender_id.purpose, sender_id.provider, sender_id.provider_status, sender_id.provider_whitelisted, sender_id.status, sender_id.health_status, sender_id.submitted_at, sender_id.approved_at, sender_id.rejected_at, sender_id.suspended_at, sender_id.disabled_at, sender_id.next_check_at, sender_id.last_checked_at, sender_id.reconciliation_attempts, sender_id.consecutive_health_failures, sender_id.last_health_checked_at, sender_id.last_health_failure_at, sender_id.rejection_reason, sender_id.last_error, sender_id.reconcile_locked_at, sender_id.reconcile_locked_by, sender_id.created_by, sender_id.created_at, sender_id.updated_at
+)
+SELECT sender_id.id,
+       sender_id.team_id,
+       sender_id.name,
+       sender_id.country_code::text AS country_code,
+       COALESCE(sender_id.provider, '') AS provider,
+       COALESCE(sender_id.provider_status, '') AS provider_status,
+       sender_id.submitted_at,
+       sender_id.reconciliation_attempts
+FROM updated AS sender_id
+ORDER BY sender_id.next_check_at, sender_id.created_at, sender_id.id
+`
+
+type ClaimPendingSenderIDRegistrationsParams struct {
+	ProviderID  string             `db:"provider_id" json:"provider_id"`
+	StaleBefore pgtype.Timestamptz `db:"stale_before" json:"stale_before"`
+	ClaimLimit  int32              `db:"claim_limit" json:"claim_limit"`
+	WorkerID    string             `db:"worker_id" json:"worker_id"`
+}
+
+type ClaimPendingSenderIDRegistrationsRow struct {
+	ID                     uuid.UUID          `db:"id" json:"id"`
+	TeamID                 uuid.UUID          `db:"team_id" json:"team_id"`
+	Name                   string             `db:"name" json:"name"`
+	CountryCode            string             `db:"country_code" json:"country_code"`
+	Provider               string             `db:"provider" json:"provider"`
+	ProviderStatus         string             `db:"provider_status" json:"provider_status"`
+	SubmittedAt            pgtype.Timestamptz `db:"submitted_at" json:"submitted_at"`
+	ReconciliationAttempts int32              `db:"reconciliation_attempts" json:"reconciliation_attempts"`
+}
+
+func (q *Queries) ClaimPendingSenderIDRegistrations(ctx context.Context, arg ClaimPendingSenderIDRegistrationsParams) ([]ClaimPendingSenderIDRegistrationsRow, error) {
+	rows, err := q.db.Query(ctx, claimPendingSenderIDRegistrations,
+		arg.ProviderID,
+		arg.StaleBefore,
+		arg.ClaimLimit,
+		arg.WorkerID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ClaimPendingSenderIDRegistrationsRow{}
+	for rows.Next() {
+		var i ClaimPendingSenderIDRegistrationsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.TeamID,
+			&i.Name,
+			&i.CountryCode,
+			&i.Provider,
+			&i.ProviderStatus,
+			&i.SubmittedAt,
+			&i.ReconciliationAttempts,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const completeSenderIDStatus = `-- name: CompleteSenderIDStatus :execrows
+UPDATE sender_ids
+SET status = lower(trim($1)),
+    provider_status = trim($2),
+    provider_whitelisted = $3,
+    health_status = CASE
+        WHEN lower(trim($1)) = 'approved' AND $3 THEN 'healthy'
+        WHEN lower(trim($1)) IN ('rejected', 'suspended') THEN 'degraded'
+        ELSE health_status
+    END,
+    submitted_at = COALESCE(submitted_at, now()),
+    last_checked_at = now(),
+    next_check_at = $4,
+    reconciliation_attempts = 0,
+    last_error = NULL,
+    rejection_reason = CASE
+        WHEN lower(trim($1)) = 'rejected' THEN $5
+        ELSE NULL
+    END,
+    approved_at = CASE
+        WHEN lower(trim($1)) = 'approved' THEN COALESCE(approved_at, now())
+        ELSE approved_at
+    END,
+    rejected_at = CASE
+        WHEN lower(trim($1)) = 'rejected' THEN COALESCE(rejected_at, now())
+        ELSE rejected_at
+    END,
+    suspended_at = CASE
+        WHEN lower(trim($1)) = 'suspended' THEN COALESCE(suspended_at, now())
+        ELSE suspended_at
+    END,
+    disabled_at = CASE
+        WHEN lower(trim($1)) = 'inactive' THEN COALESCE(disabled_at, now())
+        ELSE disabled_at
+    END,
+    reconcile_locked_at = NULL,
+    reconcile_locked_by = NULL,
+    updated_at = now()
+WHERE id = $6
+  AND reconcile_locked_by = trim($7)
+`
+
+type CompleteSenderIDStatusParams struct {
+	Status          string             `db:"status" json:"status"`
+	ProviderStatus  string             `db:"provider_status" json:"provider_status"`
+	Whitelisted     bool               `db:"whitelisted" json:"whitelisted"`
+	NextCheckAt     pgtype.Timestamptz `db:"next_check_at" json:"next_check_at"`
+	RejectionReason *string            `db:"rejection_reason" json:"rejection_reason"`
+	ID              uuid.UUID          `db:"id" json:"id"`
+	WorkerID        string             `db:"worker_id" json:"worker_id"`
+}
+
+func (q *Queries) CompleteSenderIDStatus(ctx context.Context, arg CompleteSenderIDStatusParams) (int64, error) {
+	result, err := q.db.Exec(ctx, completeSenderIDStatus,
+		arg.Status,
+		arg.ProviderStatus,
+		arg.Whitelisted,
+		arg.NextCheckAt,
+		arg.RejectionReason,
+		arg.ID,
+		arg.WorkerID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const completeSenderIDSubmission = `-- name: CompleteSenderIDSubmission :execrows
+UPDATE sender_ids
+SET provider_status = trim($1),
+    submitted_at = COALESCE(submitted_at, now()),
+    last_checked_at = now(),
+    next_check_at = $2,
+    reconciliation_attempts = 0,
+    last_error = NULL,
+    reconcile_locked_at = NULL,
+    reconcile_locked_by = NULL,
+    updated_at = now()
+WHERE id = $3
+  AND reconcile_locked_by = trim($4)
+`
+
+type CompleteSenderIDSubmissionParams struct {
+	ProviderStatus string             `db:"provider_status" json:"provider_status"`
+	NextCheckAt    pgtype.Timestamptz `db:"next_check_at" json:"next_check_at"`
+	ID             uuid.UUID          `db:"id" json:"id"`
+	WorkerID       string             `db:"worker_id" json:"worker_id"`
+}
+
+func (q *Queries) CompleteSenderIDSubmission(ctx context.Context, arg CompleteSenderIDSubmissionParams) (int64, error) {
+	result, err := q.db.Exec(ctx, completeSenderIDSubmission,
+		arg.ProviderStatus,
+		arg.NextCheckAt,
+		arg.ID,
+		arg.WorkerID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
 
 const createSenderID = `-- name: CreateSenderID :one
 INSERT INTO sender_ids (
@@ -258,4 +451,39 @@ func (q *Queries) ListSenderIDs(ctx context.Context, arg ListSenderIDsParams) ([
 		return nil, err
 	}
 	return items, nil
+}
+
+const recordSenderIDProviderFailure = `-- name: RecordSenderIDProviderFailure :execrows
+UPDATE sender_ids
+SET provider_status = COALESCE(NULLIF(trim($1), ''), provider_status),
+    last_checked_at = now(),
+    next_check_at = $2,
+    last_error = $3,
+    reconcile_locked_at = NULL,
+    reconcile_locked_by = NULL,
+    updated_at = now()
+WHERE id = $4
+  AND reconcile_locked_by = trim($5)
+`
+
+type RecordSenderIDProviderFailureParams struct {
+	ProviderStatus string             `db:"provider_status" json:"provider_status"`
+	NextCheckAt    pgtype.Timestamptz `db:"next_check_at" json:"next_check_at"`
+	LastError      *string            `db:"last_error" json:"last_error"`
+	ID             uuid.UUID          `db:"id" json:"id"`
+	WorkerID       string             `db:"worker_id" json:"worker_id"`
+}
+
+func (q *Queries) RecordSenderIDProviderFailure(ctx context.Context, arg RecordSenderIDProviderFailureParams) (int64, error) {
+	result, err := q.db.Exec(ctx, recordSenderIDProviderFailure,
+		arg.ProviderStatus,
+		arg.NextCheckAt,
+		arg.LastError,
+		arg.ID,
+		arg.WorkerID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }

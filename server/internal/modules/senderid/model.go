@@ -1,6 +1,11 @@
 package senderid
 
-import "time"
+import (
+	"errors"
+	"time"
+
+	"github.com/google/uuid"
+)
 
 const (
 	StatusPending   = "pending"
@@ -8,6 +13,17 @@ const (
 	StatusRejected  = "rejected"
 	StatusSuspended = "suspended"
 	StatusInactive  = "inactive"
+
+	providerStatusSubmissionFailed  = "submission_failed"
+	providerStatusSubmissionUnknown = "submission_unknown"
+)
+
+var (
+	ErrSenderIDAlreadyExists = errors.New("sender id already exists")
+	ErrJobNotConfigured      = errors.New("sender ID reconciliation job is not configured")
+	ErrInvalidJobConfig      = errors.New("invalid Sender ID reconciliation job configuration")
+	ErrRegistrationClaimLost = errors.New("sender ID registration claim was lost")
+	ErrWorkerIDRequired      = errors.New("sender ID reconciliation worker ID is required")
 )
 
 type SenderID struct {
@@ -32,4 +48,20 @@ type CreateRequest struct {
 	CountryCode string  `json:"country_code"`
 	Purpose     string  `json:"purpose"`
 	Provider    *string `json:"provider,omitempty"`
+}
+
+type RegistrationClaim struct {
+	ID                  uuid.UUID
+	TeamID              uuid.UUID
+	Name                string
+	CountryCode         string
+	Provider            string
+	ProviderStatus      string
+	ProviderSubmittedAt *time.Time
+	Attempt             int32
+}
+
+type safeFallbackError interface {
+	error
+	SafeToFallback() bool
 }

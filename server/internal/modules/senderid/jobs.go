@@ -1,4 +1,4 @@
-package senderidreconciliation
+package senderid
 
 import (
 	"context"
@@ -9,16 +9,10 @@ import (
 	"time"
 
 	sentrymonitoring "github.com/dugble/dugble/server/internal/adapters/monitoring/sentry"
-
 	platformsenderid "github.com/dugble/dugble/server/internal/platform/senderid"
-	"github.com/dugble/dugble/server/internal/platform/systemmail"
 )
 
-type notifier interface {
-	SendSenderIDStatus(context.Context, systemmail.SendSenderIDStatusInput) error
-}
-
-type Config struct {
+type JobConfig struct {
 	PollInterval         time.Duration
 	BatchSize            int32
 	Concurrency          int
@@ -29,8 +23,8 @@ type Config struct {
 	MaxRetryInterval     time.Duration
 }
 
-func DefaultConfig() Config {
-	return Config{
+func DefaultJobConfig() JobConfig {
+	return JobConfig{
 		PollInterval:         15 * time.Second,
 		BatchSize:            25,
 		Concurrency:          5,
@@ -42,36 +36,25 @@ func DefaultConfig() Config {
 	}
 }
 
-func (config Config) validate() error {
+func (config JobConfig) validate() error {
 	if config.PollInterval <= 0 || config.BatchSize <= 0 || config.Concurrency <= 0 ||
-		config.LockTimeout <= 0 || config.ProviderTimeout <= 0 ||
-		config.PendingCheckInterval <= 0 || config.RetryBaseInterval <= 0 ||
-		config.MaxRetryInterval < config.RetryBaseInterval {
-		return ErrInvalidConfig
+		config.LockTimeout <= 0 || config.ProviderTimeout <= 0 || config.PendingCheckInterval <= 0 ||
+		config.RetryBaseInterval <= 0 || config.MaxRetryInterval < config.RetryBaseInterval {
+		return ErrInvalidJobConfig
 	}
 	return nil
 }
 
-type Consumer struct {
-	repository registrationRepository
+type Job struct {
+	repository *Repository
+	service    *ReconciliationService
 	providers  map[string]platformsenderid.Provider
-	config     Config
+	config     JobConfig
 	workerID   string
 	now        func() time.Time
-	notifier   notifier
 }
 
-func (consumer *Consumer) WithNotifier(notifier notifier) *Consumer {
-	consumer.notifier = notifier
-	return consumer
-}
-
-func NewConsumer(
-	repository registrationRepository,
-	config Config,
-	workerID string,
-	providers ...platformsenderid.Provider,
-) (*Consumer, error) {
+func NewJob(repository *Repository, config JobConfig, workerID string, providers ...platformsenderid.Provider) (*Job, error) {
 	if err := config.validate(); err != nil {
 		return nil, err
 	}
@@ -96,8 +79,9 @@ func NewConsumer(
 	if len(registry) == 0 {
 		return nil, errors.New("at least one Sender ID provider is required")
 	}
-	return &Consumer{
+	return &Job{
 		repository: repository,
+		service:    NewReconciliationService(repository, config, workerID),
 		providers:  registry,
 		config:     config,
 		workerID:   workerID,
@@ -105,15 +89,19 @@ func NewConsumer(
 	}, nil
 }
 
-func (consumer *Consumer) Run(ctx context.Context) error {
-	if consumer == nil || consumer.repository == nil || len(consumer.providers) == 0 {
-		return ErrConsumerNotConfigured
-	}
+func (job *Job) WithNotifier(notifier reconciliationNotifier) *Job {
+	job.service.WithNotifier(notifier)
+	return job
+}
 
-	ticker := time.NewTicker(consumer.config.PollInterval)
+func (job *Job) Run(ctx context.Context) error {
+	if job == nil || job.repository == nil || job.service == nil || len(job.providers) == 0 {
+		return ErrJobNotConfigured
+	}
+	ticker := time.NewTicker(job.config.PollInterval)
 	defer ticker.Stop()
 	for {
-		if err := consumer.poll(ctx); err != nil && !errors.Is(err, context.Canceled) {
+		if err := job.poll(ctx); err != nil && !errors.Is(err, context.Canceled) {
 			sentrymonitoring.Error("Sender ID reconciliation poll failed", "error", err)
 		}
 		select {
@@ -129,18 +117,12 @@ type workItem struct {
 	claim    RegistrationClaim
 }
 
-func (consumer *Consumer) poll(ctx context.Context) error {
-	now := consumer.now()
-	items := make([]workItem, 0, int(consumer.config.BatchSize)*len(consumer.providers))
+func (job *Job) poll(ctx context.Context) error {
+	now := job.now()
+	items := make([]workItem, 0, int(job.config.BatchSize)*len(job.providers))
 	var joined error
-	for providerID, provider := range consumer.providers {
-		claims, err := consumer.repository.ClaimPendingRegistrations(
-			ctx,
-			consumer.workerID,
-			providerID,
-			consumer.config.BatchSize,
-			now.Add(-consumer.config.LockTimeout),
-		)
+	for providerID, provider := range job.providers {
+		claims, err := job.repository.ClaimPendingRegistrations(ctx, job.workerID, providerID, job.config.BatchSize, now.Add(-job.config.LockTimeout))
 		if err != nil {
 			joined = errors.Join(joined, fmt.Errorf("claim %s Sender ID registrations: %w", providerID, err))
 			continue
@@ -150,7 +132,7 @@ func (consumer *Consumer) poll(ctx context.Context) error {
 		}
 	}
 
-	semaphore := make(chan struct{}, consumer.config.Concurrency)
+	semaphore := make(chan struct{}, job.config.Concurrency)
 	var wait sync.WaitGroup
 	var mutex sync.Mutex
 	for _, item := range items {
@@ -164,14 +146,8 @@ func (consumer *Consumer) poll(ctx context.Context) error {
 			case <-ctx.Done():
 				return
 			}
-			if err := consumer.process(ctx, item.provider, item.claim); err != nil && !errors.Is(err, context.Canceled) {
-				sentrymonitoring.Error(
-					"Sender ID reconciliation failed",
-					"sender_id", item.claim.ID,
-					"provider", item.claim.Provider,
-					"attempt", item.claim.Attempt,
-					"error", err,
-				)
+			if err := job.service.Process(ctx, item.provider, item.claim); err != nil && !errors.Is(err, context.Canceled) {
+				sentrymonitoring.Error("Sender ID reconciliation failed", "sender_id", item.claim.ID, "provider", item.claim.Provider, "attempt", item.claim.Attempt, "error", err)
 				mutex.Lock()
 				joined = errors.Join(joined, err)
 				mutex.Unlock()
