@@ -81,6 +81,10 @@ SET status = sqlc.arg(status),
         WHEN sqlc.arg(status) = 'verified' THEN 0
         ELSE consecutive_health_failures
     END,
+    last_health_checked_at = CASE
+        WHEN sqlc.arg(status) = 'verified' THEN now()
+        ELSE last_health_checked_at
+    END,
     verified_at = CASE
         WHEN sqlc.arg(status) = 'verified' THEN COALESCE(verified_at, now())
         ELSE verified_at
@@ -89,63 +93,6 @@ SET status = sqlc.arg(status),
 WHERE id = sqlc.arg(id)
   AND team_id = sqlc.arg(team_id)
 RETURNING *;
-
--- name: ReplaceDomainVerificationRecords :exec
-UPDATE domain_dns_records
-SET is_current = false,
-    superseded_at = now(),
-    updated_at = now()
-WHERE domain_id = sqlc.arg(domain_id)
-  AND is_current
-  AND purpose <> 'tracking';
-
--- name: UpsertDomainDNSRecord :one
-INSERT INTO domain_dns_records (
-    domain_id,
-    purpose,
-    record,
-    name,
-    type,
-    value,
-    ttl,
-    priority,
-    status,
-    is_current,
-    verified_at
-) VALUES (
-    sqlc.arg(domain_id),
-    lower(trim(sqlc.arg(purpose))),
-    sqlc.arg(record),
-    sqlc.arg(name),
-    sqlc.arg(type),
-    sqlc.arg(value),
-    sqlc.arg(ttl),
-    sqlc.narg(priority),
-    sqlc.arg(status),
-    true,
-    CASE WHEN sqlc.arg(status) = 'verified' THEN now() ELSE NULL END
-)
-ON CONFLICT (domain_id, purpose, name, type, value)
-DO UPDATE SET record = EXCLUDED.record,
-              ttl = EXCLUDED.ttl,
-              priority = EXCLUDED.priority,
-              status = EXCLUDED.status,
-              is_current = true,
-              verified_at = CASE
-                  WHEN EXCLUDED.status = 'verified'
-                      THEN COALESCE(domain_dns_records.verified_at, now())
-                  ELSE domain_dns_records.verified_at
-              END,
-              superseded_at = NULL,
-              updated_at = now()
-RETURNING *;
-
--- name: GetCurrentDomainDNSRecords :many
-SELECT record.*
-FROM domain_dns_records AS record
-WHERE record.domain_id = sqlc.arg(domain_id)
-  AND record.is_current
-ORDER BY record.purpose, record.created_at, record.id;
 
 -- name: ClaimPendingDomainReconciliations :many
 WITH candidates AS (
@@ -165,7 +112,7 @@ WITH candidates AS (
     UPDATE domains AS domain_record
     SET reconcile_locked_at = now(),
         reconcile_locked_by = trim(sqlc.arg(worker_id)),
-        reconciliation_attempts = reconciliation_attempts + 1,
+        reconciliation_attempts = domain_record.reconciliation_attempts + 1,
         updated_at = now()
     FROM candidates
     WHERE domain_record.id = candidates.id
@@ -179,9 +126,29 @@ ORDER BY updated.next_check_at, updated.created_at;
 UPDATE domains
 SET status = sqlc.arg(status),
     provider_status = sqlc.arg(status),
-    failure_reason = NULL,
-    last_error = NULL,
+    failure_reason = CASE
+        WHEN sqlc.arg(status) IN ('failed', 'partially_failed', 'temporary_failure')
+            THEN sqlc.narg(failure_reason)
+        ELSE NULL
+    END,
+    last_error = sqlc.narg(failure_reason),
     last_checked_at = now(),
+    health_status = CASE
+        WHEN sqlc.arg(status) = 'verified' THEN 'healthy'
+        ELSE health_status
+    END,
+    consecutive_health_failures = CASE
+        WHEN sqlc.arg(status) = 'verified' THEN 0
+        ELSE consecutive_health_failures
+    END,
+    last_health_checked_at = CASE
+        WHEN sqlc.arg(status) = 'verified' THEN now()
+        ELSE last_health_checked_at
+    END,
+    verified_at = CASE
+        WHEN sqlc.arg(status) = 'verified' THEN COALESCE(verified_at, now())
+        ELSE verified_at
+    END,
     next_check_at = sqlc.arg(next_check_at),
     reconcile_locked_at = NULL,
     reconcile_locked_by = NULL,
@@ -189,20 +156,10 @@ SET status = sqlc.arg(status),
 WHERE id = sqlc.arg(id)
   AND reconcile_locked_by = trim(sqlc.arg(worker_id))
 RETURNING *;
-
--- name: ResetDomainReconciliationAttempts :exec
-UPDATE domains
-SET reconciliation_attempts = 0,
-    updated_at = now()
-WHERE id = sqlc.arg(id)
-  AND reconcile_locked_by = trim(sqlc.arg(worker_id));
 
 -- name: RecordDomainReconciliationFailure :one
 UPDATE domains
-SET status = sqlc.arg(status),
-    provider_status = sqlc.arg(status),
-    failure_reason = sqlc.arg(failure_reason),
-    last_error = sqlc.arg(failure_reason),
+SET last_error = sqlc.arg(last_error),
     last_checked_at = now(),
     next_check_at = sqlc.arg(next_check_at),
     reconcile_locked_at = NULL,
@@ -212,7 +169,7 @@ WHERE id = sqlc.arg(id)
   AND reconcile_locked_by = trim(sqlc.arg(worker_id))
 RETURNING *;
 
--- name: RecordDomainHealthSuccess :one
+-- name: CompleteDomainHealthCheck :one
 UPDATE domains
 SET health_status = 'healthy',
     consecutive_health_failures = 0,
