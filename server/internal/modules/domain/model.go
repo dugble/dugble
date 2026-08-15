@@ -25,21 +25,7 @@ const (
 	HealthStatusHealthy  = "healthy"
 	HealthStatusDegraded = "degraded"
 
-	ClaimStatusPending    = "pending"
-	ClaimStatusVerified   = "verified"
-	ClaimStatusCompleted  = "completed"
-	ClaimStatusBlocked    = "blocked"
-	ClaimStatusExpired    = "expired"
-	ClaimStatusSuperseded = "superseded"
-	ClaimStatusCanceled   = "canceled"
-	ClaimStatusFailed     = "failed"
-
-	ClaimBlockedGracePeriod            = "grace_period"
-	ClaimBlockedRecentOwnerActivity    = "recent_owner_activity"
-	ClaimBlockedPendingScheduledEmails = "pending_scheduled_emails"
-
 	DefaultHealthFailureThreshold int32 = 3
-	DefaultClaimLifetime                = 7 * 24 * time.Hour
 )
 
 type VerificationRecord = platformemail.VerificationRecord
@@ -107,32 +93,4 @@ type ProvisioningResponse struct {
 	Status            string `json:"status"`
 	Message           string `json:"message"`
 	RetryAfterSeconds int    `json:"retry_after_seconds"`
-}
-
-type ClaimRequest struct {
-	Name   string `json:"name"`
-	Region string `json:"region"`
-	TLS    string `json:"tls,omitempty"`
-}
-
-type DomainClaim struct {
-	ID                      string             `json:"id"`
-	DomainID                string             `json:"domain_id"`
-	Name                    string             `json:"name"`
-	Status                  string             `json:"status"`
-	SourceDomainID          *string            `json:"source_domain_id,omitempty"`
-	SourceTeamID            string             `json:"source_team_id"`
-	TargetTeamID            string             `json:"target_team_id"`
-	Region                  string             `json:"region"`
-	CustomReturnPath        string             `json:"-"`
-	TLS                     string             `json:"tls"`
-	VerificationRecord      VerificationRecord `json:"record"`
-	BlockedReason           *string            `json:"blocked_reason,omitempty"`
-	FailureReason           *string            `json:"failure_reason,omitempty"`
-	VerificationRequestedAt *time.Time         `json:"verification_requested_at,omitempty"`
-	VerifiedAt              *time.Time         `json:"verified_at,omitempty"`
-	CompletedAt             *time.Time         `json:"completed_at,omitempty"`
-	ExpiresAt               time.Time          `json:"expires_at"`
-	CreatedAt               time.Time          `json:"created_at"`
-	UpdatedAt               time.Time          `json:"updated_at"`
 }
