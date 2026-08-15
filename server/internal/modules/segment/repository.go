@@ -76,9 +76,9 @@ func (r *Repository) Delete(ctx context.Context, id, teamID uuid.UUID) (Segment,
 
 func segmentFromSQLC(row dbsqlc.Segment) Segment {
 	return Segment{
-		ID: row.ID.String(),
-		TeamID: row.TeamID.String(),
-		Name: row.Name,
+		ID:        row.ID.String(),
+		TeamID:    row.TeamID.String(),
+		Name:      row.Name,
 		CreatedAt: row.CreatedAt.Time,
 	}
 }
