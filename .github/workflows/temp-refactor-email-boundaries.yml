@@ -52,8 +52,8 @@ jobs:
           gofmt -w server/internal/modules/email/repository.go server/internal/modules/email/service.go server/internal/registry/server/modules.go server/internal/database/sqlc
       - name: Assert repository boundary
         run: |
-          if grep -q 'db \+\*pgxpool.Pool' server/internal/modules/email/repository.go; then
-            echo 'email repository still owns pgxpool' >&2
+          if sed -n '/type Repository struct {/,/}/p' server/internal/modules/email/repository.go | grep -q 'pgxpool.Pool'; then
+            echo 'email repository still stores pgxpool' >&2
             exit 1
           fi
           if grep -Eq '\.Query(Row)?\(|\.Exec\(' server/internal/modules/email/repository.go; then
