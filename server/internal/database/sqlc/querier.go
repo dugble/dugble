@@ -13,6 +13,7 @@ import (
 type Querier interface {
 	AcceptTeamInvitation(ctx context.Context, arg AcceptTeamInvitationParams) (TeamInvitation, error)
 	ActivateSMSCampaign(ctx context.Context, arg ActivateSMSCampaignParams) (SmsCampaign, error)
+	ArchiveClaimSourceDomain(ctx context.Context, arg ArchiveClaimSourceDomainParams) (Domain, error)
 	AuthorizeSMSCharge(ctx context.Context, arg AuthorizeSMSChargeParams) (AuthorizeSMSChargeRow, error)
 	BackofficeAdjustWallet(ctx context.Context, arg BackofficeAdjustWalletParams) (TeamWallet, error)
 	BackofficeApproveSenderID(ctx context.Context, arg BackofficeApproveSenderIDParams) (int64, error)
@@ -108,7 +109,8 @@ type Querier interface {
 	CreateBroadcast(ctx context.Context, arg CreateBroadcastParams) (Broadcast, error)
 	CreateBroadcastRecipient(ctx context.Context, arg CreateBroadcastRecipientParams) (BroadcastRecipient, error)
 	CreateChannelSuppression(ctx context.Context, arg CreateChannelSuppressionParams) (ChannelSuppression, error)
-	CreateClaimedDomain(ctx context.Context, arg CreateClaimedDomainParams) (Domain, error)
+	CreateClaimTargetDNSRecord(ctx context.Context, arg CreateClaimTargetDNSRecordParams) (DomainDnsRecord, error)
+	CreateClaimTargetDomain(ctx context.Context, arg CreateClaimTargetDomainParams) (Domain, error)
 	CreateContact(ctx context.Context, arg CreateContactParams) (Contact, error)
 	CreateContactProperty(ctx context.Context, arg CreateContactPropertyParams) (ContactProperty, error)
 	CreateDomain(ctx context.Context, arg CreateDomainParams) (Domain, error)
@@ -152,11 +154,11 @@ type Querier interface {
 	DeleteContact(ctx context.Context, arg DeleteContactParams) (Contact, error)
 	DeleteContactProperty(ctx context.Context, arg DeleteContactPropertyParams) (ContactProperty, error)
 	DeleteContactPropertyValues(ctx context.Context, arg DeleteContactPropertyValuesParams) error
+	DeleteCurrentClaimTargetDNSRecords(ctx context.Context, arg DeleteCurrentClaimTargetDNSRecordsParams) error
 	DeleteCurrentDomainDNSRecords(ctx context.Context, arg DeleteCurrentDomainDNSRecordsParams) error
 	DeleteDisabledDomainIfUnreferenced(ctx context.Context, arg DeleteDisabledDomainIfUnreferencedParams) (Domain, error)
 	DeleteDomain(ctx context.Context, arg DeleteDomainParams) (Domain, error)
 	DeleteDomainDNSRecords(ctx context.Context, arg DeleteDomainDNSRecordsParams) error
-	DeleteDomainForClaim(ctx context.Context, arg DeleteDomainForClaimParams) (Domain, error)
 	DeleteEmailTenant(ctx context.Context, arg DeleteEmailTenantParams) (int64, error)
 	DeleteExpiredVerificationTokens(ctx context.Context) error
 	DeleteIdempotencyKey(ctx context.Context, arg DeleteIdempotencyKeyParams) error
@@ -176,6 +178,7 @@ type Querier interface {
 	DisableTeam(ctx context.Context, arg DisableTeamParams) (Team, error)
 	DisableWebhookEndpoint(ctx context.Context, arg DisableWebhookEndpointParams) (WebhookEndpoint, error)
 	DomainHasPendingScheduledEmails(ctx context.Context, arg DomainHasPendingScheduledEmailsParams) (bool, error)
+	DomainHasRecentOwnerActivity(ctx context.Context, arg DomainHasRecentOwnerActivityParams) (bool, error)
 	DowngradeSessionAfterMFADisable(ctx context.Context, arg DowngradeSessionAfterMFADisableParams) error
 	DuplicateBroadcast(ctx context.Context, arg DuplicateBroadcastParams) (Broadcast, error)
 	DuplicateSMSCampaign(ctx context.Context, arg DuplicateSMSCampaignParams) (SmsCampaign, error)
@@ -190,6 +193,7 @@ type Querier interface {
 	FinalizeSMSCampaignFanout(ctx context.Context, arg FinalizeSMSCampaignFanoutParams) (SmsCampaign, error)
 	FindApprovedSMSSender(ctx context.Context, arg FindApprovedSMSSenderParams) (uuid.UUID, error)
 	FinishSMSCampaignMaterialization(ctx context.Context, arg FinishSMSCampaignMaterializationParams) (SmsCampaign, error)
+	GetActiveDomainForClaimByName(ctx context.Context, arg GetActiveDomainForClaimByNameParams) (Domain, error)
 	GetActiveEmailTenantExternalName(ctx context.Context, arg GetActiveEmailTenantExternalNameParams) (string, error)
 	GetActiveMFALoginChallenge(ctx context.Context, arg GetActiveMFALoginChallengeParams) (GetActiveMFALoginChallengeRow, error)
 	GetActivePlanPrice(ctx context.Context, arg GetActivePlanPriceParams) (PlanPrice, error)
@@ -205,9 +209,9 @@ type Querier interface {
 	GetDomain(ctx context.Context, arg GetDomainParams) (Domain, error)
 	GetDomainByID(ctx context.Context, arg GetDomainByIDParams) (Domain, error)
 	GetDomainByName(ctx context.Context, arg GetDomainByNameParams) (Domain, error)
-	GetDomainByNameForClaim(ctx context.Context, arg GetDomainByNameForClaimParams) (Domain, error)
 	GetDomainClaim(ctx context.Context, arg GetDomainClaimParams) (DomainClaim, error)
 	GetDomainClaimByID(ctx context.Context, arg GetDomainClaimByIDParams) (DomainClaim, error)
+	GetDomainForClaimByID(ctx context.Context, arg GetDomainForClaimByIDParams) (Domain, error)
 	GetEmailMessage(ctx context.Context, arg GetEmailMessageParams) (EmailMessage, error)
 	GetEmailMessageScheduleForUpdate(ctx context.Context, arg GetEmailMessageScheduleForUpdateParams) (GetEmailMessageScheduleForUpdateRow, error)
 	GetEmailProviderEventForUpdate(ctx context.Context, arg GetEmailProviderEventForUpdateParams) (EmailProviderEvent, error)

@@ -151,16 +151,21 @@ func (r *Repository) ListEvents(ctx context.Context, teamID, messageID uuid.UUID
 }
 
 func (r *Repository) ResolveSenderDomain(ctx context.Context, teamID uuid.UUID, domainName string) (SenderDomainRoute, error) {
-	row, err := r.queries.ResolveEmailSenderDomain(ctx, dbsqlc.ResolveEmailSenderDomainParams{TeamID: teamID, DomainName: domainName})
+	var route SenderDomainRoute
+	err := r.db.QueryRow(ctx, `
+		SELECT id, provider, provider_region, status, health_status
+		FROM domains
+		WHERE team_id = $1
+		  AND normalized_name = lower(trim($2))
+		  AND disabled_at IS NULL
+		ORDER BY created_at DESC
+		LIMIT 1
+	`, teamID, domainName).Scan(&route.ID, &route.Provider, &route.Region, &route.Status, &route.HealthStatus)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return SenderDomainRoute{}, ErrSenderDomainNotFound
 	}
 	if err != nil {
 		return SenderDomainRoute{}, fmt.Errorf("resolve sender domain: %w", err)
-	}
-	route := SenderDomainRoute{
-		ID: row.ID, Provider: row.Provider, Region: row.ProviderRegion, Status: row.Status,
-		HealthStatus: row.HealthStatus, Disabled: row.DisabledAt.Valid,
 	}
 	if route.HealthStatus == "degraded" {
 		route.Status = "degraded"

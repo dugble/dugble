@@ -34,8 +34,8 @@ import (
 	broadcastmodule "github.com/dugble/dugble/server/internal/modules/broadcast"
 	smscampaignmodule "github.com/dugble/dugble/server/internal/modules/campaign"
 	domainmodule "github.com/dugble/dugble/server/internal/modules/domain"
+	domainclaimmodule "github.com/dugble/dugble/server/internal/modules/domainclaim"
 	"github.com/dugble/dugble/server/internal/modules/emailtenant"
-	tenantprovision "github.com/dugble/dugble/server/internal/modules/emailtenant/provisioning"
 	smsmodule "github.com/dugble/dugble/server/internal/modules/sms"
 	webhookmodule "github.com/dugble/dugble/server/internal/modules/webhooks"
 	platformemail "github.com/dugble/dugble/server/internal/platform/awsses"
@@ -47,22 +47,23 @@ import (
 )
 
 type modules struct {
-	subscriptionRenewal     func(context.Context) error
-	outboxRelay             func(context.Context) error
-	transactionalEmail      func(context.Context) error
-	marketingEmail          func(context.Context) error
-	systemEmail             func(context.Context) error
-	emailTenantProvisioning func(context.Context) error
-	emailFeedback           func(context.Context) error
-	emailFeedbackReconciler func(context.Context) error
-	emailFeedbackMetrics    func(context.Context) error
-	smsDelivery             func(context.Context) error
-	smsFeedback             func(context.Context) error
-	smsCampaign             func(context.Context) error
-	webhookDelivery         func(context.Context) error
-	domainReconciliation    func(context.Context) error
-	broadcastExecution      func(context.Context) error
-	senderIDReconciliation  func(context.Context) error
+	subscriptionRenewal       func(context.Context) error
+	outboxRelay               func(context.Context) error
+	transactionalEmail        func(context.Context) error
+	marketingEmail            func(context.Context) error
+	systemEmail               func(context.Context) error
+	emailTenantProvisioning   func(context.Context) error
+	emailFeedback             func(context.Context) error
+	emailFeedbackReconciler   func(context.Context) error
+	emailFeedbackMetrics      func(context.Context) error
+	smsDelivery               func(context.Context) error
+	smsFeedback               func(context.Context) error
+	smsCampaign               func(context.Context) error
+	webhookDelivery           func(context.Context) error
+	domainReconciliation      func(context.Context) error
+	domainClaimReconciliation func(context.Context) error
+	broadcastExecution        func(context.Context) error
+	senderIDReconciliation    func(context.Context) error
 }
 
 func (registry *Registry) newModules(startupCtx context.Context) (modules, error) {
@@ -79,9 +80,9 @@ func (registry *Registry) newModules(startupCtx context.Context) (modules, error
 		db,
 		platformevent.NewEmitter(platformwebhook.NewEventSink(webhookEmitter)),
 	)
-	broadcastExecutionConsumer := broadcastexecution.NewConsumer(
+	broadcastExecutionJob := broadcastmodule.NewJob(
 		broadcastexecution.NewProcessor(broadcastExecutionRepository),
-		broadcastexecution.Config{PollInterval: time.Second, BatchSize: 100},
+		broadcastmodule.JobConfig{PollInterval: time.Second, BatchSize: 100},
 	)
 
 	emailSender, err := awsses.NewSESSender(
@@ -135,11 +136,13 @@ func (registry *Registry) newModules(startupCtx context.Context) (modules, error
 	}
 	systemEmailQueue := systememail.NewQueue(outboxRepository, platformemail.Message{Provider: awsses.ProviderSES, Region: cfg.AWS.Region, Stream: "transactional", ConfigurationSet: platformemail.TransactionalConfigurationSet, SESTenantName: platformemail.SystemSESTenantName})
 	notificationEmailService := systemmail.NewEmailService(systemEmailQueue, systemEmailRenderer, cfg.FrontendURL, cfg.AWS.FromEmail)
-	emailTenantConsumer := tenantprovision.NewConsumer(
+	emailTenantRepository := emailtenant.NewRepository(db)
+	emailTenantService := emailtenant.NewService(db, emailTenantRepository, emailtenant.NewProvisioningQueue(outboxRepository))
+	emailTenantConsumer := emailtenant.NewProvisioningConsumer(
 		messagingClient,
 		processedEvents,
-		tenantprovision.NewProcessor(emailtenant.NewRepository(db), emailSender),
-		tenantprovision.Config{Concurrency: 3, AckWait: 2 * time.Minute, HandlerTimeout: 60 * time.Second, RetryBackOff: tenantprovision.DefaultRetryBackOff()},
+		emailtenant.NewProvisioningProcessor(emailTenantRepository, emailSender),
+		emailtenant.ProvisioningConsumerConfig{Concurrency: 3, AckWait: 2 * time.Minute, HandlerTimeout: 60 * time.Second, RetryBackOff: emailtenant.DefaultProvisioningRetryBackOff()},
 	)
 
 	feedbackMetrics := emailfeedback.DefaultMetrics
@@ -169,8 +172,9 @@ func (registry *Registry) newModules(startupCtx context.Context) (modules, error
 	)
 	emailFeedbackMetricsCollector := emailfeedback.NewMetricsCollector(db, feedbackMetrics, 15*time.Second)
 
+	dnsVerifier := netdns.New()
 	domainRepository := domainmodule.NewRepository(db)
-	domainService := domainmodule.NewService(domainRepository, emailSender, netdns.New())
+	domainService := domainmodule.NewService(domainRepository, emailSender, dnsVerifier)
 	domainConsumer := domainreconciliation.NewConsumer(
 		domainRepository,
 		domainService,
@@ -187,6 +191,18 @@ func (registry *Registry) newModules(startupCtx context.Context) (modules, error
 		"sender-domain-reconciliation-"+uuid.NewString(),
 	)
 	domainConsumer.WithNotifier(notificationEmailService)
+
+	domainClaimRepository := domainclaimmodule.NewRepository(db)
+	domainClaimService := domainclaimmodule.NewService(db, domainClaimRepository, emailSender, dnsVerifier, emailTenantService)
+	domainClaimJob, err := domainclaimmodule.NewJob(
+		domainClaimRepository,
+		domainClaimService,
+		domainclaimmodule.DefaultJobConfig(),
+		"sender-domain-claim-reconciliation-"+uuid.NewString(),
+	)
+	if err != nil {
+		return modules{}, fmt.Errorf("initialize domain claim reconciliation: %w", err)
+	}
 
 	senderIDRun := disabledSenderIDReconciliation
 	if cfg.Moolre.VASKey == "" {
@@ -227,9 +243,9 @@ func (registry *Registry) newModules(startupCtx context.Context) (modules, error
 		smsdelivery.NewQueue(outboxRepository),
 		platformbilling.NewService(platformbilling.NewRepository(db)),
 	)
-	smsCampaignConsumer := smscampaignexecution.NewConsumer(
+	smsCampaignJob := smscampaignmodule.NewJob(
 		smscampaignexecution.NewProcessor(smscampaignmodule.NewRepository(db), smsCampaignSMSService),
-		smscampaignexecution.Config{PollInterval: time.Second, BatchSize: 100},
+		smscampaignmodule.JobConfig{PollInterval: time.Second, BatchSize: 100},
 	)
 	smsConsumer := smsdelivery.NewConsumer(
 		messagingClient,
@@ -284,22 +300,23 @@ func (registry *Registry) newModules(startupCtx context.Context) (modules, error
 	}
 
 	return modules{
-		subscriptionRenewal:     renewalWorker.Run,
-		outboxRelay:             outboxRelay.Run,
-		transactionalEmail:      transactionalEmailConsumer.Run,
-		marketingEmail:          marketingEmailConsumer.Run,
-		systemEmail:             systemEmailConsumer.Run,
-		emailTenantProvisioning: emailTenantConsumer.Run,
-		emailFeedback:           emailFeedbackConsumer.Run,
-		emailFeedbackReconciler: emailFeedbackReconciler.Run,
-		emailFeedbackMetrics:    emailFeedbackMetricsCollector.Run,
-		smsDelivery:             smsConsumer.Run,
-		smsFeedback:             smsFeedbackConsumer.Run,
-		smsCampaign:             smsCampaignConsumer.Run,
-		webhookDelivery:         webhookConsumer.Run,
-		domainReconciliation:    domainConsumer.Run,
-		broadcastExecution:      broadcastExecutionConsumer.Run,
-		senderIDReconciliation:  senderIDRun,
+		subscriptionRenewal:       renewalWorker.Run,
+		outboxRelay:               outboxRelay.Run,
+		transactionalEmail:        transactionalEmailConsumer.Run,
+		marketingEmail:            marketingEmailConsumer.Run,
+		systemEmail:               systemEmailConsumer.Run,
+		emailTenantProvisioning:   emailTenantConsumer.Run,
+		emailFeedback:             emailFeedbackConsumer.Run,
+		emailFeedbackReconciler:   emailFeedbackReconciler.Run,
+		emailFeedbackMetrics:      emailFeedbackMetricsCollector.Run,
+		smsDelivery:               smsConsumer.Run,
+		smsFeedback:               smsFeedbackConsumer.Run,
+		smsCampaign:               smsCampaignJob.Run,
+		webhookDelivery:           webhookConsumer.Run,
+		domainReconciliation:      domainConsumer.Run,
+		domainClaimReconciliation: domainClaimJob.Run,
+		broadcastExecution:        broadcastExecutionJob.Run,
+		senderIDReconciliation:    senderIDRun,
 	}, nil
 }
 

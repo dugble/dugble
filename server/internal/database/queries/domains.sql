@@ -28,46 +28,11 @@ WHERE team.id = sqlc.arg(team_id)
   AND team.status = 'active'
 RETURNING *;
 
--- name: CreateClaimedDomain :one
-INSERT INTO domains (
-    id,
-    team_id,
-    name,
-    normalized_name,
-    provider,
-    provider_account,
-    provider_region,
-    status,
-    provider_status,
-    tls_mode,
-    custom_return_path,
-    health_status,
-    submitted_at,
-    next_check_at,
-    created_by
-) VALUES (
-    sqlc.arg(id),
-    sqlc.arg(team_id),
-    sqlc.arg(name),
-    lower(trim(sqlc.arg(name))),
-    lower(trim(sqlc.arg(provider))),
-    lower(trim(sqlc.arg(provider_account))),
-    lower(trim(sqlc.arg(provider_region))),
-    'pending',
-    'pending',
-    sqlc.arg(tls_mode),
-    lower(trim(sqlc.arg(custom_return_path))),
-    'unknown',
-    now(),
-    now() + interval '1 minute',
-    sqlc.narg(created_by)
-)
-RETURNING *;
-
 -- name: ListDomains :many
 SELECT domain_record.*
 FROM domains AS domain_record
 WHERE domain_record.team_id = sqlc.arg(team_id)
+  AND domain_record.disabled_at IS NULL
 ORDER BY domain_record.created_at DESC, domain_record.id DESC;
 
 -- name: GetDomain :one
@@ -85,13 +50,8 @@ WHERE domain_record.id = sqlc.arg(id);
 SELECT domain_record.*
 FROM domains AS domain_record
 WHERE domain_record.normalized_name = lower(trim(sqlc.arg(name)))
-  AND domain_record.team_id = sqlc.arg(team_id);
-
--- name: GetDomainByNameForClaim :one
-SELECT domain_record.*
-FROM domains AS domain_record
-WHERE domain_record.normalized_name = lower(trim(sqlc.arg(name)))
-FOR SHARE;
+  AND domain_record.team_id = sqlc.arg(team_id)
+  AND domain_record.disabled_at IS NULL;
 
 -- name: UpdateDomainConfiguration :one
 UPDATE domains
@@ -301,14 +261,10 @@ WHERE domain_record.id = sqlc.arg(id)
   )
 RETURNING domain_record.*;
 
--- name: DeleteDomainForClaim :one
-DELETE FROM domains
-WHERE id = sqlc.arg(id)
-RETURNING *;
-
 -- name: ResolveEmailSenderDomain :one
 SELECT id, provider, provider_region, status, health_status, disabled_at
 FROM domains
 WHERE team_id = sqlc.arg(team_id)
   AND normalized_name = lower(trim(sqlc.arg(domain_name)))
+  AND disabled_at IS NULL
 LIMIT 1;

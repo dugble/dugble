@@ -39,6 +39,7 @@ func newJobs(modules modules) []job {
 		{name: "SMS campaign execution consumer", run: modules.smsCampaign},
 		{name: "webhook delivery consumer", run: modules.webhookDelivery},
 		{name: "sender domain reconciliation consumer", run: modules.domainReconciliation},
+		{name: "sender domain claim reconciliation job", run: modules.domainClaimReconciliation},
 		{name: "broadcast execution consumer", run: modules.broadcastExecution},
 		{name: "Sender ID reconciliation", run: modules.senderIDReconciliation},
 	}

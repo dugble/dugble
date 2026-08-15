@@ -18,10 +18,6 @@ func validateCreate(req CreateRequest) (string, string, DomainConfiguration, err
 	return validateDomainConfiguration(req.Name, req.Region, req.TLS)
 }
 
-func validateClaim(req ClaimRequest) (string, string, DomainConfiguration, error) {
-	return validateDomainConfiguration(req.Name, req.Region, req.TLS)
-}
-
 func validateDomainConfiguration(name, region, tls string) (string, string, DomainConfiguration, error) {
 	domainName := normalizeDomain(name)
 	region = strings.ToLower(strings.TrimSpace(region))

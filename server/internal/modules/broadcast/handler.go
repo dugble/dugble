@@ -5,10 +5,9 @@ import (
 	"errors"
 	"io"
 
-	"github.com/labstack/echo/v5"
-
 	apperrors "github.com/dugble/dugble/server/pkg/errors"
 	"github.com/dugble/dugble/server/pkg/httputil"
+	"github.com/labstack/echo/v5"
 )
 
 type Handler struct{ service *Service }
@@ -136,4 +135,16 @@ func listRequest(c *echo.Context) (ListRequest, error) {
 		return ListRequest{}, err
 	}
 	return ListRequest{Limit: limit, Offset: offset}, nil
+}
+
+func (h *Handler) Duplicate(c *echo.Context) error {
+	var req DuplicateRequest
+	if err := decodeJSON(c, &req, false); err != nil {
+		return err
+	}
+	value, err := h.service.Duplicate(c.Request().Context(), c.Param("broadcast"), req)
+	if err != nil {
+		return httputil.Error(c, err)
+	}
+	return httputil.Created(c, value)
 }

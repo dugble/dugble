@@ -12,6 +12,61 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const archiveClaimSourceDomain = `-- name: ArchiveClaimSourceDomain :one
+UPDATE domains
+SET status = 'disabled',
+    disabled_at = COALESCE(disabled_at, now()),
+    next_check_at = now(),
+    reconcile_locked_at = NULL,
+    reconcile_locked_by = NULL,
+    updated_at = now()
+WHERE id = $1
+  AND team_id = $2
+RETURNING id, team_id, name, normalized_name, provider, provider_account, provider_region, provider_external_id, status, provider_status, tls_mode, custom_return_path, health_status, consecutive_health_failures, failure_reason, last_error, submitted_at, verified_at, disabled_at, last_checked_at, next_check_at, last_health_checked_at, last_health_failure_at, reconciliation_attempts, reconcile_locked_at, reconcile_locked_by, created_by, created_at, updated_at
+`
+
+type ArchiveClaimSourceDomainParams struct {
+	ID     uuid.UUID `db:"id" json:"id"`
+	TeamID uuid.UUID `db:"team_id" json:"team_id"`
+}
+
+func (q *Queries) ArchiveClaimSourceDomain(ctx context.Context, arg ArchiveClaimSourceDomainParams) (Domain, error) {
+	row := q.db.QueryRow(ctx, archiveClaimSourceDomain, arg.ID, arg.TeamID)
+	var i Domain
+	err := row.Scan(
+		&i.ID,
+		&i.TeamID,
+		&i.Name,
+		&i.NormalizedName,
+		&i.Provider,
+		&i.ProviderAccount,
+		&i.ProviderRegion,
+		&i.ProviderExternalID,
+		&i.Status,
+		&i.ProviderStatus,
+		&i.TlsMode,
+		&i.CustomReturnPath,
+		&i.HealthStatus,
+		&i.ConsecutiveHealthFailures,
+		&i.FailureReason,
+		&i.LastError,
+		&i.SubmittedAt,
+		&i.VerifiedAt,
+		&i.DisabledAt,
+		&i.LastCheckedAt,
+		&i.NextCheckAt,
+		&i.LastHealthCheckedAt,
+		&i.LastHealthFailureAt,
+		&i.ReconciliationAttempts,
+		&i.ReconcileLockedAt,
+		&i.ReconcileLockedBy,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const cancelDomainClaim = `-- name: CancelDomainClaim :one
 UPDATE domain_claims
 SET status = 'canceled',
@@ -167,6 +222,189 @@ func (q *Queries) ClaimPendingDomainClaims(ctx context.Context, arg ClaimPending
 	return items, nil
 }
 
+const createClaimTargetDNSRecord = `-- name: CreateClaimTargetDNSRecord :one
+INSERT INTO domain_dns_records (
+    domain_id,
+    purpose,
+    record,
+    name,
+    type,
+    value,
+    ttl,
+    priority,
+    status,
+    is_current,
+    verified_at
+) VALUES (
+    $1,
+    lower(trim($2)),
+    $3,
+    $4,
+    $5,
+    $6,
+    $7,
+    $8,
+    $9,
+    true,
+    CASE WHEN $9 = 'verified' THEN now() ELSE NULL END
+)
+ON CONFLICT (domain_id, purpose, name, type, value)
+DO UPDATE SET record = EXCLUDED.record,
+              ttl = EXCLUDED.ttl,
+              priority = EXCLUDED.priority,
+              status = EXCLUDED.status,
+              is_current = true,
+              verified_at = CASE
+                  WHEN EXCLUDED.status = 'verified'
+                      THEN COALESCE(domain_dns_records.verified_at, now())
+                  ELSE domain_dns_records.verified_at
+              END,
+              superseded_at = NULL,
+              updated_at = now()
+RETURNING id, domain_id, purpose, record, name, type, value, ttl, priority, status, is_current, verified_at, superseded_at, created_at, updated_at
+`
+
+type CreateClaimTargetDNSRecordParams struct {
+	DomainID uuid.UUID `db:"domain_id" json:"domain_id"`
+	Purpose  string    `db:"purpose" json:"purpose"`
+	Record   string    `db:"record" json:"record"`
+	Name     string    `db:"name" json:"name"`
+	Type     string    `db:"type" json:"type"`
+	Value    string    `db:"value" json:"value"`
+	Ttl      string    `db:"ttl" json:"ttl"`
+	Priority *int32    `db:"priority" json:"priority"`
+	Status   string    `db:"status" json:"status"`
+}
+
+func (q *Queries) CreateClaimTargetDNSRecord(ctx context.Context, arg CreateClaimTargetDNSRecordParams) (DomainDnsRecord, error) {
+	row := q.db.QueryRow(ctx, createClaimTargetDNSRecord,
+		arg.DomainID,
+		arg.Purpose,
+		arg.Record,
+		arg.Name,
+		arg.Type,
+		arg.Value,
+		arg.Ttl,
+		arg.Priority,
+		arg.Status,
+	)
+	var i DomainDnsRecord
+	err := row.Scan(
+		&i.ID,
+		&i.DomainID,
+		&i.Purpose,
+		&i.Record,
+		&i.Name,
+		&i.Type,
+		&i.Value,
+		&i.Ttl,
+		&i.Priority,
+		&i.Status,
+		&i.IsCurrent,
+		&i.VerifiedAt,
+		&i.SupersededAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const createClaimTargetDomain = `-- name: CreateClaimTargetDomain :one
+INSERT INTO domains (
+    id,
+    team_id,
+    name,
+    normalized_name,
+    provider,
+    provider_account,
+    provider_region,
+    status,
+    provider_status,
+    tls_mode,
+    custom_return_path,
+    health_status,
+    submitted_at,
+    next_check_at,
+    created_by
+) VALUES (
+    $1,
+    $2,
+    $3,
+    lower(trim($3)),
+    lower(trim($4)),
+    lower(trim($5)),
+    lower(trim($6)),
+    'pending',
+    'pending',
+    $7,
+    lower(trim($8)),
+    'unknown',
+    now(),
+    now() + interval '1 minute',
+    $9
+)
+RETURNING id, team_id, name, normalized_name, provider, provider_account, provider_region, provider_external_id, status, provider_status, tls_mode, custom_return_path, health_status, consecutive_health_failures, failure_reason, last_error, submitted_at, verified_at, disabled_at, last_checked_at, next_check_at, last_health_checked_at, last_health_failure_at, reconciliation_attempts, reconcile_locked_at, reconcile_locked_by, created_by, created_at, updated_at
+`
+
+type CreateClaimTargetDomainParams struct {
+	ID               uuid.UUID  `db:"id" json:"id"`
+	TeamID           uuid.UUID  `db:"team_id" json:"team_id"`
+	Name             string     `db:"name" json:"name"`
+	Provider         string     `db:"provider" json:"provider"`
+	ProviderAccount  string     `db:"provider_account" json:"provider_account"`
+	ProviderRegion   string     `db:"provider_region" json:"provider_region"`
+	TlsMode          string     `db:"tls_mode" json:"tls_mode"`
+	CustomReturnPath string     `db:"custom_return_path" json:"custom_return_path"`
+	CreatedBy        *uuid.UUID `db:"created_by" json:"created_by"`
+}
+
+func (q *Queries) CreateClaimTargetDomain(ctx context.Context, arg CreateClaimTargetDomainParams) (Domain, error) {
+	row := q.db.QueryRow(ctx, createClaimTargetDomain,
+		arg.ID,
+		arg.TeamID,
+		arg.Name,
+		arg.Provider,
+		arg.ProviderAccount,
+		arg.ProviderRegion,
+		arg.TlsMode,
+		arg.CustomReturnPath,
+		arg.CreatedBy,
+	)
+	var i Domain
+	err := row.Scan(
+		&i.ID,
+		&i.TeamID,
+		&i.Name,
+		&i.NormalizedName,
+		&i.Provider,
+		&i.ProviderAccount,
+		&i.ProviderRegion,
+		&i.ProviderExternalID,
+		&i.Status,
+		&i.ProviderStatus,
+		&i.TlsMode,
+		&i.CustomReturnPath,
+		&i.HealthStatus,
+		&i.ConsecutiveHealthFailures,
+		&i.FailureReason,
+		&i.LastError,
+		&i.SubmittedAt,
+		&i.VerifiedAt,
+		&i.DisabledAt,
+		&i.LastCheckedAt,
+		&i.NextCheckAt,
+		&i.LastHealthCheckedAt,
+		&i.LastHealthFailureAt,
+		&i.ReconciliationAttempts,
+		&i.ReconcileLockedAt,
+		&i.ReconcileLockedBy,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const createDomainClaim = `-- name: CreateDomainClaim :one
 INSERT INTO domain_claims (
     target_domain_id,
@@ -262,6 +500,22 @@ func (q *Queries) CreateDomainClaim(ctx context.Context, arg CreateDomainClaimPa
 	return i, err
 }
 
+const deleteCurrentClaimTargetDNSRecords = `-- name: DeleteCurrentClaimTargetDNSRecords :exec
+DELETE FROM domain_dns_records
+WHERE domain_id = $1
+  AND is_current
+  AND purpose <> 'tracking'
+`
+
+type DeleteCurrentClaimTargetDNSRecordsParams struct {
+	DomainID uuid.UUID `db:"domain_id" json:"domain_id"`
+}
+
+func (q *Queries) DeleteCurrentClaimTargetDNSRecords(ctx context.Context, arg DeleteCurrentClaimTargetDNSRecordsParams) error {
+	_, err := q.db.Exec(ctx, deleteCurrentClaimTargetDNSRecords, arg.DomainID)
+	return err
+}
+
 const domainHasPendingScheduledEmails = `-- name: DomainHasPendingScheduledEmails :one
 SELECT EXISTS (
     SELECT 1
@@ -279,6 +533,27 @@ type DomainHasPendingScheduledEmailsParams struct {
 
 func (q *Queries) DomainHasPendingScheduledEmails(ctx context.Context, arg DomainHasPendingScheduledEmailsParams) (bool, error) {
 	row := q.db.QueryRow(ctx, domainHasPendingScheduledEmails, arg.DomainID)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
+const domainHasRecentOwnerActivity = `-- name: DomainHasRecentOwnerActivity :one
+SELECT EXISTS (
+    SELECT 1
+    FROM email_messages AS message
+    WHERE message.sender_domain_id = $1
+      AND message.created_at >= $2
+)
+`
+
+type DomainHasRecentOwnerActivityParams struct {
+	DomainID *uuid.UUID         `db:"domain_id" json:"domain_id"`
+	Since    pgtype.Timestamptz `db:"since" json:"since"`
+}
+
+func (q *Queries) DomainHasRecentOwnerActivity(ctx context.Context, arg DomainHasRecentOwnerActivityParams) (bool, error) {
+	row := q.db.QueryRow(ctx, domainHasRecentOwnerActivity, arg.DomainID, arg.Since)
 	var exists bool
 	err := row.Scan(&exists)
 	return exists, err
@@ -338,6 +613,57 @@ func (q *Queries) ExpireDomainClaims(ctx context.Context) ([]DomainClaim, error)
 		return nil, err
 	}
 	return items, nil
+}
+
+const getActiveDomainForClaimByName = `-- name: GetActiveDomainForClaimByName :one
+SELECT domain_record.id, domain_record.team_id, domain_record.name, domain_record.normalized_name, domain_record.provider, domain_record.provider_account, domain_record.provider_region, domain_record.provider_external_id, domain_record.status, domain_record.provider_status, domain_record.tls_mode, domain_record.custom_return_path, domain_record.health_status, domain_record.consecutive_health_failures, domain_record.failure_reason, domain_record.last_error, domain_record.submitted_at, domain_record.verified_at, domain_record.disabled_at, domain_record.last_checked_at, domain_record.next_check_at, domain_record.last_health_checked_at, domain_record.last_health_failure_at, domain_record.reconciliation_attempts, domain_record.reconcile_locked_at, domain_record.reconcile_locked_by, domain_record.created_by, domain_record.created_at, domain_record.updated_at
+FROM domains AS domain_record
+WHERE domain_record.normalized_name = lower(trim($1))
+  AND domain_record.disabled_at IS NULL
+ORDER BY domain_record.created_at DESC
+LIMIT 1
+FOR SHARE
+`
+
+type GetActiveDomainForClaimByNameParams struct {
+	Name string `db:"name" json:"name"`
+}
+
+func (q *Queries) GetActiveDomainForClaimByName(ctx context.Context, arg GetActiveDomainForClaimByNameParams) (Domain, error) {
+	row := q.db.QueryRow(ctx, getActiveDomainForClaimByName, arg.Name)
+	var i Domain
+	err := row.Scan(
+		&i.ID,
+		&i.TeamID,
+		&i.Name,
+		&i.NormalizedName,
+		&i.Provider,
+		&i.ProviderAccount,
+		&i.ProviderRegion,
+		&i.ProviderExternalID,
+		&i.Status,
+		&i.ProviderStatus,
+		&i.TlsMode,
+		&i.CustomReturnPath,
+		&i.HealthStatus,
+		&i.ConsecutiveHealthFailures,
+		&i.FailureReason,
+		&i.LastError,
+		&i.SubmittedAt,
+		&i.VerifiedAt,
+		&i.DisabledAt,
+		&i.LastCheckedAt,
+		&i.NextCheckAt,
+		&i.LastHealthCheckedAt,
+		&i.LastHealthFailureAt,
+		&i.ReconciliationAttempts,
+		&i.ReconcileLockedAt,
+		&i.ReconcileLockedBy,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
 }
 
 const getDomainClaim = `-- name: GetDomainClaim :one
@@ -417,6 +743,53 @@ func (q *Queries) GetDomainClaimByID(ctx context.Context, arg GetDomainClaimByID
 		&i.VerifiedAt,
 		&i.CompletedAt,
 		&i.ExpiresAt,
+		&i.ReconcileLockedAt,
+		&i.ReconcileLockedBy,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getDomainForClaimByID = `-- name: GetDomainForClaimByID :one
+SELECT domain_record.id, domain_record.team_id, domain_record.name, domain_record.normalized_name, domain_record.provider, domain_record.provider_account, domain_record.provider_region, domain_record.provider_external_id, domain_record.status, domain_record.provider_status, domain_record.tls_mode, domain_record.custom_return_path, domain_record.health_status, domain_record.consecutive_health_failures, domain_record.failure_reason, domain_record.last_error, domain_record.submitted_at, domain_record.verified_at, domain_record.disabled_at, domain_record.last_checked_at, domain_record.next_check_at, domain_record.last_health_checked_at, domain_record.last_health_failure_at, domain_record.reconciliation_attempts, domain_record.reconcile_locked_at, domain_record.reconcile_locked_by, domain_record.created_by, domain_record.created_at, domain_record.updated_at
+FROM domains AS domain_record
+WHERE domain_record.id = $1
+`
+
+type GetDomainForClaimByIDParams struct {
+	ID uuid.UUID `db:"id" json:"id"`
+}
+
+func (q *Queries) GetDomainForClaimByID(ctx context.Context, arg GetDomainForClaimByIDParams) (Domain, error) {
+	row := q.db.QueryRow(ctx, getDomainForClaimByID, arg.ID)
+	var i Domain
+	err := row.Scan(
+		&i.ID,
+		&i.TeamID,
+		&i.Name,
+		&i.NormalizedName,
+		&i.Provider,
+		&i.ProviderAccount,
+		&i.ProviderRegion,
+		&i.ProviderExternalID,
+		&i.Status,
+		&i.ProviderStatus,
+		&i.TlsMode,
+		&i.CustomReturnPath,
+		&i.HealthStatus,
+		&i.ConsecutiveHealthFailures,
+		&i.FailureReason,
+		&i.LastError,
+		&i.SubmittedAt,
+		&i.VerifiedAt,
+		&i.DisabledAt,
+		&i.LastCheckedAt,
+		&i.NextCheckAt,
+		&i.LastHealthCheckedAt,
+		&i.LastHealthFailureAt,
+		&i.ReconciliationAttempts,
 		&i.ReconcileLockedAt,
 		&i.ReconcileLockedBy,
 		&i.CreatedBy,

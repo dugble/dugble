@@ -276,102 +276,6 @@ func (q *Queries) CompleteDomainReconciliation(ctx context.Context, arg Complete
 	return i, err
 }
 
-const createClaimedDomain = `-- name: CreateClaimedDomain :one
-INSERT INTO domains (
-    id,
-    team_id,
-    name,
-    normalized_name,
-    provider,
-    provider_account,
-    provider_region,
-    status,
-    provider_status,
-    tls_mode,
-    custom_return_path,
-    health_status,
-    submitted_at,
-    next_check_at,
-    created_by
-) VALUES (
-    $1,
-    $2,
-    $3,
-    lower(trim($3)),
-    lower(trim($4)),
-    lower(trim($5)),
-    lower(trim($6)),
-    'pending',
-    'pending',
-    $7,
-    lower(trim($8)),
-    'unknown',
-    now(),
-    now() + interval '1 minute',
-    $9
-)
-RETURNING id, team_id, name, normalized_name, provider, provider_account, provider_region, provider_external_id, status, provider_status, tls_mode, custom_return_path, health_status, consecutive_health_failures, failure_reason, last_error, submitted_at, verified_at, disabled_at, last_checked_at, next_check_at, last_health_checked_at, last_health_failure_at, reconciliation_attempts, reconcile_locked_at, reconcile_locked_by, created_by, created_at, updated_at
-`
-
-type CreateClaimedDomainParams struct {
-	ID               uuid.UUID  `db:"id" json:"id"`
-	TeamID           uuid.UUID  `db:"team_id" json:"team_id"`
-	Name             string     `db:"name" json:"name"`
-	Provider         string     `db:"provider" json:"provider"`
-	ProviderAccount  string     `db:"provider_account" json:"provider_account"`
-	ProviderRegion   string     `db:"provider_region" json:"provider_region"`
-	TlsMode          string     `db:"tls_mode" json:"tls_mode"`
-	CustomReturnPath string     `db:"custom_return_path" json:"custom_return_path"`
-	CreatedBy        *uuid.UUID `db:"created_by" json:"created_by"`
-}
-
-func (q *Queries) CreateClaimedDomain(ctx context.Context, arg CreateClaimedDomainParams) (Domain, error) {
-	row := q.db.QueryRow(ctx, createClaimedDomain,
-		arg.ID,
-		arg.TeamID,
-		arg.Name,
-		arg.Provider,
-		arg.ProviderAccount,
-		arg.ProviderRegion,
-		arg.TlsMode,
-		arg.CustomReturnPath,
-		arg.CreatedBy,
-	)
-	var i Domain
-	err := row.Scan(
-		&i.ID,
-		&i.TeamID,
-		&i.Name,
-		&i.NormalizedName,
-		&i.Provider,
-		&i.ProviderAccount,
-		&i.ProviderRegion,
-		&i.ProviderExternalID,
-		&i.Status,
-		&i.ProviderStatus,
-		&i.TlsMode,
-		&i.CustomReturnPath,
-		&i.HealthStatus,
-		&i.ConsecutiveHealthFailures,
-		&i.FailureReason,
-		&i.LastError,
-		&i.SubmittedAt,
-		&i.VerifiedAt,
-		&i.DisabledAt,
-		&i.LastCheckedAt,
-		&i.NextCheckAt,
-		&i.LastHealthCheckedAt,
-		&i.LastHealthFailureAt,
-		&i.ReconciliationAttempts,
-		&i.ReconcileLockedAt,
-		&i.ReconcileLockedBy,
-		&i.CreatedBy,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-	)
-	return i, err
-}
-
 const createDomain = `-- name: CreateDomain :one
 INSERT INTO domains (
     team_id,
@@ -564,53 +468,6 @@ func (q *Queries) DeleteDomain(ctx context.Context, arg DeleteDomainParams) (Dom
 	return i, err
 }
 
-const deleteDomainForClaim = `-- name: DeleteDomainForClaim :one
-DELETE FROM domains
-WHERE id = $1
-RETURNING id, team_id, name, normalized_name, provider, provider_account, provider_region, provider_external_id, status, provider_status, tls_mode, custom_return_path, health_status, consecutive_health_failures, failure_reason, last_error, submitted_at, verified_at, disabled_at, last_checked_at, next_check_at, last_health_checked_at, last_health_failure_at, reconciliation_attempts, reconcile_locked_at, reconcile_locked_by, created_by, created_at, updated_at
-`
-
-type DeleteDomainForClaimParams struct {
-	ID uuid.UUID `db:"id" json:"id"`
-}
-
-func (q *Queries) DeleteDomainForClaim(ctx context.Context, arg DeleteDomainForClaimParams) (Domain, error) {
-	row := q.db.QueryRow(ctx, deleteDomainForClaim, arg.ID)
-	var i Domain
-	err := row.Scan(
-		&i.ID,
-		&i.TeamID,
-		&i.Name,
-		&i.NormalizedName,
-		&i.Provider,
-		&i.ProviderAccount,
-		&i.ProviderRegion,
-		&i.ProviderExternalID,
-		&i.Status,
-		&i.ProviderStatus,
-		&i.TlsMode,
-		&i.CustomReturnPath,
-		&i.HealthStatus,
-		&i.ConsecutiveHealthFailures,
-		&i.FailureReason,
-		&i.LastError,
-		&i.SubmittedAt,
-		&i.VerifiedAt,
-		&i.DisabledAt,
-		&i.LastCheckedAt,
-		&i.NextCheckAt,
-		&i.LastHealthCheckedAt,
-		&i.LastHealthFailureAt,
-		&i.ReconciliationAttempts,
-		&i.ReconcileLockedAt,
-		&i.ReconcileLockedBy,
-		&i.CreatedBy,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-	)
-	return i, err
-}
-
 const disableDomain = `-- name: DisableDomain :one
 UPDATE domains
 SET status = 'disabled',
@@ -767,6 +624,7 @@ SELECT domain_record.id, domain_record.team_id, domain_record.name, domain_recor
 FROM domains AS domain_record
 WHERE domain_record.normalized_name = lower(trim($1))
   AND domain_record.team_id = $2
+  AND domain_record.disabled_at IS NULL
 `
 
 type GetDomainByNameParams struct {
@@ -811,58 +669,11 @@ func (q *Queries) GetDomainByName(ctx context.Context, arg GetDomainByNameParams
 	return i, err
 }
 
-const getDomainByNameForClaim = `-- name: GetDomainByNameForClaim :one
-SELECT domain_record.id, domain_record.team_id, domain_record.name, domain_record.normalized_name, domain_record.provider, domain_record.provider_account, domain_record.provider_region, domain_record.provider_external_id, domain_record.status, domain_record.provider_status, domain_record.tls_mode, domain_record.custom_return_path, domain_record.health_status, domain_record.consecutive_health_failures, domain_record.failure_reason, domain_record.last_error, domain_record.submitted_at, domain_record.verified_at, domain_record.disabled_at, domain_record.last_checked_at, domain_record.next_check_at, domain_record.last_health_checked_at, domain_record.last_health_failure_at, domain_record.reconciliation_attempts, domain_record.reconcile_locked_at, domain_record.reconcile_locked_by, domain_record.created_by, domain_record.created_at, domain_record.updated_at
-FROM domains AS domain_record
-WHERE domain_record.normalized_name = lower(trim($1))
-FOR SHARE
-`
-
-type GetDomainByNameForClaimParams struct {
-	Name string `db:"name" json:"name"`
-}
-
-func (q *Queries) GetDomainByNameForClaim(ctx context.Context, arg GetDomainByNameForClaimParams) (Domain, error) {
-	row := q.db.QueryRow(ctx, getDomainByNameForClaim, arg.Name)
-	var i Domain
-	err := row.Scan(
-		&i.ID,
-		&i.TeamID,
-		&i.Name,
-		&i.NormalizedName,
-		&i.Provider,
-		&i.ProviderAccount,
-		&i.ProviderRegion,
-		&i.ProviderExternalID,
-		&i.Status,
-		&i.ProviderStatus,
-		&i.TlsMode,
-		&i.CustomReturnPath,
-		&i.HealthStatus,
-		&i.ConsecutiveHealthFailures,
-		&i.FailureReason,
-		&i.LastError,
-		&i.SubmittedAt,
-		&i.VerifiedAt,
-		&i.DisabledAt,
-		&i.LastCheckedAt,
-		&i.NextCheckAt,
-		&i.LastHealthCheckedAt,
-		&i.LastHealthFailureAt,
-		&i.ReconciliationAttempts,
-		&i.ReconcileLockedAt,
-		&i.ReconcileLockedBy,
-		&i.CreatedBy,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-	)
-	return i, err
-}
-
 const listDomains = `-- name: ListDomains :many
 SELECT domain_record.id, domain_record.team_id, domain_record.name, domain_record.normalized_name, domain_record.provider, domain_record.provider_account, domain_record.provider_region, domain_record.provider_external_id, domain_record.status, domain_record.provider_status, domain_record.tls_mode, domain_record.custom_return_path, domain_record.health_status, domain_record.consecutive_health_failures, domain_record.failure_reason, domain_record.last_error, domain_record.submitted_at, domain_record.verified_at, domain_record.disabled_at, domain_record.last_checked_at, domain_record.next_check_at, domain_record.last_health_checked_at, domain_record.last_health_failure_at, domain_record.reconciliation_attempts, domain_record.reconcile_locked_at, domain_record.reconcile_locked_by, domain_record.created_by, domain_record.created_at, domain_record.updated_at
 FROM domains AS domain_record
 WHERE domain_record.team_id = $1
+  AND domain_record.disabled_at IS NULL
 ORDER BY domain_record.created_at DESC, domain_record.id DESC
 `
 
@@ -1060,6 +871,7 @@ SELECT id, provider, provider_region, status, health_status, disabled_at
 FROM domains
 WHERE team_id = $1
   AND normalized_name = lower(trim($2))
+  AND disabled_at IS NULL
 LIMIT 1
 `
 

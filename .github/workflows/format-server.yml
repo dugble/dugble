@@ -1,28 +1,29 @@
-name: Format Server Go
+name: Format and Lint Server Go
 
 on:
   push:
     branches:
-      - agent/fix-subscription-ci
+      - agent/fix-domain-lifecycle-claims
     paths:
       - ".github/workflows/format-server.yml"
       - ".golangci.yml"
+      - "server/go.mod"
+      - "server/go.sum"
       - "server/**/*.go"
   workflow_dispatch:
 
 permissions:
   contents: write
-  actions: write
 
 concurrency:
-  group: format-server-${{ github.ref }}
+  group: format-lint-server-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  format:
+  format-and-lint:
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
 
     defaults:
       run:
@@ -41,13 +42,19 @@ jobs:
           cache: true
           cache-dependency-path: server/go.sum
 
+      - name: Download dependencies
+        run: go mod download
+
       - name: Install golangci-lint
         run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2
+
+      - name: Verify golangci-lint config
+        run: golangci-lint config verify --config ../.golangci.yml
 
       - name: Format server Go
         run: golangci-lint fmt --config ../.golangci.yml ./...
 
-      - name: Verify diff
+      - name: Verify formatted diff
         working-directory: .
         run: git diff --check
 
@@ -64,13 +71,9 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -- server
-          git commit -m "Format server Go code"
+          git commit -m "style: format server Go code"
           git push origin "HEAD:${GITHUB_REF_NAME}"
           echo "changed=true" >> "$GITHUB_OUTPUT"
 
-      - name: Re-run Server CI
-        if: steps.commit.outputs.changed == 'true'
-        working-directory: .
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh workflow run server.yml --ref "$GITHUB_REF_NAME"
+      - name: Run golangci-lint
+        run: golangci-lint run --config ../.golangci.yml ./...

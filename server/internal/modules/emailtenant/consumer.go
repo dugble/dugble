@@ -1,4 +1,4 @@
-package tenantprovision
+package emailtenant
 
 import (
 	"context"
@@ -9,13 +9,14 @@ import (
 	"strings"
 	"time"
 
-	sentrymonitoring "github.com/dugble/dugble/server/internal/adapters/monitoring/sentry"
-
 	"github.com/google/uuid"
 	natsjs "github.com/nats-io/nats.go/jetstream"
 
+	sentrymonitoring "github.com/dugble/dugble/server/internal/adapters/monitoring/sentry"
 	jetstreammessaging "github.com/dugble/dugble/server/internal/adapters/nats"
 )
+
+var ErrProvisioningConsumerNotConfigured = errors.New("email tenant provisioning consumer is not fully configured")
 
 type processedEventStore interface {
 	IsProcessed(context.Context, string, uuid.UUID) (bool, error)
@@ -30,12 +31,12 @@ type messagePublisher interface {
 	Publish(context.Context, string, []byte, map[string]string, string) error
 }
 
-type commandProcessor interface {
-	Handle(context.Context, Command) error
-	HandleExhausted(context.Context, Command, error) error
+type provisioningCommandProcessor interface {
+	Handle(context.Context, ProvisioningCommand) error
+	HandleExhausted(context.Context, ProvisioningCommand, error) error
 }
 
-type Config struct {
+type ProvisioningConsumerConfig struct {
 	Concurrency    int
 	AckWait        time.Duration
 	HandlerTimeout time.Duration
@@ -43,15 +44,15 @@ type Config struct {
 	RetryBackOff   []time.Duration
 }
 
-type Consumer struct {
+type ProvisioningConsumer struct {
 	provider  consumerProvider
 	publisher messagePublisher
 	processed processedEventStore
-	processor commandProcessor
-	config    Config
+	processor provisioningCommandProcessor
+	config    ProvisioningConsumerConfig
 }
 
-func NewConsumer(client *jetstreammessaging.Client, processed processedEventStore, processor commandProcessor, config Config) *Consumer {
+func NewProvisioningConsumer(client *jetstreammessaging.Client, processed processedEventStore, processor provisioningCommandProcessor, config ProvisioningConsumerConfig) *ProvisioningConsumer {
 	if config.Concurrency <= 0 {
 		config.Concurrency = 3
 	}
@@ -62,23 +63,23 @@ func NewConsumer(client *jetstreammessaging.Client, processed processedEventStor
 		config.HandlerTimeout = 60 * time.Second
 	}
 	if len(config.RetryBackOff) == 0 {
-		config.RetryBackOff = DefaultRetryBackOff()
+		config.RetryBackOff = DefaultProvisioningRetryBackOff()
 	} else {
 		config.RetryBackOff = append([]time.Duration(nil), config.RetryBackOff...)
 	}
 	if config.MaxDeliver <= 0 {
 		config.MaxDeliver = len(config.RetryBackOff)
 	}
-	config.RetryBackOff = normalizeRetryBackOff(config.RetryBackOff, config.MaxDeliver)
-	return &Consumer{provider: client, publisher: client, processed: processed, processor: processor, config: config}
+	config.RetryBackOff = normalizeProvisioningRetryBackOff(config.RetryBackOff, config.MaxDeliver)
+	return &ProvisioningConsumer{provider: client, publisher: client, processed: processed, processor: processor, config: config}
 }
 
-func (consumer *Consumer) Run(ctx context.Context) error {
+func (consumer *ProvisioningConsumer) Run(ctx context.Context) error {
 	if consumer == nil || consumer.provider == nil || consumer.publisher == nil || consumer.processed == nil || consumer.processor == nil {
-		return ErrConsumerNotConfigured
+		return ErrProvisioningConsumerNotConfigured
 	}
 	streamConsumer, err := consumer.provider.CreateOrUpdateConsumer(ctx, jetstreammessaging.JobsStreamName, natsjs.ConsumerConfig{
-		Name: ConsumerName, Durable: ConsumerName, Description: "Durable SES tenant provisioning jobs",
+		Name: ProvisionConsumer, Durable: ProvisionConsumer, Description: "Durable SES tenant provisioning jobs",
 		DeliverPolicy: natsjs.DeliverAllPolicy, AckPolicy: natsjs.AckExplicitPolicy, AckWait: consumer.config.AckWait,
 		MaxDeliver: consumer.config.MaxDeliver, BackOff: consumer.config.RetryBackOff,
 		FilterSubject: ProvisionSubject, ReplayPolicy: natsjs.ReplayInstantPolicy,
@@ -105,18 +106,18 @@ func (consumer *Consumer) Run(ctx context.Context) error {
 	return nil
 }
 
-func (consumer *Consumer) process(parent context.Context, message natsjs.Msg) {
+func (consumer *ProvisioningConsumer) process(parent context.Context, message natsjs.Msg) {
 	metadata, err := message.Metadata()
 	if err != nil {
 		_ = message.Nak()
 		return
 	}
-	command, err := decodeCommand(message)
+	command, err := decodeProvisioningCommand(message)
 	if err != nil {
 		consumer.deadLetter(parent, message, metadata, uuid.Nil, err)
 		return
 	}
-	processed, err := consumer.processed.IsProcessed(parent, ConsumerName, command.EventID)
+	processed, err := consumer.processed.IsProcessed(parent, ProvisionConsumer, command.EventID)
 	if err != nil {
 		_ = message.Nak()
 		return
@@ -144,11 +145,11 @@ func (consumer *Consumer) process(parent context.Context, message natsjs.Msg) {
 			consumer.deadLetter(parent, message, metadata, command.EventID, err)
 			return
 		}
-		_ = message.NakWithDelay(retryDelay(consumer.config.RetryBackOff, metadata.NumDelivered))
+		_ = message.NakWithDelay(provisioningRetryDelay(consumer.config.RetryBackOff, metadata.NumDelivered))
 		return
 	}
 
-	if err := consumer.processed.MarkProcessed(parent, ConsumerName, command.EventID, map[string]any{
+	if err := consumer.processed.MarkProcessed(parent, ProvisionConsumer, command.EventID, map[string]any{
 		"subject": message.Subject(), "stream_sequence": metadata.Sequence.Stream, "deliveries": metadata.NumDelivered,
 	}); err != nil {
 		_ = message.Nak()
@@ -157,41 +158,83 @@ func (consumer *Consumer) process(parent context.Context, message natsjs.Msg) {
 	_ = message.Ack()
 }
 
-func decodeCommand(message natsjs.Msg) (Command, error) {
-	var command Command
+func decodeProvisioningCommand(message natsjs.Msg) (ProvisioningCommand, error) {
+	var command ProvisioningCommand
 	if err := json.Unmarshal(message.Data(), &command); err != nil {
-		return Command{}, fmt.Errorf("decode email tenant provisioning command: %w", err)
+		return ProvisioningCommand{}, fmt.Errorf("decode email tenant provisioning command: %w", err)
 	}
-	if err := ValidateCommand(command); err != nil {
-		return Command{}, err
+	if err := ValidateProvisioningCommand(command); err != nil {
+		return ProvisioningCommand{}, err
 	}
 	headerID, err := uuid.Parse(strings.TrimSpace(message.Headers().Get("Dugble-Event-Id")))
 	if err != nil || headerID != command.EventID {
-		return Command{}, errors.New("email tenant event ID does not match outbox header")
+		return ProvisioningCommand{}, errors.New("email tenant event ID does not match outbox header")
 	}
 	return command, nil
 }
 
-func (consumer *Consumer) deadLetter(ctx context.Context, message natsjs.Msg, metadata *natsjs.MsgMetadata, eventID uuid.UUID, cause error) {
+func (consumer *ProvisioningConsumer) deadLetter(ctx context.Context, message natsjs.Msg, metadata *natsjs.MsgMetadata, eventID uuid.UUID, cause error) {
 	headers := map[string]string{
 		"Dugble-Original-Subject":   message.Subject(),
-		"Dugble-Dead-Letter-Reason": truncateReason(cause),
+		"Dugble-Dead-Letter-Reason": provisioningFailureReason(cause),
 		"Dugble-Delivery-Count":     strconv.FormatUint(metadata.NumDelivered, 10),
 	}
 	messageID := eventID.String() + "-dlq"
 	if eventID == uuid.Nil {
-		messageID = fmt.Sprintf("%s-%d-dlq", ConsumerName, metadata.Sequence.Stream)
+		messageID = fmt.Sprintf("%s-%d-dlq", ProvisionConsumer, metadata.Sequence.Stream)
 	}
-	if err := consumer.publisher.Publish(ctx, DLQSubject, message.Data(), headers, messageID); err != nil {
+	if err := consumer.publisher.Publish(ctx, ProvisionDLQSubject, message.Data(), headers, messageID); err != nil {
 		_ = message.NakWithDelay(time.Minute)
 		return
 	}
-	if err := message.TermWithReason(truncateReason(cause)); err != nil {
+	if err := message.TermWithReason(provisioningFailureReason(cause)); err != nil {
 		sentrymonitoring.Error("failed to terminate dead-lettered tenant provisioning command", "event_id", eventID, "error", err)
 	}
 }
 
-func truncateReason(err error) string {
+var defaultProvisioningRetryBackOff = []time.Duration{
+	time.Second,
+	5 * time.Second,
+	30 * time.Second,
+	2 * time.Minute,
+	5 * time.Minute,
+	15 * time.Minute,
+}
+
+func DefaultProvisioningRetryBackOff() []time.Duration {
+	return append([]time.Duration(nil), defaultProvisioningRetryBackOff...)
+}
+
+func normalizeProvisioningRetryBackOff(delays []time.Duration, maxDeliver int) []time.Duration {
+	if maxDeliver <= 0 || len(delays) == 0 {
+		return nil
+	}
+	result := make([]time.Duration, maxDeliver)
+	for index := range result {
+		source := index
+		if source >= len(delays) {
+			source = len(delays) - 1
+		}
+		result[index] = delays[source]
+	}
+	return result
+}
+
+func provisioningRetryDelay(delays []time.Duration, delivered uint64) time.Duration {
+	if len(delays) == 0 {
+		return 0
+	}
+	index := int(delivered) - 1
+	if index < 0 {
+		index = 0
+	}
+	if index >= len(delays) {
+		index = len(delays) - 1
+	}
+	return delays[index]
+}
+
+func provisioningFailureReason(err error) string {
 	if err == nil {
 		return "unknown email tenant provisioning failure"
 	}
