@@ -1,0 +1,216 @@
+name: Temporary Refactor Domain Boundaries
+
+on:
+  push:
+    branches:
+      - agent/refactor-domain-module-boundaries
+
+permissions:
+  contents: write
+
+jobs:
+  refactor:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/refactor-domain-module-boundaries
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: server/go.mod
+      - name: Move domain transaction boundaries into services
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          repo_path = Path('server/internal/modules/domain/repository.go')
+          s = repo_path.read_text()
+          s = s.replace('type Repository struct {\n\tdb      *pgxpool.Pool\n\tqueries *dbsqlc.Queries\n}\n\nfunc NewRepository(db *pgxpool.Pool) *Repository {\n\treturn &Repository{db: db, queries: dbsqlc.New(db)}\n}\n', 'type Repository struct {\n\tqueries *dbsqlc.Queries\n}\n\nfunc NewRepository(db *pgxpool.Pool) *Repository {\n\treturn &Repository{queries: dbsqlc.New(db)}\n}\n\nfunc (r *Repository) WithTx(tx pgx.Tx) *Repository {\n\treturn &Repository{queries: r.queries.WithTx(tx)}\n}\n')
+
+          begin_blocks = [
+              ('sender domain creation', 'begin sender domain creation'),
+              ('sender domain verification update', 'begin sender domain verification update'),
+              ('sender domain reconciliation completion', 'begin sender domain reconciliation completion'),
+              ('sender domain manual health update', 'begin sender domain manual health update'),
+          ]
+          for _, message in begin_blocks:
+              block = f'''\ttx, err := r.db.BeginTx(ctx, pgx.TxOptions{{}})\n\tif err != nil {{\n\t\treturn SenderDomain{{}}, fmt.Errorf("{message}: %w", err)\n\t}}\n\tdefer func() {{ _ = tx.Rollback(ctx) }}()\n\n\tqueries := r.queries.WithTx(tx)\n'''
+              if block not in s:
+                  raise SystemExit(f'missing repository begin block: {message}')
+              s = s.replace(block, '\tqueries := r.queries\n', 1)
+
+          commit_messages = [
+              'commit sender domain creation',
+              'commit sender domain verification',
+              'commit sender domain reconciliation completion',
+              'commit sender domain manual health update',
+          ]
+          for message in commit_messages:
+              block = f'''\tif err := tx.Commit(ctx); err != nil {{\n\t\treturn SenderDomain{{}}, fmt.Errorf("{message}: %w", err)\n\t}}\n'''
+              if block not in s:
+                  raise SystemExit(f'missing repository commit block: {message}')
+              s = s.replace(block, '', 1)
+
+          s = s.replace('if r == nil || r.db == nil || r.queries == nil {', 'if r == nil || r.queries == nil {')
+          repo_path.write_text(s)
+
+          service_path = Path('server/internal/modules/domain/service.go')
+          s = service_path.read_text()
+          s = s.replace('"github.com/google/uuid"\n', '"github.com/google/uuid"\n\t"github.com/jackc/pgx/v5"\n\t"github.com/jackc/pgx/v5/pgxpool"\n')
+          s = s.replace('type Service struct {\n\trepository      *Repository', 'type Service struct {\n\tdb              *pgxpool.Pool\n\trepository      *Repository')
+          marker = '''func (s *Service) WithNotifier(notifier statusNotifier) *Service {\n\ts.notifier = notifier\n\treturn s\n}\n'''
+          replacement = marker + '''\nfunc (s *Service) WithDatabase(db *pgxpool.Pool) *Service {\n\tif s != nil {\n\t\ts.db = db\n\t}\n\treturn s\n}\n'''
+          if marker not in s:
+              raise SystemExit('WithNotifier marker missing')
+          s = s.replace(marker, replacement, 1)
+          s = s.replace('s.repository.Create(ctx, CreateDomainInput{', 's.createDomain(ctx, CreateDomainInput{')
+          s = s.replace('s.repository.UpdateVerification(', 's.updateVerification(')
+          s = s.replace('s.repository.UpdateManualHealthCheck(', 's.updateManualHealthCheck(')
+
+          helper_marker = '\nfunc requireTenantPermission(ctx context.Context, permission authz.Permission) (authz.Access, error) {'
+          helpers = r'''
+func (s *Service) withRepositoryTx(
+	ctx context.Context,
+	operation string,
+	fn func(*Repository) (SenderDomain, error),
+) (SenderDomain, error) {
+	if s == nil || s.db == nil || s.repository == nil {
+		return SenderDomain{}, errors.New("sender domain transaction service is not configured")
+	}
+	tx, err := s.db.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return SenderDomain{}, fmt.Errorf("begin %s: %w", operation, err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	value, err := fn(s.repository.WithTx(tx))
+	if err != nil {
+		return SenderDomain{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return SenderDomain{}, fmt.Errorf("commit %s: %w", operation, err)
+	}
+	return value, nil
+}
+
+func (s *Service) createDomain(ctx context.Context, input CreateDomainInput) (SenderDomain, error) {
+	return s.withRepositoryTx(ctx, "sender domain creation", func(repository *Repository) (SenderDomain, error) {
+		return repository.Create(ctx, input)
+	})
+}
+
+func (s *Service) updateVerification(
+	ctx context.Context,
+	id, teamID uuid.UUID,
+	status string,
+	records []VerificationRecord,
+	failureReason *string,
+) (SenderDomain, error) {
+	return s.withRepositoryTx(ctx, "sender domain verification update", func(repository *Repository) (SenderDomain, error) {
+		return repository.UpdateVerification(ctx, id, teamID, status, records, failureReason)
+	})
+}
+
+func (s *Service) updateManualHealthCheck(
+	ctx context.Context,
+	id, teamID uuid.UUID,
+	records []VerificationRecord,
+	failureReason *string,
+) (SenderDomain, error) {
+	return s.withRepositoryTx(ctx, "sender domain manual health update", func(repository *Repository) (SenderDomain, error) {
+		return repository.UpdateManualHealthCheck(ctx, id, teamID, records, failureReason)
+	})
+}
+'''
+          if helper_marker not in s:
+              raise SystemExit('service helper insertion marker missing')
+          s = s.replace(helper_marker, '\n' + helpers + helper_marker, 1)
+          service_path.write_text(s)
+
+          reconciliation_path = Path('server/internal/modules/domain/reconciliation.go')
+          s = reconciliation_path.read_text()
+          s = s.replace('"github.com/google/uuid"\n', '"github.com/google/uuid"\n\t"github.com/jackc/pgx/v5"\n\t"github.com/jackc/pgx/v5/pgxpool"\n')
+          s = s.replace('type ReconciliationService struct {\n\trepository *Repository', 'type ReconciliationService struct {\n\tdb         *pgxpool.Pool\n\trepository *Repository')
+          old_ctor = 'func NewReconciliationService(repository *Repository, checker reconciliationChecker, config JobConfig, workerID string) *ReconciliationService {'
+          new_ctor = 'func NewReconciliationService(db *pgxpool.Pool, repository *Repository, checker reconciliationChecker, config JobConfig, workerID string) *ReconciliationService {'
+          if old_ctor not in s:
+              raise SystemExit('reconciliation constructor missing')
+          s = s.replace(old_ctor, new_ctor, 1)
+          s = s.replace('\t\trepository: repository,\n', '\t\tdb:         db,\n\t\trepository: repository,\n', 1)
+          s = s.replace('if s == nil || s.repository == nil || s.checker == nil {', 'if s == nil || s.db == nil || s.repository == nil || s.checker == nil {')
+          s = s.replace('updated, err := s.repository.CompleteReconciliation(ctx, id, s.workerID, result.Status, result.VerificationRecords, nextCheckAt)', 'updated, err := s.completeReconciliation(ctx, id, result.Status, result.VerificationRecords, nextCheckAt)')
+          insert_marker = '\nfunc (s *ReconciliationService) completeHealthCheck('
+          helper = r'''
+func (s *ReconciliationService) completeReconciliation(
+	ctx context.Context,
+	id uuid.UUID,
+	status string,
+	records []VerificationRecord,
+	nextCheckAt time.Time,
+) (SenderDomain, error) {
+	tx, err := s.db.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return SenderDomain{}, fmt.Errorf("begin sender domain reconciliation completion: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	updated, err := s.repository.WithTx(tx).CompleteReconciliation(ctx, id, s.workerID, status, records, nextCheckAt)
+	if err != nil {
+		return SenderDomain{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return SenderDomain{}, fmt.Errorf("commit sender domain reconciliation completion: %w", err)
+	}
+	return updated, nil
+}
+'''
+          if insert_marker not in s:
+              raise SystemExit('reconciliation helper marker missing')
+          s = s.replace(insert_marker, '\n' + helper + insert_marker, 1)
+          reconciliation_path.write_text(s)
+
+          jobs_path = Path('server/internal/modules/domain/jobs.go')
+          s = jobs_path.read_text()
+          s = s.replace('"github.com/google/uuid"\n', '"github.com/google/uuid"\n\t"github.com/jackc/pgx/v5/pgxpool"\n')
+          old_job = 'func NewJob(repository *Repository, checker reconciliationChecker, config JobConfig, workerID string) (*Job, error) {'
+          new_job = 'func NewJob(db *pgxpool.Pool, repository *Repository, checker reconciliationChecker, config JobConfig, workerID string) (*Job, error) {'
+          if old_job not in s:
+              raise SystemExit('job constructor missing')
+          s = s.replace(old_job, new_job, 1)
+          s = s.replace('if repository == nil || checker == nil {', 'if db == nil || repository == nil || checker == nil {', 1)
+          s = s.replace('service:    NewReconciliationService(repository, checker, config, workerID),', 'service:    NewReconciliationService(db, repository, checker, config, workerID),', 1)
+          jobs_path.write_text(s)
+
+          for path in [Path('server/internal/registry/server/modules.go'), Path('server/internal/registry/worker/modules.go')]:
+              s = path.read_text()
+              s = s.replace('domainmodule.NewService(domainRepository, registry.emailClient, dnsVerifier, emailTenantService).WithNotifier(notificationEmailService)', 'domainmodule.NewService(domainRepository, registry.emailClient, dnsVerifier, emailTenantService).WithDatabase(db).WithNotifier(notificationEmailService)')
+              s = s.replace('domainmodule.NewService(domainRepository, emailSender, dnsVerifier)', 'domainmodule.NewService(domainRepository, emailSender, dnsVerifier).WithDatabase(db)')
+              s = s.replace('domainJob, err := domainmodule.NewJob(\n\t\tdomainRepository,', 'domainJob, err := domainmodule.NewJob(\n\t\tdb,\n\t\tdomainRepository,')
+              path.write_text(s)
+          PY
+      - name: Format
+        run: gofmt -w server/internal/modules/domain server/internal/registry/server/modules.go server/internal/registry/worker/modules.go
+      - name: Assert repository boundary
+        run: |
+          if grep -Eq '^[[:space:]]*db[[:space:]]+\*pgxpool\.Pool' server/internal/modules/domain/repository.go; then
+            echo 'domain repository still stores pgxpool.Pool' >&2
+            exit 1
+          fi
+          if grep -q 'BeginTx' server/internal/modules/domain/repository.go; then
+            echo 'domain repository still starts transactions' >&2
+            exit 1
+          fi
+          grep -q 'func (r \*Repository) WithTx(tx pgx.Tx)' server/internal/modules/domain/repository.go
+          grep -q 'BeginTx' server/internal/modules/domain/service.go
+          grep -q 'BeginTx' server/internal/modules/domain/reconciliation.go
+      - name: Run full server tests
+        working-directory: server
+        run: go test ./...
+      - name: Commit refactor
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -A server
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m "Move domain transactions into services"
+          git push origin HEAD:agent/refactor-domain-module-boundaries
