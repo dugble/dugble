@@ -71,7 +71,6 @@ func (r *Repository) Claim(ctx context.Context, messageID, teamID uuid.UUID) (De
 		 AND domain_record.provider = lower(trim(message.delivery_provider))
 		 AND domain_record.provider_region = lower(trim(message.provider_region))
 		 AND domain_record.status = 'verified'
-		 AND domain_record.sending_enabled
 		 AND domain_record.disabled_at IS NULL
 		 AND domain_record.health_status <> 'degraded'
 		WHERE message.id = $1
@@ -144,7 +143,7 @@ func (r *Repository) Claim(ctx context.Context, messageID, teamID uuid.UUID) (De
 		if _, err := tx.Exec(ctx, `
 			UPDATE email_messages
 			SET status = 'failed', error_code = 'sender_route_unavailable',
-				error_message = 'sender domain is no longer verified, enabled, and healthy',
+				error_message = 'sender domain is no longer verified and healthy',
 				failed_at = now(), updated_at = now()
 			WHERE id = $1 AND team_id = $2 AND status = 'queued'
 		`, messageID, teamID); err != nil {
