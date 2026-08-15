@@ -7,15 +7,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
-	"github.com/jackc/pgx/v5/pgxpool"
-
 	dbsqlc "github.com/dugble/dugble/server/internal/database/sqlc"
 	platformemail "github.com/dugble/dugble/server/internal/platform/awsses"
 	"github.com/dugble/dugble/server/internal/platform/systemmail"
 	"github.com/dugble/dugble/server/pkg/pgconv"
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 var ErrSenderDomainAlreadyExists = errors.New("sender domain already exists")
@@ -526,4 +525,26 @@ func (r *Repository) requireConfigured() error {
 func isUniqueViolation(err error) bool {
 	var pgErr *pgconn.PgError
 	return errors.As(err, &pgErr) && pgErr.Code == "23505"
+}
+
+// ResetReconciliationAttempts clears accumulated reconciliation attempts after a
+// successful provider/DNS check. Pending verification is a healthy state and
+// must not make a later transient error look like a high-order retry.
+func (r *Repository) ResetReconciliationAttempts(ctx context.Context, id uuid.UUID) error {
+	if err := r.requireConfigured(); err != nil {
+		return err
+	}
+	result, err := r.db.Exec(ctx, `
+UPDATE domains
+SET reconciliation_attempts = 0,
+    updated_at = now()
+WHERE id = $1
+`, id)
+	if err != nil {
+		return fmt.Errorf("reset sender domain reconciliation attempts: %w", err)
+	}
+	if result.RowsAffected() == 0 {
+		return fmt.Errorf("reset sender domain reconciliation attempts: sender domain not found")
+	}
+	return nil
 }
