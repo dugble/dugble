@@ -46,11 +46,10 @@ BEGIN
           AND domain_record.provider = lower(trim(NEW.delivery_provider))
           AND domain_record.provider_region = lower(trim(NEW.provider_region))
           AND domain_record.status = 'verified'
-          AND domain_record.sending_enabled
           AND domain_record.disabled_at IS NULL
           AND domain_record.health_status <> 'degraded'
     ) THEN
-        RAISE EXCEPTION 'customer sender domain is not verified, enabled, and healthy'
+        RAISE EXCEPTION 'customer sender domain is not verified and healthy'
             USING ERRCODE = '23514';
     END IF;
 
