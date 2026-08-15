@@ -1,6 +1,7 @@
 package domainclaim
 
 import (
+	"errors"
 	"time"
 
 	platformemail "github.com/dugble/dugble/server/internal/platform/awsses"
@@ -23,6 +24,12 @@ const (
 	DefaultClaimLifetime             = 7 * 24 * time.Hour
 	DefaultOwnershipGracePeriod      = 72 * time.Hour
 	DefaultRecentOwnerActivityWindow = 24 * time.Hour
+)
+
+var (
+	ErrClaimAlreadyExists = errors.New("domain claim already exists")
+	ErrAlreadyOwned       = errors.New("domain is already owned by the team")
+	ErrClaimNotReady      = errors.New("domain claim is not ready for completion")
 )
 
 type VerificationRecord = platformemail.VerificationRecord
