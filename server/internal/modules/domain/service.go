@@ -302,15 +302,27 @@ func manualHealthObservation(
 	result ReconciliationResult,
 	checkErr error,
 ) ([]VerificationRecord, *string) {
+	// Verification records describe the successful verification event. Once the
+	// domain is verified, health observations must not rewrite those records back
+	// to pending because a recursive DNS resolver had a transient miss.
+	records := verifiedVerificationRecords(domain.VerificationRecords)
 	if checkErr != nil {
 		reason := checkErr.Error()
-		return domain.VerificationRecords, &reason
+		return records, &reason
 	}
 	if result.Status != StatusVerified {
 		reason := manualHealthFailureReason
-		return result.VerificationRecords, &reason
+		return records, &reason
 	}
-	return result.VerificationRecords, nil
+	return records, nil
+}
+
+func verifiedVerificationRecords(records []VerificationRecord) []VerificationRecord {
+	result := append([]VerificationRecord(nil), records...)
+	for index := range result {
+		result[index].Status = platformemail.RecordStatusVerified
+	}
+	return result
 }
 
 func (s *Service) Check(ctx context.Context, domain SenderDomain) (ReconciliationResult, error) {
@@ -323,9 +335,18 @@ func (s *Service) Check(ctx context.Context, domain SenderDomain) (Reconciliatio
 	}
 	records := append([]VerificationRecord(nil), domain.VerificationRecords...)
 	for index := range records {
-		verified := s.dns.Verify(ctx, domain.Domain, records[index])
-		if records[index].Record == platformemail.RecordDKIM {
-			verified = verified && providerStatus.DKIMVerified
+		verified := false
+		switch {
+		case records[index].Record == platformemail.RecordDKIM:
+			// SES DKIM SUCCESS already means the provider observed the BYODKIM
+			// DNS record. Do not let a different recursive resolver override it.
+			verified = providerStatus.DKIMVerified
+		case records[index].Record == platformemail.RecordSPF && records[index].Type == platformemail.RecordTypeMX:
+			// SES MAIL FROM SUCCESS means SES observed the required MX record.
+			// The SPF TXT record remains independently checked below.
+			verified = providerStatus.MailFromVerified
+		default:
+			verified = s.dns.Verify(ctx, domain.Domain, records[index])
 		}
 		records[index].Status = platformemail.RecordStatusPending
 		if verified {
