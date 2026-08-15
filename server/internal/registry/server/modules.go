@@ -21,6 +21,7 @@ import (
 	contactmodule "github.com/dugble/dugble/server/internal/modules/contact"
 	contactpropertymodule "github.com/dugble/dugble/server/internal/modules/contactproperty"
 	domainmodule "github.com/dugble/dugble/server/internal/modules/domain"
+	domainclaimmodule "github.com/dugble/dugble/server/internal/modules/domainclaim"
 	emailmodule "github.com/dugble/dugble/server/internal/modules/email"
 	"github.com/dugble/dugble/server/internal/modules/emailtenant"
 	tenantprovision "github.com/dugble/dugble/server/internal/modules/emailtenant/provisioning"
@@ -104,7 +105,10 @@ func (registry *Registry) registerModules(router *echo.Echo) error {
 	messageTemplateService := messagetemplatemodule.NewService(messageTemplateRepository, emailAPIService)
 	broadcastService := broadcastmodule.NewService(broadcastRepository, messageTemplateService)
 	webhookService := webhooksmodule.NewService(webhookRepository, webhookEmitter)
-	domainService := domainmodule.NewService(domainRepository, registry.emailClient, netdns.New(), emailTenantService).WithNotifier(notificationEmailService)
+	dnsVerifier := netdns.New()
+	domainService := domainmodule.NewService(domainRepository, registry.emailClient, dnsVerifier, emailTenantService).WithNotifier(notificationEmailService)
+	domainClaimRepository := domainclaimmodule.NewRepository(db)
+	domainClaimService := domainclaimmodule.NewService(domainClaimRepository, registry.emailClient, dnsVerifier, emailTenantService)
 	walletService := walletmodule.NewService(
 		walletmodule.NewRepository(db),
 		walletmodule.ServiceConfig{FrontendURL: cfg.FrontendURL, BackendURL: cfg.BackendURL},
@@ -132,6 +136,7 @@ func (registry *Registry) registerModules(router *echo.Echo) error {
 	broadcastmodule.RegisterRoutes(router, broadcastmodule.NewHandler(broadcastService), middleware.tenantAccess)
 	senderidmodule.RegisterRoutes(router, senderidmodule.NewHandler(senderidmodule.NewService(senderIDRepository)), middleware.tenantAccess)
 	domainmodule.RegisterRoutes(router, domainmodule.NewHandler(domainService), middleware.tenantAccess)
+	domainclaimmodule.RegisterRoutes(router, domainclaimmodule.NewHandler(domainClaimService), middleware.tenantAccess)
 	smsmodule.RegisterRoutes(router, smsmodule.NewHandler(smsService), middleware.tenantAccess)
 	smscampaignmodule.RegisterRoutes(router, smscampaignmodule.NewHandler(smscampaignmodule.NewService(smsCampaignRepository)), middleware.tenantAccess)
 	emailmodule.RegisterRoutes(router, emailmodule.NewHandler(emailAPIService), middleware.tenantAccess)
