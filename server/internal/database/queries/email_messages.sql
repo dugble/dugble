@@ -1,3 +1,25 @@
+-- name: ResolveEmailSandboxRecipientForToken :one
+SELECT users.email, users.email_verified
+FROM team_tokens AS token
+JOIN users ON users.id = token.created_by
+WHERE token.id = sqlc.arg(token_id)
+  AND token.team_id = sqlc.arg(team_id)
+  AND token.revoked_at IS NULL
+  AND (token.expires_at IS NULL OR token.expires_at > now());
+
+-- name: ResolveEmailSenderDomain :one
+SELECT domain_record.id,
+       domain_record.provider,
+       domain_record.provider_region,
+       domain_record.status,
+       domain_record.health_status
+FROM domains AS domain_record
+WHERE domain_record.team_id = sqlc.arg(team_id)
+  AND domain_record.normalized_name = lower(trim(sqlc.arg(domain_name)))
+  AND domain_record.disabled_at IS NULL
+ORDER BY domain_record.created_at DESC
+LIMIT 1;
+
 -- name: CreateEmailMessage :one
 INSERT INTO email_messages (
     team_id,
