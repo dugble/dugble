@@ -12,8 +12,8 @@ import (
 	"github.com/google/uuid"
 	natsjs "github.com/nats-io/nats.go/jetstream"
 
-	jetstreammessaging "github.com/dugble/dugble/server/internal/adapters/nats"
 	sentrymonitoring "github.com/dugble/dugble/server/internal/adapters/monitoring/sentry"
+	jetstreammessaging "github.com/dugble/dugble/server/internal/adapters/nats"
 )
 
 var ErrProvisioningConsumerNotConfigured = errors.New("email tenant provisioning consumer is not fully configured")

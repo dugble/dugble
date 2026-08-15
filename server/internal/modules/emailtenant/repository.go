@@ -25,19 +25,11 @@ type Transaction interface {
 }
 
 type Repository struct {
-	db      *pgxpool.Pool
 	queries *dbsqlc.Queries
 }
 
 func NewRepository(db *pgxpool.Pool) *Repository {
-	return &Repository{db: db, queries: dbsqlc.New(db)}
-}
-
-func (r *Repository) BeginTx(ctx context.Context) (Transaction, error) {
-	if r == nil || r.db == nil {
-		return nil, errors.New("email tenant repository is not configured")
-	}
-	return r.db.BeginTx(ctx, pgx.TxOptions{})
+	return &Repository{queries: dbsqlc.New(db)}
 }
 
 func (r *Repository) CreateTx(ctx context.Context, tx Transaction, params CreateParams) (Tenant, error) {

@@ -24,7 +24,6 @@ import (
 	domainclaimmodule "github.com/dugble/dugble/server/internal/modules/domainclaim"
 	emailmodule "github.com/dugble/dugble/server/internal/modules/email"
 	"github.com/dugble/dugble/server/internal/modules/emailtenant"
-	tenantprovision "github.com/dugble/dugble/server/internal/modules/emailtenant/provisioning"
 	messagetemplatemodule "github.com/dugble/dugble/server/internal/modules/messagetemplate"
 	mfamodule "github.com/dugble/dugble/server/internal/modules/mfa"
 	segmentmodule "github.com/dugble/dugble/server/internal/modules/segment"
@@ -88,7 +87,7 @@ func (registry *Registry) registerModules(router *echo.Echo) error {
 	messageTemplateRepository := messagetemplatemodule.NewRepository(db)
 	broadcastRepository := broadcastmodule.NewRepository(db)
 	domainRepository := domainmodule.NewRepository(db)
-	emailTenantService := emailtenant.NewService(emailtenant.NewRepository(db), tenantprovision.NewQueue(registry.outbox))
+	emailTenantService := emailtenant.NewService(db, emailtenant.NewRepository(db), emailtenant.NewProvisioningQueue(registry.outbox))
 	senderIDRepository := senderidmodule.NewRepository(db)
 	webhookRepository := webhooksmodule.NewRepository(db)
 	webhookEmitter := platformwebhook.NewEmitter(webhookRepository)

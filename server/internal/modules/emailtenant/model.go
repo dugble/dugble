@@ -24,9 +24,9 @@ const (
 	ReputationPolicyStandard = "standard"
 	ReputationPolicyStrict   = "strict"
 
-	ProvisionSubject   = "dugble.job.email.tenant.provision.v1"
-	ProvisionEventType = "email.tenant.provision.requested.v1"
-	ProvisionConsumer  = "dugble-email-tenant-provision-v1"
+	ProvisionSubject    = "dugble.job.email.tenant.provision.v1"
+	ProvisionEventType  = "email.tenant.provision.requested.v1"
+	ProvisionConsumer   = "dugble-email-tenant-provision-v1"
 	ProvisionDLQSubject = "dugble.dlq.email.tenant.provision.v1"
 )
 

@@ -36,7 +36,6 @@ import (
 	domainmodule "github.com/dugble/dugble/server/internal/modules/domain"
 	domainclaimmodule "github.com/dugble/dugble/server/internal/modules/domainclaim"
 	"github.com/dugble/dugble/server/internal/modules/emailtenant"
-	tenantprovision "github.com/dugble/dugble/server/internal/modules/emailtenant/provisioning"
 	smsmodule "github.com/dugble/dugble/server/internal/modules/sms"
 	webhookmodule "github.com/dugble/dugble/server/internal/modules/webhooks"
 	platformemail "github.com/dugble/dugble/server/internal/platform/awsses"
@@ -138,12 +137,12 @@ func (registry *Registry) newModules(startupCtx context.Context) (modules, error
 	systemEmailQueue := systememail.NewQueue(outboxRepository, platformemail.Message{Provider: awsses.ProviderSES, Region: cfg.AWS.Region, Stream: "transactional", ConfigurationSet: platformemail.TransactionalConfigurationSet, SESTenantName: platformemail.SystemSESTenantName})
 	notificationEmailService := systemmail.NewEmailService(systemEmailQueue, systemEmailRenderer, cfg.FrontendURL, cfg.AWS.FromEmail)
 	emailTenantRepository := emailtenant.NewRepository(db)
-	emailTenantService := emailtenant.NewService(emailTenantRepository, tenantprovision.NewQueue(outboxRepository))
-	emailTenantConsumer := tenantprovision.NewConsumer(
+	emailTenantService := emailtenant.NewService(db, emailTenantRepository, emailtenant.NewProvisioningQueue(outboxRepository))
+	emailTenantConsumer := emailtenant.NewProvisioningConsumer(
 		messagingClient,
 		processedEvents,
-		tenantprovision.NewProcessor(emailTenantRepository, emailSender),
-		tenantprovision.Config{Concurrency: 3, AckWait: 2 * time.Minute, HandlerTimeout: 60 * time.Second, RetryBackOff: tenantprovision.DefaultRetryBackOff()},
+		emailtenant.NewProvisioningProcessor(emailTenantRepository, emailSender),
+		emailtenant.ProvisioningConsumerConfig{Concurrency: 3, AckWait: 2 * time.Minute, HandlerTimeout: 60 * time.Second, RetryBackOff: emailtenant.DefaultProvisioningRetryBackOff()},
 	)
 
 	feedbackMetrics := emailfeedback.DefaultMetrics
