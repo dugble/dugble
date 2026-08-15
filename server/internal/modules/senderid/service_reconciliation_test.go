@@ -1,4 +1,4 @@
-package senderidreconciliation
+package senderid
 
 import (
 	"testing"

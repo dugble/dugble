@@ -94,11 +94,14 @@ type Querier interface {
 	ClaimNextSMSCampaignRecipientForEstimate(ctx context.Context) (ClaimNextSMSCampaignRecipientForEstimateRow, error)
 	ClaimPendingDomainClaims(ctx context.Context, arg ClaimPendingDomainClaimsParams) ([]ClaimPendingDomainClaimsRow, error)
 	ClaimPendingDomainReconciliations(ctx context.Context, arg ClaimPendingDomainReconciliationsParams) ([]ClaimPendingDomainReconciliationsRow, error)
+	ClaimPendingSenderIDRegistrations(ctx context.Context, arg ClaimPendingSenderIDRegistrationsParams) ([]ClaimPendingSenderIDRegistrationsRow, error)
 	ClaimWebhookDeliveries(ctx context.Context, arg ClaimWebhookDeliveriesParams) ([]ClaimWebhookDeliveriesRow, error)
 	CompleteBroadcastRecipientMaterialization(ctx context.Context, arg CompleteBroadcastRecipientMaterializationParams) (CompleteBroadcastRecipientMaterializationRow, error)
 	CompleteDomainHealthCheck(ctx context.Context, arg CompleteDomainHealthCheckParams) (Domain, error)
 	CompleteDomainReconciliation(ctx context.Context, arg CompleteDomainReconciliationParams) (Domain, error)
 	CompleteIdempotencyKey(ctx context.Context, arg CompleteIdempotencyKeyParams) error
+	CompleteSenderIDStatus(ctx context.Context, arg CompleteSenderIDStatusParams) (int64, error)
+	CompleteSenderIDSubmission(ctx context.Context, arg CompleteSenderIDSubmissionParams) (int64, error)
 	ConfirmTOTPCredential(ctx context.Context, arg ConfirmTOTPCredentialParams) (int64, error)
 	ConsumeMFALoginChallengeWithRecoveryCode(ctx context.Context, arg ConsumeMFALoginChallengeWithRecoveryCodeParams) (int64, error)
 	ConsumeMFALoginChallengeWithTOTP(ctx context.Context, arg ConsumeMFALoginChallengeWithTOTPParams) (int64, error)
@@ -353,6 +356,7 @@ type Querier interface {
 	RecordDomainHealthFailure(ctx context.Context, arg RecordDomainHealthFailureParams) (Domain, error)
 	RecordDomainReconciliationFailure(ctx context.Context, arg RecordDomainReconciliationFailureParams) (Domain, error)
 	RecordSMSOptOut(ctx context.Context, arg RecordSMSOptOutParams) (SmsConsentEvent, error)
+	RecordSenderIDProviderFailure(ctx context.Context, arg RecordSenderIDProviderFailureParams) (int64, error)
 	ReleaseDomainClaim(ctx context.Context, arg ReleaseDomainClaimParams) (DomainClaim, error)
 	ReleaseWebhookDeliveryClaim(ctx context.Context, arg ReleaseWebhookDeliveryClaimParams) (int64, error)
 	RemoveTeamMember(ctx context.Context, arg RemoveTeamMemberParams) error

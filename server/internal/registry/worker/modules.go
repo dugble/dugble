@@ -26,7 +26,6 @@ import (
 	emailfeedback "github.com/dugble/dugble/server/internal/delivery/email/feedback"
 	emaildelivery "github.com/dugble/dugble/server/internal/delivery/email/outbound"
 	systememail "github.com/dugble/dugble/server/internal/delivery/email/system"
-	senderidreconciliation "github.com/dugble/dugble/server/internal/delivery/senderid"
 	smscampaignexecution "github.com/dugble/dugble/server/internal/delivery/sms/campaign"
 	smsfeedback "github.com/dugble/dugble/server/internal/delivery/sms/feedback"
 	smsdelivery "github.com/dugble/dugble/server/internal/delivery/sms/outbound"
@@ -36,6 +35,7 @@ import (
 	domainmodule "github.com/dugble/dugble/server/internal/modules/domain"
 	domainclaimmodule "github.com/dugble/dugble/server/internal/modules/domainclaim"
 	"github.com/dugble/dugble/server/internal/modules/emailtenant"
+	senderidmodule "github.com/dugble/dugble/server/internal/modules/senderid"
 	smsmodule "github.com/dugble/dugble/server/internal/modules/sms"
 	webhookmodule "github.com/dugble/dugble/server/internal/modules/webhooks"
 	platformemail "github.com/dugble/dugble/server/internal/platform/awsses"
@@ -209,17 +209,17 @@ func (registry *Registry) newModules(startupCtx context.Context) (modules, error
 		sentrymonitoring.Warn("Moolre Sender ID reconciliation is disabled because MOOLRE_VAS_KEY is empty")
 	} else {
 		senderIDProvider := moolresender.NewProvider(moolre.NewClient(cfg.Moolre.VASKey))
-		senderIDConsumer, consumerErr := senderidreconciliation.NewConsumer(
-			senderidreconciliation.NewRepository(db),
-			senderidreconciliation.DefaultConfig(),
+		senderIDJob, jobErr := senderidmodule.NewJob(
+			senderidmodule.NewRepository(db),
+			senderidmodule.DefaultJobConfig(),
 			"sender-id-reconciliation-"+uuid.NewString(),
 			senderIDProvider,
 		)
-		if consumerErr != nil {
-			return modules{}, fmt.Errorf("initialize Sender ID reconciliation: %w", consumerErr)
+		if jobErr != nil {
+			return modules{}, fmt.Errorf("initialize Sender ID reconciliation: %w", jobErr)
 		}
-		senderIDConsumer.WithNotifier(notificationEmailService)
-		senderIDRun = senderIDConsumer.Run
+		senderIDJob.WithNotifier(notificationEmailService)
+		senderIDRun = senderIDJob.Run
 	}
 
 	smsRouter, err := platformsms.NewRoutingService(

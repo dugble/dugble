@@ -109,7 +109,7 @@ func NewReconciliationService(repository *Repository, config JobConfig, workerID
 	return &ReconciliationService{
 		repository: repository, providerTimeout: config.ProviderTimeout,
 		pendingCheckInterval: config.PendingCheckInterval,
-		retryBaseInterval: config.RetryBaseInterval, maxRetryInterval: config.MaxRetryInterval,
+		retryBaseInterval:    config.RetryBaseInterval, maxRetryInterval: config.MaxRetryInterval,
 		workerID: strings.TrimSpace(workerID), now: func() time.Time { return time.Now().UTC() },
 	}
 }
