@@ -81,9 +81,9 @@ func (registry *Registry) newModules(startupCtx context.Context) (modules, error
 		db,
 		platformevent.NewEmitter(platformwebhook.NewEventSink(webhookEmitter)),
 	)
-	broadcastExecutionConsumer := broadcastexecution.NewConsumer(
+	broadcastExecutionJob := broadcastmodule.NewJob(
 		broadcastexecution.NewProcessor(broadcastExecutionRepository),
-		broadcastexecution.Config{PollInterval: time.Second, BatchSize: 100},
+		broadcastmodule.JobConfig{PollInterval: time.Second, BatchSize: 100},
 	)
 
 	emailSender, err := awsses.NewSESSender(
@@ -316,7 +316,7 @@ func (registry *Registry) newModules(startupCtx context.Context) (modules, error
 		webhookDelivery:           webhookConsumer.Run,
 		domainReconciliation:      domainConsumer.Run,
 		domainClaimReconciliation: domainClaimJob.Run,
-		broadcastExecution:        broadcastExecutionConsumer.Run,
+		broadcastExecution:        broadcastExecutionJob.Run,
 		senderIDReconciliation:    senderIDRun,
 	}, nil
 }
