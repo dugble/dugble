@@ -40,6 +40,8 @@ jobs:
       - name: Regenerate sqlc
         working-directory: server
         run: sqlc generate
+      - name: Align generated pointer parameters
+        run: sed -i 's/LastError: message/LastError: \&message/' server/internal/modules/senderid/repository.go
       - name: Format
         run: gofmt -w server/internal/modules/senderid server/internal/registry/worker/modules.go server/internal/database/sqlc
       - name: Assert vertical ownership
