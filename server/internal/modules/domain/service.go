@@ -6,6 +6,8 @@ import (
 	"fmt"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/dugble/dugble/server/internal/authz"
 	"github.com/dugble/dugble/server/internal/modules/emailtenant"
@@ -25,6 +27,7 @@ type statusNotifier interface {
 }
 
 type Service struct {
+	db              *pgxpool.Pool
 	repository      *Repository
 	provider        platformemail.DomainProvider
 	dns             platformemail.DNSVerifier
@@ -34,6 +37,13 @@ type Service struct {
 
 func (s *Service) WithNotifier(notifier statusNotifier) *Service {
 	s.notifier = notifier
+	return s
+}
+
+func (s *Service) WithDatabase(db *pgxpool.Pool) *Service {
+	if s != nil {
+		s.db = db
+	}
 	return s
 }
 
@@ -112,7 +122,7 @@ func (s *Service) Create(ctx context.Context, req CreateRequest) (CreateResult, 
 		return CreateResult{Provisioning: true}, nil
 	}
 
-	domain, err := s.repository.Create(ctx, CreateDomainInput{
+	domain, err := s.createDomain(ctx, CreateDomainInput{
 		TeamID:              tc.Scope.TeamID,
 		Name:                domainName,
 		Provider:            DefaultProvider,
@@ -139,7 +149,7 @@ func (s *Service) Create(ctx context.Context, req CreateRequest) (CreateResult, 
 	})
 	if provisionErr != nil {
 		reason := provisionErr.Error()
-		_, _ = s.repository.UpdateVerification(
+		_, _ = s.updateVerification(
 			ctx,
 			id,
 			tc.Scope.TeamID,
@@ -149,7 +159,7 @@ func (s *Service) Create(ctx context.Context, req CreateRequest) (CreateResult, 
 		)
 		return CreateResult{}, apperrors.NewInternal("Unable to provision sender domain", provisionErr)
 	}
-	updated, saveErr := s.repository.UpdateVerification(
+	updated, saveErr := s.updateVerification(
 		ctx,
 		id,
 		tc.Scope.TeamID,
@@ -166,7 +176,7 @@ func (s *Service) Create(ctx context.Context, req CreateRequest) (CreateResult, 
 	if cleanupErr != nil {
 		reason = fmt.Sprintf("%s; provider cleanup failed: %v", reason, cleanupErr)
 	}
-	_, _ = s.repository.UpdateVerification(
+	_, _ = s.updateVerification(
 		ctx,
 		id,
 		tc.Scope.TeamID,
@@ -230,7 +240,7 @@ func (s *Service) Verify(ctx context.Context, domainID string) (SenderDomain, er
 	result, checkErr := s.Check(ctx, domain)
 	if domain.Status == StatusVerified {
 		records, reason := manualHealthObservation(domain, result, checkErr)
-		updated, updateErr := s.repository.UpdateManualHealthCheck(
+		updated, updateErr := s.updateManualHealthCheck(
 			ctx,
 			id,
 			tc.Scope.TeamID,
@@ -245,7 +255,7 @@ func (s *Service) Verify(ctx context.Context, domainID string) (SenderDomain, er
 	}
 	if checkErr != nil {
 		reason := checkErr.Error()
-		updated, updateErr := s.repository.UpdateVerification(
+		updated, updateErr := s.updateVerification(
 			ctx,
 			id,
 			tc.Scope.TeamID,
@@ -260,7 +270,7 @@ func (s *Service) Verify(ctx context.Context, domainID string) (SenderDomain, er
 		return updated, nil
 	}
 
-	updated, err := s.repository.UpdateVerification(
+	updated, err := s.updateVerification(
 		ctx,
 		id,
 		tc.Scope.TeamID,
@@ -462,6 +472,58 @@ func (s *Service) Delete(ctx context.Context, domainID string) (SenderDomain, er
 		return domain, nil
 	}
 	return s.repository.Get(ctx, id, tc.Scope.TeamID)
+}
+
+func (s *Service) withRepositoryTx(
+	ctx context.Context,
+	operation string,
+	fn func(*Repository) (SenderDomain, error),
+) (SenderDomain, error) {
+	if s == nil || s.db == nil || s.repository == nil {
+		return SenderDomain{}, errors.New("sender domain transaction service is not configured")
+	}
+	tx, err := s.db.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return SenderDomain{}, fmt.Errorf("begin %s: %w", operation, err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	value, err := fn(s.repository.WithTx(tx))
+	if err != nil {
+		return SenderDomain{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return SenderDomain{}, fmt.Errorf("commit %s: %w", operation, err)
+	}
+	return value, nil
+}
+
+func (s *Service) createDomain(ctx context.Context, input CreateDomainInput) (SenderDomain, error) {
+	return s.withRepositoryTx(ctx, "sender domain creation", func(repository *Repository) (SenderDomain, error) {
+		return repository.Create(ctx, input)
+	})
+}
+
+func (s *Service) updateVerification(
+	ctx context.Context,
+	id, teamID uuid.UUID,
+	status string,
+	records []VerificationRecord,
+	failureReason *string,
+) (SenderDomain, error) {
+	return s.withRepositoryTx(ctx, "sender domain verification update", func(repository *Repository) (SenderDomain, error) {
+		return repository.UpdateVerification(ctx, id, teamID, status, records, failureReason)
+	})
+}
+
+func (s *Service) updateManualHealthCheck(
+	ctx context.Context,
+	id, teamID uuid.UUID,
+	records []VerificationRecord,
+	failureReason *string,
+) (SenderDomain, error) {
+	return s.withRepositoryTx(ctx, "sender domain manual health update", func(repository *Repository) (SenderDomain, error) {
+		return repository.UpdateManualHealthCheck(ctx, id, teamID, records, failureReason)
+	})
 }
 
 func requireTenantPermission(ctx context.Context, permission authz.Permission) (authz.Access, error) {

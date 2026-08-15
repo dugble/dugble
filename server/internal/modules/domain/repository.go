@@ -20,12 +20,15 @@ import (
 var ErrSenderDomainAlreadyExists = errors.New("sender domain already exists")
 
 type Repository struct {
-	db      *pgxpool.Pool
 	queries *dbsqlc.Queries
 }
 
 func NewRepository(db *pgxpool.Pool) *Repository {
-	return &Repository{db: db, queries: dbsqlc.New(db)}
+	return &Repository{queries: dbsqlc.New(db)}
+}
+
+func (r *Repository) WithTx(tx pgx.Tx) *Repository {
+	return &Repository{queries: r.queries.WithTx(tx)}
 }
 
 func (r *Repository) ListNotificationRecipients(ctx context.Context, teamID uuid.UUID) ([]systemmail.Recipient, error) {
@@ -62,13 +65,7 @@ func (r *Repository) Create(ctx context.Context, input CreateDomainInput) (Sende
 		return SenderDomain{}, err
 	}
 
-	tx, err := r.db.BeginTx(ctx, pgx.TxOptions{})
-	if err != nil {
-		return SenderDomain{}, fmt.Errorf("begin sender domain creation: %w", err)
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-
-	queries := r.queries.WithTx(tx)
+	queries := r.queries
 	row, err := queries.CreateDomain(ctx, dbsqlc.CreateDomainParams{
 		TeamID:           input.TeamID,
 		Name:             strings.ToLower(strings.TrimSpace(input.Name)),
@@ -87,9 +84,6 @@ func (r *Repository) Create(ctx context.Context, input CreateDomainInput) (Sende
 	}
 	if err := replaceDomainDNSRecords(ctx, queries, row.ID, input.VerificationRecords); err != nil {
 		return SenderDomain{}, err
-	}
-	if err := tx.Commit(ctx); err != nil {
-		return SenderDomain{}, fmt.Errorf("commit sender domain creation: %w", err)
 	}
 	return r.Get(ctx, row.ID, input.TeamID)
 }
@@ -166,13 +160,7 @@ func (r *Repository) UpdateVerification(
 	if err := r.requireConfigured(); err != nil {
 		return SenderDomain{}, err
 	}
-	tx, err := r.db.BeginTx(ctx, pgx.TxOptions{})
-	if err != nil {
-		return SenderDomain{}, fmt.Errorf("begin sender domain verification update: %w", err)
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-
-	queries := r.queries.WithTx(tx)
+	queries := r.queries
 	row, err := queries.UpdateDomainVerification(ctx, dbsqlc.UpdateDomainVerificationParams{
 		Status: status, FailureReason: failureReason, ID: id, TeamID: teamID,
 	})
@@ -181,9 +169,6 @@ func (r *Repository) UpdateVerification(
 	}
 	if err := replaceDomainDNSRecords(ctx, queries, id, records); err != nil {
 		return SenderDomain{}, err
-	}
-	if err := tx.Commit(ctx); err != nil {
-		return SenderDomain{}, fmt.Errorf("commit sender domain verification: %w", err)
 	}
 	return r.domainWithRecords(ctx, row)
 }
@@ -228,13 +213,7 @@ func (r *Repository) CompleteReconciliation(
 	if err := r.requireConfigured(); err != nil {
 		return SenderDomain{}, err
 	}
-	tx, err := r.db.BeginTx(ctx, pgx.TxOptions{})
-	if err != nil {
-		return SenderDomain{}, fmt.Errorf("begin sender domain reconciliation completion: %w", err)
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-
-	queries := r.queries.WithTx(tx)
+	queries := r.queries
 	row, err := queries.CompleteDomainReconciliation(ctx, dbsqlc.CompleteDomainReconciliationParams{
 		Status:        status,
 		FailureReason: nil,
@@ -247,9 +226,6 @@ func (r *Repository) CompleteReconciliation(
 	}
 	if err := replaceDomainDNSRecords(ctx, queries, id, records); err != nil {
 		return SenderDomain{}, err
-	}
-	if err := tx.Commit(ctx); err != nil {
-		return SenderDomain{}, fmt.Errorf("commit sender domain reconciliation completion: %w", err)
 	}
 	return r.domainWithRecords(ctx, row)
 }
@@ -328,13 +304,7 @@ func (r *Repository) UpdateManualHealthCheck(
 	if err := r.requireConfigured(); err != nil {
 		return SenderDomain{}, err
 	}
-	tx, err := r.db.BeginTx(ctx, pgx.TxOptions{})
-	if err != nil {
-		return SenderDomain{}, fmt.Errorf("begin sender domain manual health update: %w", err)
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-
-	queries := r.queries.WithTx(tx)
+	queries := r.queries
 	row, err := queries.UpdateDomainManualHealthCheck(ctx, dbsqlc.UpdateDomainManualHealthCheckParams{
 		FailureReason:    failureReason,
 		FailureThreshold: DefaultHealthFailureThreshold,
@@ -346,9 +316,6 @@ func (r *Repository) UpdateManualHealthCheck(
 	}
 	if err := replaceDomainDNSRecords(ctx, queries, id, records); err != nil {
 		return SenderDomain{}, err
-	}
-	if err := tx.Commit(ctx); err != nil {
-		return SenderDomain{}, fmt.Errorf("commit sender domain manual health update: %w", err)
 	}
 	return r.domainWithRecords(ctx, row)
 }
@@ -508,7 +475,7 @@ func verificationRecordPurpose(record VerificationRecord) string {
 }
 
 func (r *Repository) requireConfigured() error {
-	if r == nil || r.db == nil || r.queries == nil {
+	if r == nil || r.queries == nil {
 		return errors.New("sender domain repository is not configured")
 	}
 	return nil
@@ -526,16 +493,11 @@ func (r *Repository) ResetReconciliationAttempts(ctx context.Context, id uuid.UU
 	if err := r.requireConfigured(); err != nil {
 		return err
 	}
-	result, err := r.db.Exec(ctx, `
-UPDATE domains
-SET reconciliation_attempts = 0,
-    updated_at = now()
-WHERE id = $1
-`, id)
+	rows, err := r.queries.ResetDomainReconciliationAttempts(ctx, dbsqlc.ResetDomainReconciliationAttemptsParams{ID: id})
 	if err != nil {
 		return fmt.Errorf("reset sender domain reconciliation attempts: %w", err)
 	}
-	if result.RowsAffected() == 0 {
+	if rows == 0 {
 		return fmt.Errorf("reset sender domain reconciliation attempts: sender domain not found")
 	}
 	return nil

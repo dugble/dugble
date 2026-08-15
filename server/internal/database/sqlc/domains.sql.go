@@ -866,6 +866,25 @@ func (q *Queries) RecordDomainReconciliationFailure(ctx context.Context, arg Rec
 	return i, err
 }
 
+const resetDomainReconciliationAttempts = `-- name: ResetDomainReconciliationAttempts :execrows
+UPDATE domains
+SET reconciliation_attempts = 0,
+    updated_at = now()
+WHERE id = $1
+`
+
+type ResetDomainReconciliationAttemptsParams struct {
+	ID uuid.UUID `db:"id" json:"id"`
+}
+
+func (q *Queries) ResetDomainReconciliationAttempts(ctx context.Context, arg ResetDomainReconciliationAttemptsParams) (int64, error) {
+	result, err := q.db.Exec(ctx, resetDomainReconciliationAttempts, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const updateDomainConfiguration = `-- name: UpdateDomainConfiguration :one
 UPDATE domains
 SET tls_mode = $1,

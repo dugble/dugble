@@ -105,7 +105,7 @@ func (registry *Registry) registerModules(router *echo.Echo) error {
 	broadcastService := broadcastmodule.NewService(broadcastRepository, messageTemplateService)
 	webhookService := webhooksmodule.NewService(webhookRepository, webhookEmitter)
 	dnsVerifier := netdns.New()
-	domainService := domainmodule.NewService(domainRepository, registry.emailClient, dnsVerifier, emailTenantService).WithNotifier(notificationEmailService)
+	domainService := domainmodule.NewService(domainRepository, registry.emailClient, dnsVerifier, emailTenantService).WithDatabase(db).WithNotifier(notificationEmailService)
 	domainClaimRepository := domainclaimmodule.NewRepository(db)
 	domainClaimService := domainclaimmodule.NewService(db, domainClaimRepository, registry.emailClient, dnsVerifier, emailTenantService)
 	walletService := walletmodule.NewService(

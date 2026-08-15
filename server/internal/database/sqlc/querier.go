@@ -364,6 +364,7 @@ type Querier interface {
 	RequestDomainClaimVerification(ctx context.Context, arg RequestDomainClaimVerificationParams) (DomainClaim, error)
 	RescheduleEmailMessage(ctx context.Context, arg RescheduleEmailMessageParams) error
 	RescheduleEmailProviderEvent(ctx context.Context, arg RescheduleEmailProviderEventParams) (int64, error)
+	ResetDomainReconciliationAttempts(ctx context.Context, arg ResetDomainReconciliationAttemptsParams) (int64, error)
 	ResetPasswordWithToken(ctx context.Context, arg ResetPasswordWithTokenParams) (ResetPasswordWithTokenRow, error)
 	ResolveEmailSandboxRecipientForToken(ctx context.Context, arg ResolveEmailSandboxRecipientForTokenParams) (ResolveEmailSandboxRecipientForTokenRow, error)
 	ResolveEmailSenderDomain(ctx context.Context, arg ResolveEmailSenderDomainParams) (ResolveEmailSenderDomainRow, error)
