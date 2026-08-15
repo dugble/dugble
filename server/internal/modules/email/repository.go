@@ -33,40 +33,25 @@ type SenderDomainRoute struct {
 }
 
 type Repository struct {
-	db      *pgxpool.Pool
 	queries *dbsqlc.Queries
 }
 
 func NewRepository(db *pgxpool.Pool) *Repository {
-	return &Repository{db: db, queries: dbsqlc.New(db)}
-}
-
-func (r *Repository) BeginTx(ctx context.Context) (pgx.Tx, error) {
-	return r.db.BeginTx(ctx, pgx.TxOptions{})
+	return &Repository{queries: dbsqlc.New(db)}
 }
 
 func (r *Repository) ResolveSandboxRecipientForToken(ctx context.Context, teamID, tokenID uuid.UUID) (string, bool, error) {
-	if r == nil || r.db == nil {
-		return "", false, errors.New("email repository is not configured")
-	}
-	var email string
-	var verified bool
-	err := r.db.QueryRow(ctx, `
-		SELECT users.email, users.email_verified
-		FROM team_tokens AS token
-		JOIN users ON users.id = token.created_by
-		WHERE token.id = $1
-		  AND token.team_id = $2
-		  AND token.revoked_at IS NULL
-		  AND (token.expires_at IS NULL OR token.expires_at > now())
-	`, tokenID, teamID).Scan(&email, &verified)
+	row, err := r.queries.ResolveEmailSandboxRecipientForToken(ctx, dbsqlc.ResolveEmailSandboxRecipientForTokenParams{
+		TokenID: tokenID,
+		TeamID:  teamID,
+	})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return "", false, ErrSandboxRecipientNotFound
 	}
 	if err != nil {
 		return "", false, fmt.Errorf("resolve sandbox recipient for team token: %w", err)
 	}
-	return strings.ToLower(strings.TrimSpace(email)), verified, nil
+	return strings.ToLower(strings.TrimSpace(row.Email)), row.EmailVerified, nil
 }
 
 func (r *Repository) ResolveActiveCustomerRouteTx(ctx context.Context, tx pgx.Tx, teamID uuid.UUID, provider, region, stream string) (platformemail.DeliveryRoute, error) {
@@ -117,15 +102,15 @@ func (r *Repository) CreateTx(ctx context.Context, tx pgx.Tx, teamID uuid.UUID, 
 		ReplyToEmail:     req.ReplyToEmail,
 		ToEmail:          req.ToEmail,
 		ToName:           req.ToName,
-		Subject:          req.Subject,
-		HtmlBody:         req.HTMLBody,
-		TextBody:         req.TextBody,
-		Metadata:         req.Metadata,
-		Recipients:       recipients,
-		Headers:          headers,
-		Attachments:      attachments,
-		Tags:             tags,
-		ScheduledAt:      pgconv.NullableTimestamptz(req.ScheduledAt),
+		Subject:           req.Subject,
+		HtmlBody:          req.HTMLBody,
+		TextBody:          req.TextBody,
+		Metadata:          req.Metadata,
+		Recipients:        recipients,
+		Headers:           headers,
+		Attachments:       attachments,
+		Tags:              tags,
+		ScheduledAt:       pgconv.NullableTimestamptz(req.ScheduledAt),
 	})
 	if err != nil {
 		return Message{}, fmt.Errorf("create email message: %w", err)
@@ -151,21 +136,22 @@ func (r *Repository) ListEvents(ctx context.Context, teamID, messageID uuid.UUID
 }
 
 func (r *Repository) ResolveSenderDomain(ctx context.Context, teamID uuid.UUID, domainName string) (SenderDomainRoute, error) {
-	var route SenderDomainRoute
-	err := r.db.QueryRow(ctx, `
-		SELECT id, provider, provider_region, status, health_status
-		FROM domains
-		WHERE team_id = $1
-		  AND normalized_name = lower(trim($2))
-		  AND disabled_at IS NULL
-		ORDER BY created_at DESC
-		LIMIT 1
-	`, teamID, domainName).Scan(&route.ID, &route.Provider, &route.Region, &route.Status, &route.HealthStatus)
+	row, err := r.queries.ResolveEmailSenderDomain(ctx, dbsqlc.ResolveEmailSenderDomainParams{
+		TeamID:     teamID,
+		DomainName: domainName,
+	})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return SenderDomainRoute{}, ErrSenderDomainNotFound
 	}
 	if err != nil {
 		return SenderDomainRoute{}, fmt.Errorf("resolve sender domain: %w", err)
+	}
+	route := SenderDomainRoute{
+		ID:           row.ID,
+		Provider:     row.Provider,
+		Region:       row.ProviderRegion,
+		Status:       row.Status,
+		HealthStatus: row.HealthStatus,
 	}
 	if route.HealthStatus == "degraded" {
 		route.Status = "degraded"
