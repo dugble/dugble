@@ -1,0 +1,77 @@
+name: Temporary Finish Email Tenant Verticalization
+
+on:
+  push:
+    branches:
+      - agent/fix-domain-lifecycle-claims
+
+permissions:
+  contents: write
+
+jobs:
+  refactor:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/fix-domain-lifecycle-claims
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: server/go.mod
+      - name: Finish email tenant vertical module
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          repo = Path('server/internal/modules/emailtenant/repository.go')
+          s = repo.read_text()
+          s = s.replace('type Repository struct {\n\tdb      *pgxpool.Pool\n\tqueries *dbsqlc.Queries\n}', 'type Repository struct {\n\tqueries *dbsqlc.Queries\n}')
+          s = s.replace('return &Repository{db: db, queries: dbsqlc.New(db)}', 'return &Repository{queries: dbsqlc.New(db)}')
+          begin = '''func (r *Repository) BeginTx(ctx context.Context) (Transaction, error) {
+	if r == nil || r.db == nil {
+		return nil, errors.New("email tenant repository is not configured")
+	}
+	return r.db.BeginTx(ctx, pgx.TxOptions{})
+}
+
+'''
+          s = s.replace(begin, '')
+          repo.write_text(s)
+
+          server = Path('server/internal/registry/server/modules.go')
+          s = server.read_text()
+          s = s.replace('\ttenantprovision "github.com/dugble/dugble/server/internal/modules/emailtenant/provisioning"\n', '')
+          s = s.replace(
+              'emailTenantService := emailtenant.NewService(emailtenant.NewRepository(db), tenantprovision.NewQueue(registry.outbox))',
+              'emailTenantService := emailtenant.NewService(db, emailtenant.NewRepository(db), emailtenant.NewProvisioningQueue(registry.outbox))',
+          )
+          server.write_text(s)
+
+          worker = Path('server/internal/registry/worker/modules.go')
+          s = worker.read_text()
+          s = s.replace('\ttenantprovision "github.com/dugble/dugble/server/internal/modules/emailtenant/provisioning"\n', '')
+          s = s.replace(
+              'emailTenantService := emailtenant.NewService(emailTenantRepository, tenantprovision.NewQueue(outboxRepository))',
+              'emailTenantService := emailtenant.NewService(db, emailTenantRepository, emailtenant.NewProvisioningQueue(outboxRepository))',
+          )
+          s = s.replace(
+              'emailTenantConsumer := tenantprovision.NewConsumer(\n\t\tmessagingClient,\n\t\tprocessedEvents,\n\t\ttenantprovision.NewProcessor(emailTenantRepository, emailSender),\n\t\ttenantprovision.Config{Concurrency: 3, AckWait: 2 * time.Minute, HandlerTimeout: 60 * time.Second, RetryBackOff: tenantprovision.DefaultRetryBackOff()},\n\t)',
+              'emailTenantConsumer := emailtenant.NewProvisioningConsumer(\n\t\tmessagingClient,\n\t\tprocessedEvents,\n\t\temailtenant.NewProvisioningProcessor(emailTenantRepository, emailSender),\n\t\temailtenant.ProvisioningConsumerConfig{Concurrency: 3, AckWait: 2 * time.Minute, HandlerTimeout: 60 * time.Second, RetryBackOff: emailtenant.DefaultProvisioningRetryBackOff()},\n\t)',
+          )
+          worker.write_text(s)
+          PY
+          rm -rf server/internal/modules/emailtenant/provisioning
+          gofmt -w server/internal/modules/emailtenant/*.go server/internal/registry/server/modules.go server/internal/registry/worker/modules.go
+      - name: Run full server tests
+        working-directory: server
+        run: go test ./...
+      - name: Commit email tenant refactor
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -A server
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m "Refactor email tenant into vertical module"
+          git push origin HEAD:agent/fix-domain-lifecycle-claims
