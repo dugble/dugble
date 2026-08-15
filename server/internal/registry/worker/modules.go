@@ -22,7 +22,6 @@ import (
 	subscriptionLifecycle "github.com/dugble/dugble/server/internal/billing/subscription/lifecycle"
 	subscriptionRenewal "github.com/dugble/dugble/server/internal/billing/subscription/renewal"
 	broadcastexecution "github.com/dugble/dugble/server/internal/delivery/broadcast"
-	domainreconciliation "github.com/dugble/dugble/server/internal/delivery/domain"
 	emailfeedback "github.com/dugble/dugble/server/internal/delivery/email/feedback"
 	emaildelivery "github.com/dugble/dugble/server/internal/delivery/email/outbound"
 	systememail "github.com/dugble/dugble/server/internal/delivery/email/system"
@@ -175,22 +174,16 @@ func (registry *Registry) newModules(startupCtx context.Context) (modules, error
 	dnsVerifier := netdns.New()
 	domainRepository := domainmodule.NewRepository(db)
 	domainService := domainmodule.NewService(domainRepository, emailSender, dnsVerifier)
-	domainConsumer := domainreconciliation.NewConsumer(
+	domainJob, err := domainmodule.NewJob(
 		domainRepository,
 		domainService,
-		domainreconciliation.Config{
-			PollInterval:           30 * time.Second,
-			BatchSize:              25,
-			Concurrency:            5,
-			LockTimeout:            2 * time.Minute,
-			CheckTimeout:           20 * time.Second,
-			HealthCheckInterval:    24 * time.Hour,
-			HealthRetryInterval:    time.Hour,
-			HealthFailureThreshold: 3,
-		},
+		domainmodule.DefaultJobConfig(),
 		"sender-domain-reconciliation-"+uuid.NewString(),
 	)
-	domainConsumer.WithNotifier(notificationEmailService)
+	if err != nil {
+		return modules{}, fmt.Errorf("initialize sender domain reconciliation: %w", err)
+	}
+	domainJob.WithNotifier(notificationEmailService)
 
 	domainClaimRepository := domainclaimmodule.NewRepository(db)
 	domainClaimService := domainclaimmodule.NewService(db, domainClaimRepository, emailSender, dnsVerifier, emailTenantService)
@@ -313,7 +306,7 @@ func (registry *Registry) newModules(startupCtx context.Context) (modules, error
 		smsFeedback:               smsFeedbackConsumer.Run,
 		smsCampaign:               smsCampaignJob.Run,
 		webhookDelivery:           webhookConsumer.Run,
-		domainReconciliation:      domainConsumer.Run,
+		domainReconciliation:      domainJob.Run,
 		domainClaimReconciliation: domainClaimJob.Run,
 		broadcastExecution:        broadcastExecutionJob.Run,
 		senderIDReconciliation:    senderIDRun,
