@@ -5,10 +5,9 @@ import (
 	"time"
 
 	attempt "github.com/dugble/dugble/server/internal/delivery/attempt"
+	provider "github.com/dugble/dugble/server/internal/providers"
 
 	"github.com/google/uuid"
-
-	smsapi "github.com/dugble/dugble/server/internal/platform/sms"
 )
 
 func TestStatusEventMapsProviderStates(t *testing.T) {
@@ -17,31 +16,32 @@ func TestStatusEventMapsProviderStates(t *testing.T) {
 	attemptID := uuid.New()
 	pending := PendingMessage{
 		AttemptID:         attemptID,
-		ProviderID:        "mnotify",
+		ProviderID:        "moolre",
 		ProviderMessageID: "provider-message",
 		ReconcileAttempts: 2,
 	}
 	tests := []struct {
-		status string
-		want   attempt.AttemptStatus
+		providerStatus string
+		status         provider.SMSStatus
+		want           attempt.AttemptStatus
 	}{
-		{status: smsapi.StatusQueued, want: attempt.StatusAccepted},
-		{status: smsapi.StatusSubmitted, want: attempt.StatusSubmitted},
-		{status: smsapi.StatusSent, want: attempt.StatusSent},
-		{status: smsapi.StatusDelivered, want: attempt.StatusDelivered},
-		{status: smsapi.StatusUndelivered, want: attempt.StatusPermanentFailure},
-		{status: smsapi.StatusRejected, want: attempt.StatusRejected},
-		{status: smsapi.StatusExpired, want: attempt.StatusExpired},
-		{status: smsapi.StatusUnknown, want: attempt.StatusUnknown},
+		{providerStatus: "queued", status: provider.SMSPending, want: attempt.StatusAccepted},
+		{providerStatus: "submitted", status: provider.SMSPending, want: attempt.StatusSubmitted},
+		{providerStatus: "sent", status: provider.SMSPending, want: attempt.StatusSent},
+		{providerStatus: "delivered", status: provider.SMSDelivered, want: attempt.StatusDelivered},
+		{providerStatus: "undelivered", status: provider.SMSFailed, want: attempt.StatusPermanentFailure},
+		{providerStatus: "rejected", status: provider.SMSFailed, want: attempt.StatusRejected},
+		{providerStatus: "expired", status: provider.SMSFailed, want: attempt.StatusExpired},
+		{providerStatus: "unknown", status: provider.SMSUnknown, want: attempt.StatusUnknown},
 	}
 	for _, test := range tests {
 		test := test
-		t.Run(test.status, func(t *testing.T) {
+		t.Run(test.providerStatus, func(t *testing.T) {
 			t.Parallel()
-			event, err := statusEvent(pending, &smsapi.StatusResponse{
-				ProviderID:    pending.ProviderID,
-				ProviderMsgID: pending.ProviderMessageID,
-				Status:        test.status,
+			event, err := statusEvent(pending, provider.SMSStatusResult{
+				ProviderMessageID: pending.ProviderMessageID,
+				ProviderStatus:    test.providerStatus,
+				Status:            test.status,
 			}, time.Now().UTC())
 			if err != nil {
 				t.Fatalf("statusEvent() error = %v", err)
@@ -49,7 +49,7 @@ func TestStatusEventMapsProviderStates(t *testing.T) {
 			if event.Status != test.want {
 				t.Fatalf("statusEvent() status = %s, want %s", event.Status, test.want)
 			}
-			if event.AttemptID != attemptID || event.ProviderEventID != "poll:"+attemptID.String()+":3:"+test.status {
+			if event.AttemptID != attemptID || event.ProviderEventID != "poll:"+attemptID.String()+":3:"+test.providerStatus {
 				t.Fatalf("statusEvent() identity = %+v", event)
 			}
 		})
