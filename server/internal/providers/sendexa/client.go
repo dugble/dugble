@@ -22,51 +22,66 @@ type sendPayload struct {
 	Message string `json:"message"`
 }
 
-type sendResponse struct {
-	Data struct {
+type smsResponse struct {
+	Success bool   `json:"success"`
+	Message string `json:"message"`
+	Data    struct {
 		MessageID string `json:"messageId"`
-		Delivery  struct {
-			Status string `json:"status"`
-		} `json:"delivery"`
+		Status    string `json:"status"`
 	} `json:"data"`
 }
 
 type rawResponse struct {
 	statusCode int
-	body       sendResponse
+	body       smsResponse
 }
 
 func (c *client) send(ctx context.Context, payload sendPayload) (rawResponse, error) {
-	body, err := json.Marshal(payload)
-	if err != nil {
-		return rawResponse{}, fmt.Errorf("encode Sendexa request: %w", err)
+	return c.do(ctx, http.MethodPost, "/v1/sms/send", payload)
+}
+
+func (c *client) status(ctx context.Context, messageID string) (rawResponse, error) {
+	return c.do(ctx, http.MethodGet, "/v1/sms/status/"+messageID, nil)
+}
+
+func (c *client) do(ctx context.Context, method, path string, payload any) (rawResponse, error) {
+	var body io.Reader
+	if payload != nil {
+		encoded, err := json.Marshal(payload)
+		if err != nil {
+			return rawResponse{}, fmt.Errorf("encode Sendexa request: %w", err)
+		}
+		body = bytes.NewReader(encoded)
 	}
 
-	endpoint := c.baseURL.ResolveReference(&url.URL{Path: "/v1/sms/send"})
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint.String(), bytes.NewReader(body))
+	endpoint := c.baseURL.ResolveReference(&url.URL{Path: path})
+	req, err := http.NewRequestWithContext(ctx, method, endpoint.String(), body)
 	if err != nil {
 		return rawResponse{}, fmt.Errorf("create Sendexa request: %w", err)
 	}
-	req.Header.Set("Content-Type", "application/json")
+	if payload != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Authorization", "Basic "+c.token)
 
 	response, err := c.http.Do(req)
 	if err != nil {
 		return rawResponse{}, fmt.Errorf("send Sendexa request: %w", err)
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 
-	data, err := io.ReadAll(io.LimitReader(response.Body, 1<<20))
-	if err != nil {
-		return rawResponse{statusCode: response.StatusCode}, fmt.Errorf("read Sendexa response: %w", err)
-	}
-
-	parsed := sendResponse{}
+	data, readErr := io.ReadAll(io.LimitReader(response.Body, 1<<20))
+	parsed := smsResponse{}
 	if len(data) != 0 {
 		if err := json.Unmarshal(data, &parsed); err != nil {
 			return rawResponse{statusCode: response.StatusCode}, fmt.Errorf("decode Sendexa response: %w", err)
 		}
 	}
 
-	return rawResponse{statusCode: response.StatusCode, body: parsed}, nil
+	raw := rawResponse{statusCode: response.StatusCode, body: parsed}
+	if readErr != nil {
+		return raw, fmt.Errorf("read Sendexa response: %w", readErr)
+	}
+	return raw, nil
 }
