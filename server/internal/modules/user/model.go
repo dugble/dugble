@@ -17,7 +17,25 @@ type UpdateProfileRequest struct {
 }
 
 type UpdateEmailRequest struct {
-	Email string `json:"email"`
+	Email           string `json:"email"`
+	CurrentPassword string `json:"current_password"`
+}
+
+type VerifyEmailChangeRequest struct {
+	Token string `json:"token"`
+}
+
+type EmailChangePending struct {
+	Email                 string    `json:"email"`
+	PendingEmail          string    `json:"pending_email"`
+	VerificationExpiresAt time.Time `json:"verification_expires_at"`
+}
+
+type emailChangeRequest struct {
+	UserID       string
+	PendingEmail string
+	RequestedAt  time.Time
+	ExpiresAt    time.Time
 }
 
 type UpdatePasswordRequest struct {
