@@ -85,7 +85,11 @@ func (p *Provider) Send(ctx context.Context, message sms.Message) (sms.SendResul
 	})
 
 	if response.statusCode == http.StatusOK && response.body.Status == 1 && strings.EqualFold(strings.TrimSpace(response.body.Code), "SMS01") {
-		return sms.SendResult{State: sms.SubmissionAccepted}, nil
+		return sms.SendResult{
+			State:             sms.SubmissionAccepted,
+			ProviderMessageID: strings.TrimSpace(message.Reference),
+			ProviderStatus:    "submitted",
+		}, nil
 	}
 
 	if isSafeToFallbackStatus(response.statusCode) {
