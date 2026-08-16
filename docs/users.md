@@ -35,7 +35,7 @@ Errors use the standard envelope in [README.md](README.md). Expected statuses de
 
 ### `GET /users/me/invitations`
 
-Lists pending, unexpired team invitations for the authenticated user's email address. The returned invitation `id` can be passed to `POST /teams/invitations/:token/accept` or `POST /teams/invitations/:token/decline`; those routes also continue to accept emailed invitation tokens.
+Lists pending, unexpired team invitations for the authenticated user's email address. Use the returned invitation `id` with the user invitation accept or decline endpoints below.
 
 - Session: required.
 - CSRF: not required.
@@ -69,6 +69,80 @@ No JSON request body.
 #### Errors
 
 Errors use the standard envelope in [README.md](README.md). Expected statuses depend on validation, authentication, permission, resource existence, conflict, rate limiting, and service availability.
+
+### `POST /users/me/invitations/:invitation_id/accept`
+
+Accepts a pending team invitation belonging to the authenticated user's email address. `:invitation_id` must be the UUID returned by `GET /users/me/invitations`.
+
+On success, the invitation is marked accepted and the authenticated user is added to the team with the role carried by the invitation.
+
+- Session: required.
+- CSRF: required for browser requests.
+
+#### Payload
+
+No JSON request body.
+
+#### Response — `200 OK`
+
+```json
+{
+  "success": true,
+  "data": {
+    "id": "string",
+    "team_id": "string",
+    "team_name": "Example Team",
+    "email": "user@example.com",
+    "role": "member",
+    "status": "accepted",
+    "invited_by": "string",
+    "expires_at": "2026-08-16T17:00:00Z",
+    "accepted_at": "2026-08-09T17:00:00Z",
+    "created_at": "2026-08-09T17:00:00Z",
+    "updated_at": "2026-08-09T17:00:00Z"
+  }
+}
+```
+
+#### Errors
+
+Errors use the standard envelope in [README.md](README.md). Invalid invitation IDs, expired or unavailable invitations, email mismatches, and existing team membership are rejected.
+
+### `POST /users/me/invitations/:invitation_id/decline`
+
+Declines a pending team invitation belonging to the authenticated user's email address. `:invitation_id` must be the UUID returned by `GET /users/me/invitations`.
+
+- Session: required.
+- CSRF: required for browser requests.
+
+#### Payload
+
+No JSON request body.
+
+#### Response — `200 OK`
+
+```json
+{
+  "success": true,
+  "data": {
+    "id": "string",
+    "team_id": "string",
+    "team_name": "Example Team",
+    "email": "user@example.com",
+    "role": "member",
+    "status": "declined",
+    "invited_by": "string",
+    "expires_at": "2026-08-16T17:00:00Z",
+    "declined_at": "2026-08-09T17:00:00Z",
+    "created_at": "2026-08-09T17:00:00Z",
+    "updated_at": "2026-08-09T17:00:00Z"
+  }
+}
+```
+
+#### Errors
+
+Errors use the standard envelope in [README.md](README.md). Invalid invitation IDs, expired or unavailable invitations, and email mismatches are rejected.
 
 ### `PATCH /users/me`
 
