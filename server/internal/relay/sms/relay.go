@@ -3,13 +3,13 @@ package sms
 import (
 	"context"
 	"fmt"
+	"sort"
+	"strings"
 	"time"
 
 	relaycore "github.com/dugble/dugble/server/internal/relay"
 )
 
-// Routing errors are retained in sms for source compatibility. New code may
-// use the channel-neutral relay errors directly.
 var (
 	ErrNoProviders          = relaycore.ErrNoProviders
 	ErrNoCapableProviders   = relaycore.ErrNoCapableProviders
@@ -18,8 +18,6 @@ var (
 	ErrSubmissionUnknown    = relaycore.ErrSubmissionUnknown
 )
 
-// Relay executes providers in configured order and only falls back after a
-// definitive rejection.
 type Relay struct {
 	providers []Provider
 	health    relaycore.HealthSource
@@ -28,10 +26,19 @@ type Relay struct {
 
 func NewRelay(providers ...Provider) (*Relay, error) {
 	filtered := make([]Provider, 0, len(providers))
+	seen := make(map[string]struct{}, len(providers))
 	for _, provider := range providers {
 		if provider == nil {
 			continue
 		}
+		name := strings.ToLower(strings.TrimSpace(provider.Name()))
+		if name == "" {
+			return nil, fmt.Errorf("SMS provider name is required")
+		}
+		if _, exists := seen[name]; exists {
+			return nil, fmt.Errorf("duplicate SMS provider %q", name)
+		}
+		seen[name] = struct{}{}
 		filtered = append(filtered, provider)
 	}
 	if len(filtered) == 0 {
@@ -56,6 +63,48 @@ func (r *Relay) WithObserver(observer relaycore.Observer) *Relay {
 	clone := *r
 	clone.observer = observer
 	return &clone
+}
+
+func (r *Relay) ProviderIDs() []string {
+	if r == nil {
+		return nil
+	}
+	ids := make([]string, 0, len(r.providers))
+	for _, provider := range r.providers {
+		ids = append(ids, strings.ToLower(strings.TrimSpace(provider.Name())))
+	}
+	sort.Strings(ids)
+	return ids
+}
+
+func (r *Relay) Provider(name string) Provider {
+	name = strings.ToLower(strings.TrimSpace(name))
+	if r == nil || name == "" {
+		return nil
+	}
+	for _, provider := range r.providers {
+		if strings.EqualFold(strings.TrimSpace(provider.Name()), name) {
+			return provider
+		}
+	}
+	return nil
+}
+
+// SendWithProvider submits through exactly one named provider. Durable delivery
+// uses this after persisting the canonical provider choice, so one database
+// attempt always represents one provider call.
+func (r *Relay) SendWithProvider(ctx context.Context, providerName string, message Message) (SendResult, error) {
+	if err := message.validate(); err != nil {
+		return SendResult{State: SubmissionRejected}, err
+	}
+	provider := r.Provider(providerName)
+	if provider == nil {
+		return SendResult{State: SubmissionRejected}, fmt.Errorf("SMS provider %q is not configured", strings.TrimSpace(providerName))
+	}
+	if capable, ok := provider.(CapabilityProvider); ok && !capable.Capabilities().Supports(message) {
+		return SendResult{Provider: provider.Name(), State: SubmissionRejected}, ErrNoCapableProviders
+	}
+	return r.sendProvider(ctx, provider, message)
 }
 
 // Send submits an SMS using routed providers. Accepted and unknown states stop
@@ -83,24 +132,8 @@ func (r *Relay) Send(ctx context.Context, message Message) (SendResult, error) {
 	}
 
 	r.observe(ctx, relaycore.Event{Kind: relaycore.EventRouteSelected, Channel: relaycore.ChannelSMS, Providers: providerNames(route.providers)})
-
 	for _, provider := range route.providers {
-		r.observe(ctx, relaycore.Event{Kind: relaycore.EventAttemptStarted, Channel: relaycore.ChannelSMS, Provider: provider.Name()})
-		started := time.Now()
-		result, err := provider.Send(ctx, message)
-		result.Provider = provider.Name()
-		result.State = result.State.Normalize()
-
-		r.observe(ctx, relaycore.Event{
-			Kind:              relaycore.EventAttemptFinished,
-			Channel:           relaycore.ChannelSMS,
-			Provider:          provider.Name(),
-			Outcome:           result.State,
-			ProviderMessageID: result.ProviderMessageID,
-			Duration:          time.Since(started),
-			HadError:          err != nil,
-		})
-
+		result, err := r.sendProvider(ctx, provider, message)
 		switch result.State {
 		case SubmissionAccepted:
 			return result, nil
@@ -116,6 +149,24 @@ func (r *Relay) Send(ctx context.Context, message Message) (SendResult, error) {
 
 	r.observe(ctx, relaycore.Event{Kind: relaycore.EventRouteExhausted, Channel: relaycore.ChannelSMS, Reason: relaycore.ReasonAllRejected})
 	return SendResult{State: SubmissionRejected}, ErrAllRejected
+}
+
+func (r *Relay) sendProvider(ctx context.Context, provider Provider, message Message) (SendResult, error) {
+	r.observe(ctx, relaycore.Event{Kind: relaycore.EventAttemptStarted, Channel: relaycore.ChannelSMS, Provider: provider.Name()})
+	started := time.Now()
+	result, err := provider.Send(ctx, message)
+	result.Provider = provider.Name()
+	result.State = result.State.Normalize()
+	r.observe(ctx, relaycore.Event{
+		Kind:              relaycore.EventAttemptFinished,
+		Channel:           relaycore.ChannelSMS,
+		Provider:          provider.Name(),
+		Outcome:           result.State,
+		ProviderMessageID: result.ProviderMessageID,
+		Duration:          time.Since(started),
+		HadError:          err != nil,
+	})
+	return result, err
 }
 
 func (r *Relay) observe(ctx context.Context, event relaycore.Event) {
