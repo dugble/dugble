@@ -157,6 +157,12 @@ WHERE id = sqlc.arg(id)
   AND reconcile_locked_by = trim(sqlc.arg(worker_id))
 RETURNING *;
 
+-- name: ResetDomainReconciliationAttempts :execrows
+UPDATE domains
+SET reconciliation_attempts = 0,
+    updated_at = now()
+WHERE id = sqlc.arg(id);
+
 -- name: RecordDomainReconciliationFailure :one
 UPDATE domains
 SET last_error = sqlc.arg(last_error),

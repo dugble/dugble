@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	sentrymonitoring "github.com/dugble/dugble/server/internal/adapters/monitoring/sentry"
 )
@@ -55,7 +56,7 @@ type Job struct {
 	now        func() time.Time
 }
 
-func NewJob(repository *Repository, checker reconciliationChecker, config JobConfig, workerID string) (*Job, error) {
+func NewJob(db *pgxpool.Pool, repository *Repository, checker reconciliationChecker, config JobConfig, workerID string) (*Job, error) {
 	if err := config.validate(); err != nil {
 		return nil, err
 	}
@@ -63,12 +64,12 @@ func NewJob(repository *Repository, checker reconciliationChecker, config JobCon
 	if workerID == "" {
 		return nil, ErrWorkerIDRequired
 	}
-	if repository == nil || checker == nil {
+	if db == nil || repository == nil || checker == nil {
 		return nil, ErrJobNotConfigured
 	}
 	return &Job{
 		repository: repository,
-		service:    NewReconciliationService(repository, checker, config, workerID),
+		service:    NewReconciliationService(db, repository, checker, config, workerID),
 		config:     config,
 		workerID:   workerID,
 		now:        func() time.Time { return time.Now().UTC() },

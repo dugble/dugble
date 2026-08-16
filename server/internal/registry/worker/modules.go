@@ -173,8 +173,9 @@ func (registry *Registry) newModules(startupCtx context.Context) (modules, error
 
 	dnsVerifier := netdns.New()
 	domainRepository := domainmodule.NewRepository(db)
-	domainService := domainmodule.NewService(domainRepository, emailSender, dnsVerifier)
+	domainService := domainmodule.NewService(domainRepository, emailSender, dnsVerifier).WithDatabase(db)
 	domainJob, err := domainmodule.NewJob(
+		db,
 		domainRepository,
 		domainService,
 		domainmodule.DefaultJobConfig(),

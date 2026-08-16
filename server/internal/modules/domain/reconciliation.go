@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/dugble/dugble/server/internal/platform/systemmail"
 )
@@ -16,6 +18,7 @@ type reconciliationChecker interface {
 }
 
 type ReconciliationService struct {
+	db         *pgxpool.Pool
 	repository *Repository
 	checker    reconciliationChecker
 	config     JobConfig
@@ -24,11 +27,12 @@ type ReconciliationService struct {
 	notifier   statusNotifier
 }
 
-func NewReconciliationService(repository *Repository, checker reconciliationChecker, config JobConfig, workerID string) *ReconciliationService {
+func NewReconciliationService(db *pgxpool.Pool, repository *Repository, checker reconciliationChecker, config JobConfig, workerID string) *ReconciliationService {
 	if config.PendingCheckInterval <= 0 {
 		config.PendingCheckInterval = 30 * time.Second
 	}
 	return &ReconciliationService{
+		db:         db,
 		repository: repository,
 		checker:    checker,
 		config:     config,
@@ -43,7 +47,7 @@ func (s *ReconciliationService) WithNotifier(notifier statusNotifier) *Reconcili
 }
 
 func (s *ReconciliationService) Process(ctx context.Context, claim ReconciliationClaim) error {
-	if s == nil || s.repository == nil || s.checker == nil {
+	if s == nil || s.db == nil || s.repository == nil || s.checker == nil {
 		return ErrJobNotConfigured
 	}
 	id, err := uuid.Parse(claim.Domain.ID)
@@ -64,7 +68,7 @@ func (s *ReconciliationService) Process(ctx context.Context, claim Reconciliatio
 		return errors.Join(checkErr, recordErr)
 	}
 
-	updated, err := s.repository.CompleteReconciliation(ctx, id, s.workerID, result.Status, result.VerificationRecords, nextCheckAt)
+	updated, err := s.completeReconciliation(ctx, id, result.Status, result.VerificationRecords, nextCheckAt)
 	if err != nil {
 		return err
 	}
@@ -73,6 +77,28 @@ func (s *ReconciliationService) Process(ctx context.Context, claim Reconciliatio
 	}
 	s.notify(ctx, claim.Domain, updated)
 	return nil
+}
+
+func (s *ReconciliationService) completeReconciliation(
+	ctx context.Context,
+	id uuid.UUID,
+	status string,
+	records []VerificationRecord,
+	nextCheckAt time.Time,
+) (SenderDomain, error) {
+	tx, err := s.db.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return SenderDomain{}, fmt.Errorf("begin sender domain reconciliation completion: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	updated, err := s.repository.WithTx(tx).CompleteReconciliation(ctx, id, s.workerID, status, records, nextCheckAt)
+	if err != nil {
+		return SenderDomain{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return SenderDomain{}, fmt.Errorf("commit sender domain reconciliation completion: %w", err)
+	}
+	return updated, nil
 }
 
 func (s *ReconciliationService) completeHealthCheck(ctx context.Context, id uuid.UUID, previous SenderDomain, result ReconciliationResult, checkErr error) error {
