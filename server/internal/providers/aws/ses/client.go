@@ -33,17 +33,26 @@ type sesTenantAPI interface {
 	UpdateReputationEntityPolicy(context.Context, *sesv2.UpdateReputationEntityPolicyInput, ...func(*sesv2.Options)) (*sesv2.UpdateReputationEntityPolicyOutput, error)
 }
 
+type sesConfigurationAPI interface {
+	CreateConfigurationSet(context.Context, *sesv2.CreateConfigurationSetInput, ...func(*sesv2.Options)) (*sesv2.CreateConfigurationSetOutput, error)
+	DeleteConfigurationSet(context.Context, *sesv2.DeleteConfigurationSetInput, ...func(*sesv2.Options)) (*sesv2.DeleteConfigurationSetOutput, error)
+	CreateConfigurationSetEventDestination(context.Context, *sesv2.CreateConfigurationSetEventDestinationInput, ...func(*sesv2.Options)) (*sesv2.CreateConfigurationSetEventDestinationOutput, error)
+	UpdateConfigurationSetEventDestination(context.Context, *sesv2.UpdateConfigurationSetEventDestinationInput, ...func(*sesv2.Options)) (*sesv2.UpdateConfigurationSetEventDestinationOutput, error)
+	DeleteConfigurationSetEventDestination(context.Context, *sesv2.DeleteConfigurationSetEventDestinationInput, ...func(*sesv2.Options)) (*sesv2.DeleteConfigurationSetEventDestinationOutput, error)
+}
+
 // Client owns Dugble's AWS SES configuration and lazily caches regional SES
-// clients for sending, identity, and tenant operations.
+// clients for sending and control-plane operations.
 type Client struct {
 	defaultRegion string
 	defaultFrom   string
 	awsConfig     aws.Config
 
-	mu               sync.Mutex
-	v2SendingClients map[string]sesV2SendAPI
-	identityClients  map[string]sesIdentityAPI
-	tenantClients    map[string]sesTenantAPI
+	mu                   sync.Mutex
+	v2SendingClients     map[string]sesV2SendAPI
+	identityClients      map[string]sesIdentityAPI
+	tenantClients        map[string]sesTenantAPI
+	configurationClients map[string]sesConfigurationAPI
 }
 
 // NewClient constructs the SES client using the process AWS credential chain,
@@ -80,12 +89,13 @@ func newClient(ctx context.Context, region, defaultFrom, accessKey, secretKey st
 	}
 
 	return &Client{
-		defaultRegion:    region,
-		defaultFrom:      strings.TrimSpace(defaultFrom),
-		awsConfig:        resolved,
-		v2SendingClients: make(map[string]sesV2SendAPI),
-		identityClients:  make(map[string]sesIdentityAPI),
-		tenantClients:    make(map[string]sesTenantAPI),
+		defaultRegion:        region,
+		defaultFrom:          strings.TrimSpace(defaultFrom),
+		awsConfig:            resolved,
+		v2SendingClients:     make(map[string]sesV2SendAPI),
+		identityClients:      make(map[string]sesIdentityAPI),
+		tenantClients:        make(map[string]sesTenantAPI),
+		configurationClients: make(map[string]sesConfigurationAPI),
 	}, nil
 }
 
@@ -156,6 +166,30 @@ func (c *Client) tenantClient(region string) (sesTenantAPI, error) {
 	return client, nil
 }
 
+func (c *Client) configurationClient(region string) (sesConfigurationAPI, error) {
+	if c == nil {
+		return nil, errors.New("SES client is not configured")
+	}
+	region = strings.TrimSpace(region)
+	if region == "" {
+		region = c.defaultRegion
+	}
+	region, supported := NormalizeSESRegion(region)
+	if !supported {
+		return nil, fmt.Errorf("SES configuration region %q is not supported", region)
+	}
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if client, ok := c.configurationClients[region]; ok {
+		return client, nil
+	}
+	client := sesv2.NewFromConfig(c.regionalConfig(region))
+	c.configurationClients[region] = client
+	return client, nil
+}
+
 var _ sesTenantAPI = (*sesv2.Client)(nil)
 var _ sesIdentityAPI = (*sesv2.Client)(nil)
 var _ sesV2SendAPI = (*sesv2.Client)(nil)
+var _ sesConfigurationAPI = (*sesv2.Client)(nil)
