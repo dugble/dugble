@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	relaycore "github.com/dugble/dugble/server/internal/relay"
 	"github.com/dugble/dugble/server/internal/relay/sms"
 )
 
@@ -89,7 +90,7 @@ func TestRelaySubmissionSafety(t *testing.T) {
 		}
 	})
 
-	t.Run("missing state is unknown", func(t *testing.T) {
+	t.Run("missing state is unknown error", func(t *testing.T) {
 		primary := &provider{name: "primary", send: func(context.Context, sms.Message) (sms.SendResult, error) {
 			return sms.SendResult{}, nil
 		}}
@@ -102,11 +103,33 @@ func TestRelaySubmissionSafety(t *testing.T) {
 			t.Fatal(err)
 		}
 		result, err := router.Send(context.Background(), message())
-		if err != nil {
-			t.Fatal(err)
+		if !errors.Is(err, sms.ErrSubmissionUnknown) {
+			t.Fatalf("error=%v, want ErrSubmissionUnknown", err)
 		}
 		if result.State != sms.SubmissionUnknown || fallback.calls != 0 {
 			t.Fatalf("result=%+v fallback calls=%d", result, fallback.calls)
 		}
 	})
+}
+
+func TestRelayUnknownHealthIsUnavailable(t *testing.T) {
+	primary := &provider{name: "primary", send: func(context.Context, sms.Message) (sms.SendResult, error) {
+		t.Fatal("provider with unknown health must not receive traffic")
+		return sms.SendResult{}, nil
+	}}
+	router, err := sms.NewRelay(primary)
+	if err != nil {
+		t.Fatal(err)
+	}
+	router = router.WithHealth(relaycore.HealthFunc(func(context.Context, string) relaycore.HealthStatus {
+		return relaycore.HealthStatus("")
+	}))
+
+	result, err := router.Send(context.Background(), message())
+	if !errors.Is(err, sms.ErrNoAvailableProviders) {
+		t.Fatalf("error=%v, want ErrNoAvailableProviders", err)
+	}
+	if result.State != sms.SubmissionRejected || primary.calls != 0 {
+		t.Fatalf("result=%+v primary calls=%d", result, primary.calls)
+	}
 }

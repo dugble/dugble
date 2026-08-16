@@ -41,6 +41,12 @@ func (r *Relay) route(ctx context.Context, message Message) routeResult {
 		}
 
 		switch status {
+		case relaycore.HealthHealthy:
+			result.available = true
+			healthy = append(healthy, provider)
+		case relaycore.HealthDegraded:
+			result.available = true
+			degraded = append(degraded, provider)
 		case relaycore.HealthUnavailable:
 			r.observe(ctx, relaycore.Event{
 				Kind:     relaycore.EventProviderSkipped,
@@ -48,13 +54,13 @@ func (r *Relay) route(ctx context.Context, message Message) routeResult {
 				Provider: provider.Name(),
 				Reason:   relaycore.ReasonProviderUnavailable,
 			})
-			continue
-		case relaycore.HealthDegraded:
-			result.available = true
-			degraded = append(degraded, provider)
 		default:
-			result.available = true
-			healthy = append(healthy, provider)
+			r.observe(ctx, relaycore.Event{
+				Kind:     relaycore.EventProviderSkipped,
+				Channel:  relaycore.ChannelEmail,
+				Provider: provider.Name(),
+				Reason:   relaycore.ReasonProviderUnavailable,
+			})
 		}
 	}
 

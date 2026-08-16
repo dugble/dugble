@@ -36,17 +36,31 @@ func TestContract(t *testing.T) {
 }
 
 func TestContractAllowsNoRejectedScenario(t *testing.T) {
-	contract := relaytest.Contract[string]{Name: "primary", Accepted: scriptedFactory("primary", relay.SubmissionAccepted), Unknown: scriptedFactory("primary", relay.SubmissionUnknown)}
+	contract := relaytest.Contract[string]{
+		Name:     "primary",
+		Accepted: scriptedFactory("primary", relay.SubmissionAccepted),
+		Unknown:  scriptedFactory("primary", relay.SubmissionUnknown),
+	}
 	contract.Run(t)
 }
 
 func scriptedFactory(name string, state relay.SubmissionState) relaytest.Factory[string] {
-	return func(t *testing.T) (relaytest.Provider[string], string) { t.Helper(); return scriptedProvider{name: name, state: state}, "message" }
+	return func(t *testing.T) (relaytest.Provider[string], string) {
+		t.Helper()
+		return scriptedProvider{name: name, state: state}, "message"
+	}
 }
 
-type scriptedProvider struct { name string; state relay.SubmissionState }
+type scriptedProvider struct {
+	name  string
+	state relay.SubmissionState
+}
+
 func (p scriptedProvider) Name() string { return p.name }
+
 func (p scriptedProvider) Send(context.Context, string) (relay.Result, error) {
-	if p.state == relay.SubmissionAccepted { return relay.Result{State: p.state}, nil }
+	if p.state == relay.SubmissionAccepted {
+		return relay.Result{State: p.state}, nil
+	}
 	return relay.Result{State: p.state}, errors.New("provider result")
 }
