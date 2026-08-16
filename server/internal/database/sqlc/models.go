@@ -255,6 +255,13 @@ type DomainDnsRecord struct {
 	UpdatedAt    pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
 }
 
+type EmailChangeRequest struct {
+	UserID       uuid.UUID          `db:"user_id" json:"user_id"`
+	PendingEmail string             `db:"pending_email" json:"pending_email"`
+	RequestedAt  pgtype.Timestamptz `db:"requested_at" json:"requested_at"`
+	ExpiresAt    pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
+}
+
 type EmailMessage struct {
 	ID                       uuid.UUID          `db:"id" json:"id"`
 	TeamID                   uuid.UUID          `db:"team_id" json:"team_id"`

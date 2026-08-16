@@ -1,4 +1,4 @@
-h1:GdddVojKDajAL9kYAnd+LR207q+7Zf//J+oeNMAe1Dk=
+h1:Iz0JJrl4PEIuH6yvT2SRXQzzSgz7sqYjhJ3+QwRXMLA=
 001_create_users.sql h1:SzmfDnKV7pBVweNm8IRsVvEKfzDN7VsSIdAckXWPOvM=
 002_create_sessions.sql h1:mfuQWhqrJwMca/G2R2DOzDoDjNojK/TXxjbs5FYtLuI=
 003_create_oauth_identities.sql h1:RzP5llfQylzwmKxDbJc77FSg+7OizsFzdqQKbQ+n8EY=
@@ -37,3 +37,4 @@ h1:GdddVojKDajAL9kYAnd+LR207q+7Zf//J+oeNMAe1Dk=
 036_create_subscriptions.sql h1:GL6jYBZUPsNJJEauv4g/kxVmON13Au65pRaTBwZrk7Y=
 037_create_payment_transactions.sql h1:M58uAMJiEyYvjwWAi2RR7dk+BJgp5cSiu9T5XhbwNIs=
 038_create_wallet_ledger.sql h1:z3pe4oGXx92JO54aFE+MzHApKroLofjXI2e99ugImZU=
+039_create_email_change_requests.sql h1:qmUU89vkBkKssY/UeaTHLnXP5tkupsQpPST4PDV1RyI=
