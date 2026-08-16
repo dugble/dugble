@@ -1,31 +1,29 @@
 package ses
 
 import (
-	"fmt"
+	"slices"
 	"strings"
-
-	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/service/sesv2"
 )
 
-// NewForRegion constructs an SES service scoped to region.
-func NewForRegion(cfg aws.Config, region string) (*Service, error) {
-	region = strings.TrimSpace(region)
-	if region == "" {
-		return nil, fmt.Errorf("ses: region is required")
-	}
-
-	cfg.Region = region
-	return &Service{
-		client: sesv2.NewFromConfig(cfg),
-		region: region,
-	}, nil
+var supportedSESRegions = map[string]struct{}{
+	"us-east-1":  {},
+	"eu-north-1": {},
 }
 
-// Region returns the AWS region used by the SES service.
-func (s *Service) Region() string {
-	if s == nil {
-		return ""
+// NormalizeSESRegion returns a canonical supported SES region and reports
+// whether the supplied value belongs to Dugble's regional deployment set.
+func NormalizeSESRegion(value string) (string, bool) {
+	region := strings.ToLower(strings.TrimSpace(value))
+	_, supported := supportedSESRegions[region]
+	return region, supported
+}
+
+// SupportedSESRegions returns a copy so callers cannot mutate shared policy.
+func SupportedSESRegions() []string {
+	regions := make([]string, 0, len(supportedSESRegions))
+	for region := range supportedSESRegions {
+		regions = append(regions, region)
 	}
-	return s.region
+	slices.Sort(regions)
+	return regions
 }
