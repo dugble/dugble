@@ -40,6 +40,24 @@ type Team struct {
 	UpdatedAt  time.Time `json:"updated_at"`
 }
 
+type ListOptions struct {
+	Page   int
+	Limit  int
+	Search string
+	Status string
+}
+
+type PaginationMeta struct {
+	Page       int   `json:"page"`
+	Limit      int   `json:"limit"`
+	Total      int64 `json:"total"`
+	TotalPages int   `json:"total_pages"`
+}
+
+type ListMeta struct {
+	Pagination PaginationMeta `json:"pagination"`
+}
+
 type MemberProfile struct {
 	ID    string `json:"id"`
 	Name  string `json:"name"`
