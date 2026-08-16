@@ -2,11 +2,18 @@ package team
 
 import (
 	"net/mail"
+	"strconv"
 	"strings"
 
 	"github.com/google/uuid"
 
 	apperrors "github.com/dugble/dugble/server/pkg/errors"
+)
+
+const (
+	defaultTeamListPage  = 1
+	defaultTeamListLimit = 20
+	maxTeamListLimit     = 100
 )
 
 func validateTeamName(value string) (string, error) {
@@ -39,6 +46,40 @@ func normalizeOptionalTeamField(value string) *string {
 		return nil
 	}
 	return &value
+}
+
+func parseListOptions(pageValue, limitValue, searchValue, statusValue string) (ListOptions, error) {
+	options := ListOptions{
+		Page:   defaultTeamListPage,
+		Limit:  defaultTeamListLimit,
+		Search: strings.TrimSpace(searchValue),
+		Status: TeamStatusActive,
+	}
+
+	if value := strings.TrimSpace(pageValue); value != "" {
+		page, err := strconv.Atoi(value)
+		if err != nil || page < 1 {
+			return ListOptions{}, apperrors.NewBadRequest("Page must be a positive integer")
+		}
+		options.Page = page
+	}
+
+	if value := strings.TrimSpace(limitValue); value != "" {
+		limit, err := strconv.Atoi(value)
+		if err != nil || limit < 1 || limit > maxTeamListLimit {
+			return ListOptions{}, apperrors.NewBadRequest("Limit must be between 1 and 100")
+		}
+		options.Limit = limit
+	}
+
+	if value := strings.ToLower(strings.TrimSpace(statusValue)); value != "" {
+		if value != TeamStatusActive && value != TeamStatusDisabled {
+			return ListOptions{}, apperrors.NewBadRequest("Status must be active or disabled")
+		}
+		options.Status = value
+	}
+
+	return options, nil
 }
 
 func validateTeamID(value string) (uuid.UUID, error) {
