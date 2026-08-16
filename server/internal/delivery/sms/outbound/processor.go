@@ -10,7 +10,7 @@ import (
 	"github.com/google/uuid"
 
 	smsmodule "github.com/dugble/dugble/server/internal/modules/sms"
-	smsapi "github.com/dugble/dugble/server/internal/platform/sms"
+	relaysms "github.com/dugble/dugble/server/internal/relay/sms"
 )
 
 const defaultStaleProcessingAfter = 15 * time.Minute
@@ -115,13 +115,6 @@ func (processor *Processor) Handle(ctx context.Context, command DeliverCommand) 
 		return updateErr
 	}
 
-	request := smsapi.SendRequest{
-		Reference:          message.ID,
-		To:                 message.To,
-		From:               message.From,
-		Message:            message.Body,
-		DestinationCountry: message.DestinationCountry,
-	}
 	attemptID, err := processor.repository.CreateDeliveryAttempt(
 		ctx, command.MessageID, command.TeamID, route,
 	)
@@ -134,20 +127,37 @@ func (processor *Processor) Handle(ctx context.Context, command DeliverCommand) 
 		return err
 	}
 
-	response, sendErr := processor.sender.SendWithProvider(ctx, route.Provider, request)
-	if sendErr == nil {
+	result, sendErr := processor.sender.SendWithProvider(ctx, route.Provider, relaysms.Message{
+		Reference: message.ID,
+		To:        message.To,
+		From:      message.From,
+		Text:      message.Body,
+	})
+	switch result.State {
+	case relaysms.SubmissionAccepted:
+		if sendErr != nil {
+			return processor.repository.MarkDeliveryAttemptUnknown(
+				ctx, command.MessageID, command.TeamID, attemptID, sendErr,
+			)
+		}
 		return processor.repository.MarkDeliveryAttemptSubmitted(
-			ctx, command.MessageID, command.TeamID, attemptID, response,
+			ctx, command.MessageID, command.TeamID, attemptID, result,
 		)
-	}
-	if shouldFinalizeAfterSendError(sendErr) {
+	case relaysms.SubmissionRejected:
+		if sendErr == nil {
+			sendErr = errors.New("SMS provider rejected submission")
+		}
 		return processor.repository.MarkDeliveryAttemptFailed(
 			ctx, command.MessageID, command.TeamID, attemptID, sendErr,
 		)
+	default:
+		if sendErr == nil {
+			sendErr = relaysms.ErrSubmissionUnknown
+		}
+		return processor.repository.MarkDeliveryAttemptUnknown(
+			ctx, command.MessageID, command.TeamID, attemptID, sendErr,
+		)
 	}
-	return processor.repository.MarkDeliveryAttemptUnknown(
-		ctx, command.MessageID, command.TeamID, attemptID, sendErr,
-	)
 }
 
 func (processor *Processor) handleAlreadyClaimed(ctx context.Context, command DeliverCommand) error {
