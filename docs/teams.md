@@ -100,7 +100,7 @@ Errors use the standard envelope in [README.md](README.md). Expected statuses de
 
 ### `GET /teams/invitations`
 
-Lists pending, unexpired invitations for the authenticated user's email address. The returned `id` can be passed to `POST /teams/invitations/:token/accept` or `POST /teams/invitations/:token/decline`; those routes continue to accept emailed tokens too.
+Alias of `GET /users/me/invitations`. Lists pending, unexpired invitations for the authenticated user's email address. The returned `id` can be passed to `POST /teams/invitations/:token/accept` or `POST /teams/invitations/:token/decline`; those routes continue to accept emailed tokens too.
 
 - Session: required.
 - CSRF: not required.

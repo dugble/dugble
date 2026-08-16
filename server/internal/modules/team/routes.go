@@ -15,6 +15,10 @@ func RegisterRoutes(
 	csrfMiddleware echo.MiddlewareFunc,
 	tenantMiddleware TenantMiddleware,
 ) {
+	users := router.Group("/users")
+	users.Use(authMiddleware, csrfMiddleware)
+	users.GET("/me/invitations", handler.ListPendingInvitations)
+
 	teams := router.Group("/teams")
 	teams.Use(authMiddleware, csrfMiddleware)
 
