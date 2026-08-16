@@ -9,34 +9,30 @@ import (
 
 	attempt "github.com/dugble/dugble/server/internal/delivery/attempt"
 	feedback "github.com/dugble/dugble/server/internal/delivery/feedback"
-
-	smsapi "github.com/dugble/dugble/server/internal/platform/sms"
+	smsmodule "github.com/dugble/dugble/server/internal/modules/sms"
+	provider "github.com/dugble/dugble/server/internal/providers"
 )
 
 const providerStatusEventType = "delivery_status"
 
 func statusEvent(
 	pending PendingMessage,
-	response *smsapi.StatusResponse,
+	response provider.SMSStatusResult,
 	observedAt time.Time,
 ) (feedback.Event, error) {
-	if response == nil {
-		return feedback.Event{}, errors.New("SMS provider returned an empty status response")
-	}
-	providerID := strings.ToLower(strings.TrimSpace(response.ProviderID))
-	providerMessageID := strings.TrimSpace(response.ProviderMsgID)
-	status := strings.ToLower(strings.TrimSpace(response.Status))
+	providerID := strings.ToLower(strings.TrimSpace(pending.ProviderID))
+	providerMessageID := strings.TrimSpace(response.ProviderMessageID)
 	if providerID == "" {
 		return feedback.Event{}, ErrProviderRequired
 	}
 	if providerMessageID == "" {
 		return feedback.Event{}, ErrProviderMessageRequired
 	}
-	if providerID != strings.ToLower(strings.TrimSpace(pending.ProviderID)) ||
-		providerMessageID != strings.TrimSpace(pending.ProviderMessageID) {
+	if providerMessageID != strings.TrimSpace(pending.ProviderMessageID) {
 		return feedback.Event{}, errors.New("SMS provider status response does not match the pending attempt")
 	}
-	attemptStatus, err := deliveryAttemptStatus(status)
+	providerStatus := strings.ToLower(strings.TrimSpace(response.ProviderStatus))
+	attemptStatus, normalizedStatus, err := deliveryAttemptStatus(response.Status, providerStatus)
 	if err != nil {
 		return feedback.Event{}, err
 	}
@@ -45,25 +41,24 @@ func statusEvent(
 	} else {
 		observedAt = observedAt.UTC()
 	}
-	providerStatus := strings.TrimSpace(response.ProviderStatus)
 	if providerStatus == "" {
-		providerStatus = status
+		providerStatus = normalizedStatus
 	}
 	metadata, err := json.Marshal(map[string]any{
 		"source":            "poll",
-		"normalized_status": status,
+		"normalized_status": normalizedStatus,
 		"provider_status":   providerStatus,
 	})
 	if err != nil {
 		return feedback.Event{}, fmt.Errorf("encode SMS feedback metadata: %w", err)
 	}
-	errorCode, errorMessage := smsFeedbackError(status, providerStatus)
+	errorCode, errorMessage := smsFeedbackError(normalizedStatus, providerStatus)
 	event := feedback.Event{
 		AttemptID:         pending.AttemptID,
 		Provider:          providerID,
-		ProviderEventID:   fmt.Sprintf("poll:%s:%d:%s", pending.AttemptID, pending.ReconcileAttempts+1, status),
+		ProviderEventID:   fmt.Sprintf("poll:%s:%d:%s", pending.AttemptID, pending.ReconcileAttempts+1, normalizedStatus),
 		ProviderMessageID: providerMessageID,
-		EventType:         providerStatusEventType + "." + status,
+		EventType:         providerStatusEventType + "." + normalizedStatus,
 		Channel:           attempt.ChannelSMS,
 		Status:            attemptStatus,
 		ProviderStatus:    providerStatus,
@@ -79,40 +74,52 @@ func statusEvent(
 	return event, nil
 }
 
-func deliveryAttemptStatus(status string) (attempt.AttemptStatus, error) {
-	switch strings.ToLower(strings.TrimSpace(status)) {
-	case smsapi.StatusQueued:
-		return attempt.StatusAccepted, nil
-	case smsapi.StatusSubmitted:
-		return attempt.StatusSubmitted, nil
-	case smsapi.StatusSent:
-		return attempt.StatusSent, nil
-	case smsapi.StatusDelivered:
-		return attempt.StatusDelivered, nil
-	case smsapi.StatusUndelivered, smsapi.StatusFailed:
-		return attempt.StatusPermanentFailure, nil
-	case smsapi.StatusRejected:
-		return attempt.StatusRejected, nil
-	case smsapi.StatusExpired:
-		return attempt.StatusExpired, nil
-	case smsapi.StatusUnknown:
-		return attempt.StatusUnknown, nil
+func deliveryAttemptStatus(status provider.SMSStatus, providerStatus string) (attempt.AttemptStatus, string, error) {
+	native := strings.ToLower(strings.TrimSpace(providerStatus))
+	switch native {
+	case smsmodule.StatusQueued:
+		return attempt.StatusAccepted, smsmodule.StatusQueued, nil
+	case smsmodule.StatusSubmitted:
+		return attempt.StatusSubmitted, smsmodule.StatusSubmitted, nil
+	case smsmodule.StatusSent:
+		return attempt.StatusSent, smsmodule.StatusSent, nil
+	case smsmodule.StatusDelivered:
+		return attempt.StatusDelivered, smsmodule.StatusDelivered, nil
+	case smsmodule.StatusUndelivered, smsmodule.StatusFailed:
+		return attempt.StatusPermanentFailure, native, nil
+	case smsmodule.StatusRejected:
+		return attempt.StatusRejected, smsmodule.StatusRejected, nil
+	case smsmodule.StatusExpired:
+		return attempt.StatusExpired, smsmodule.StatusExpired, nil
+	case smsmodule.StatusUnknown:
+		return attempt.StatusUnknown, smsmodule.StatusUnknown, nil
+	}
+
+	switch status {
+	case provider.SMSPending:
+		return attempt.StatusSubmitted, smsmodule.StatusSubmitted, nil
+	case provider.SMSDelivered:
+		return attempt.StatusDelivered, smsmodule.StatusDelivered, nil
+	case provider.SMSFailed:
+		return attempt.StatusPermanentFailure, smsmodule.StatusFailed, nil
+	case provider.SMSUnknown:
+		return attempt.StatusUnknown, smsmodule.StatusUnknown, nil
 	default:
-		return "", ErrUnsupportedStatus
+		return "", "", ErrUnsupportedStatus
 	}
 }
 
 func smsFeedbackError(status, providerStatus string) (string, string) {
 	switch status {
-	case smsapi.StatusUndelivered:
+	case smsmodule.StatusUndelivered:
 		return "sms_undelivered", providerStatus
-	case smsapi.StatusRejected:
+	case smsmodule.StatusRejected:
 		return "sms_rejected", providerStatus
-	case smsapi.StatusFailed:
+	case smsmodule.StatusFailed:
 		return "sms_failed", providerStatus
-	case smsapi.StatusExpired:
+	case smsmodule.StatusExpired:
 		return "sms_expired", providerStatus
-	case smsapi.StatusUnknown:
+	case smsmodule.StatusUnknown:
 		return "sms_unknown", providerStatus
 	default:
 		return "", ""
