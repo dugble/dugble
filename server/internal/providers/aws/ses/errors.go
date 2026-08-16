@@ -93,6 +93,11 @@ func classifySESFailure(err error) error {
 	}
 }
 
+func isAlreadyExists(err error) bool {
+	var apiError smithy.APIError
+	return errors.As(err, &apiError) && strings.EqualFold(strings.TrimSpace(apiError.ErrorCode()), "AlreadyExistsException")
+}
+
 func normalizeCode(code string) string {
 	code = strings.ToLower(strings.TrimSpace(code))
 	code = strings.ReplaceAll(code, "-", "_")
