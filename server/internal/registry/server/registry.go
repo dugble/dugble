@@ -14,16 +14,10 @@ import (
 	"github.com/redis/go-redis/v9"
 
 	"github.com/dugble/dugble/server/internal/adapters/hubtel"
-	leamoutsms "github.com/dugble/dugble/server/internal/adapters/leamout/sms"
-	mnotifyadapter "github.com/dugble/dugble/server/internal/adapters/mnotify"
-	mnotifysms "github.com/dugble/dugble/server/internal/adapters/mnotify/sms"
 	newrelicmonitoring "github.com/dugble/dugble/server/internal/adapters/monitoring/newrelic"
 	sentrymonitoring "github.com/dugble/dugble/server/internal/adapters/monitoring/sentry"
-	"github.com/dugble/dugble/server/internal/adapters/moolre"
-	moolresms "github.com/dugble/dugble/server/internal/adapters/moolre/sms"
 	"github.com/dugble/dugble/server/internal/adapters/postgres"
 	redisadapter "github.com/dugble/dugble/server/internal/adapters/redis"
-	runnagesms "github.com/dugble/dugble/server/internal/adapters/runnage/sms"
 	arcjetadapter "github.com/dugble/dugble/server/internal/adapters/security/arcjet"
 	paymentmodule "github.com/dugble/dugble/server/internal/billing/payment"
 	"github.com/dugble/dugble/server/internal/config"
@@ -31,9 +25,10 @@ import (
 	systememail "github.com/dugble/dugble/server/internal/delivery/email/system"
 	"github.com/dugble/dugble/server/internal/platform/idempotency"
 	"github.com/dugble/dugble/server/internal/platform/outbox"
-	platformsms "github.com/dugble/dugble/server/internal/platform/sms"
 	awsses "github.com/dugble/dugble/server/internal/providers/aws/ses"
 	awssns "github.com/dugble/dugble/server/internal/providers/aws/sns"
+	moolreprovider "github.com/dugble/dugble/server/internal/providers/moolre"
+	relaysms "github.com/dugble/dugble/server/internal/relay/sms"
 	httptransport "github.com/dugble/dugble/server/internal/transport"
 	httpmiddleware "github.com/dugble/dugble/server/internal/transport/middleware"
 	providersns "github.com/dugble/dugble/server/internal/transport/provider/aws/sns"
@@ -46,7 +41,7 @@ type Registry struct {
 	redis          *redis.Client
 	arcjet         *arcjet.Client
 	emailClient    *awsses.Client
-	smsSender      *platformsms.Service
+	smsSender      *relaysms.Relay
 	outbox         *outbox.Repository
 	providerSNS    *providersns.Handler
 	hubtelProvider *hubtel.Provider
@@ -168,7 +163,7 @@ func (registry *Registry) routerConfig() httptransport.RouterConfig {
 }
 
 func newEmailClient(cfg *config.Config) (*awsses.Client, error) {
-	return awsses.NewClient(cfg.AWS.Region, cfg.AWS.FromEmail, cfg.AWS.AccessKey, cfg.AWS.SecretKey, awsses.TransactionalConfigurationSet)
+	return awsses.NewClient(cfg.AWS.Region, cfg.AWS.FromEmail, cfg.AWS.AccessKey, cfg.AWS.SecretKey)
 }
 
 func newHubtelServices(cfg *config.Config, db *pgxpool.Pool) (*hubtel.Provider, *paymentmodule.Service) {
@@ -192,14 +187,14 @@ func newProviderSNSHandler(cfg *config.Config, db *pgxpool.Pool, repository *out
 	return providersns.NewHandler(verifier, confirmer, feedback.NewRepository(db, repository))
 }
 
-func newSMSSender(cfg *config.Config) (*platformsms.Service, error) {
-	router, err := platformsms.NewRoutingService(platformsms.DefaultRoutingConfig(), mnotifysms.NewProvider(mnotifyadapter.NewClient(cfg.MNotify.APIKey)), moolresms.NewProvider(moolre.NewClient(cfg.Moolre.VASKey)), leamoutsms.NewProvider(), runnagesms.NewProvider())
+func newSMSSender(cfg *config.Config) (*relaysms.Relay, error) {
+	moolre, err := moolreprovider.New(moolreprovider.Config{VASKey: cfg.Moolre.VASKey})
 	if err != nil {
-		return nil, fmt.Errorf("initialize SMS router: %w", err)
+		return nil, fmt.Errorf("initialize Moolre SMS provider: %w", err)
 	}
-	sender, err := platformsms.NewService(router)
+	sender, err := relaysms.NewRelay(moolre)
 	if err != nil {
-		return nil, fmt.Errorf("initialize SMS sender: %w", err)
+		return nil, fmt.Errorf("initialize SMS relay: %w", err)
 	}
 	return sender, nil
 }
