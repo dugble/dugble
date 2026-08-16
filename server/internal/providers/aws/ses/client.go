@@ -11,7 +11,6 @@ import (
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/sesv2"
-	sestypes "github.com/aws/aws-sdk-go-v2/service/sesv2/types"
 )
 
 type sesV2SendAPI interface {
@@ -104,7 +103,8 @@ func (c *Client) v2SendingClient(region string) (sesV2SendAPI, error) {
 	if region == "" {
 		return nil, errors.New("SES delivery region is required")
 	}
-	if _, supported := NormalizeSESRegion(region); !supported {
+	region, supported := NormalizeSESRegion(region)
+	if !supported {
 		return nil, fmt.Errorf("SES delivery region %q is not supported", region)
 	}
 
@@ -159,5 +159,3 @@ func (c *Client) tenantClient(region string) (sesTenantAPI, error) {
 var _ sesTenantAPI = (*sesv2.Client)(nil)
 var _ sesIdentityAPI = (*sesv2.Client)(nil)
 var _ sesV2SendAPI = (*sesv2.Client)(nil)
-
-var _ = sestypes.SuppressionListReasonBounce
