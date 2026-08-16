@@ -3,7 +3,7 @@ package sms
 import (
 	"context"
 
-	relaycore "github.com/dugble/relay"
+	relaycore "github.com/dugble/dugble/server/internal/relay"
 )
 
 // SubmissionState is an alias of Relay's channel-neutral submission state.

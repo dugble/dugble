@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	relaycore "github.com/dugble/relay"
+	relaycore "github.com/dugble/dugble/server/internal/relay"
 )
 
 // Routing errors are retained in sms for source compatibility. New code may
@@ -39,8 +39,6 @@ func NewRelay(providers ...Provider) (*Relay, error) {
 	return &Relay{providers: filtered}, nil
 }
 
-// WithHealth returns a copy of Relay that uses source when ordering providers.
-// Unknown health values are treated as healthy for backward compatibility.
 func (r *Relay) WithHealth(source relaycore.HealthSource) *Relay {
 	if r == nil {
 		return nil
@@ -50,8 +48,6 @@ func (r *Relay) WithHealth(source relaycore.HealthSource) *Relay {
 	return &clone
 }
 
-// WithObserver returns a copy of Relay that emits lifecycle events to observer.
-// Observer callbacks run synchronously; panics are isolated from delivery.
 func (r *Relay) WithObserver(observer relaycore.Observer) *Relay {
 	if r == nil {
 		return nil
@@ -85,17 +81,12 @@ func (r *Relay) Send(ctx context.Context, message Message) (SendResult, error) {
 		}
 	}
 
-	r.observe(ctx, relaycore.Event{
-		Kind:      relaycore.EventRouteSelected,
-		Channel:   relaycore.ChannelSMS,
-		Providers: providerNames(route.providers),
-	})
+	r.observe(ctx, relaycore.Event{Kind: relaycore.EventRouteSelected, Channel: relaycore.ChannelSMS, Providers: providerNames(route.providers)})
 
 	for _, provider := range route.providers {
 		r.observe(ctx, relaycore.Event{Kind: relaycore.EventAttemptStarted, Channel: relaycore.ChannelSMS, Provider: provider.Name()})
 		started := time.Now()
 		result, err := provider.Send(ctx, message)
-		duration := time.Since(started)
 		result.Provider = provider.Name()
 		result.State = result.State.Normalize()
 
@@ -105,7 +96,7 @@ func (r *Relay) Send(ctx context.Context, message Message) (SendResult, error) {
 			Provider:          provider.Name(),
 			Outcome:           result.State,
 			ProviderMessageID: result.ProviderMessageID,
-			Duration:          duration,
+			Duration:          time.Since(started),
 			HadError:          err != nil,
 		})
 
@@ -131,9 +122,7 @@ func (r *Relay) observe(ctx context.Context, event relaycore.Event) {
 		return
 	}
 	func() {
-		defer func() {
-			_ = recover()
-		}()
+		defer func() { _ = recover() }()
 		r.observer.Observe(ctx, event)
 	}()
 }

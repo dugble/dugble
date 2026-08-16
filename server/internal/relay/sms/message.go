@@ -3,7 +3,7 @@ package sms
 import (
 	"strings"
 
-	relaycore "github.com/dugble/relay"
+	relaycore "github.com/dugble/dugble/server/internal/relay"
 )
 
 // ErrInvalidMessage is retained for source compatibility. New code may use

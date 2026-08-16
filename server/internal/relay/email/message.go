@@ -4,7 +4,7 @@ import (
 	"net/mail"
 	"strings"
 
-	relaycore "github.com/dugble/relay"
+	relaycore "github.com/dugble/dugble/server/internal/relay"
 )
 
 // Address is a mailbox used by an email message.
