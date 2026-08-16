@@ -108,6 +108,30 @@ func (h *Handler) UpdateMemberRole(c *echo.Context) error {
 	return httputil.OK(c, member)
 }
 
+func (h *Handler) ListPendingInvitations(c *echo.Context) error {
+	invitations, err := h.service.ListPendingInvitations(c.Request().Context())
+	if err != nil {
+		return httputil.Error(c, err)
+	}
+	return httputil.OK(c, invitations)
+}
+
+func (h *Handler) ListTeamInvitations(c *echo.Context) error {
+	invitations, err := h.service.ListTeamInvitations(c.Request().Context(), c.Param("team_id"))
+	if err != nil {
+		return httputil.Error(c, err)
+	}
+	return httputil.OK(c, invitations)
+}
+
+func (h *Handler) RevokeInvitation(c *echo.Context) error {
+	invitation, err := h.service.RevokeInvitation(c.Request().Context(), c.Param("team_id"), c.Param("invitation_id"))
+	if err != nil {
+		return httputil.Error(c, err)
+	}
+	return httputil.OK(c, invitation)
+}
+
 func (h *Handler) InviteMember(c *echo.Context) error {
 	var req InviteMemberRequest
 	if err := decodeJSON(c, &req); err != nil {
