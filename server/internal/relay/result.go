@@ -24,5 +24,6 @@ func (s SubmissionState) Normalize() SubmissionState {
 type Result struct {
 	Provider          string
 	ProviderMessageID string
+	ProviderStatus    string
 	State             SubmissionState
 }
