@@ -181,6 +181,32 @@ RETURNING user_id::text, pending_email, requested_at, expires_at
 	return request, nil
 }
 
+func (r *Repository) CancelEmailChange(ctx context.Context, id string, identifier string) error {
+	parsedID, err := uuid.Parse(id)
+	if err != nil {
+		return fmt.Errorf("parse user id: %w", err)
+	}
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin email change cancellation: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	if _, err := tx.Exec(ctx, lockEmailChangeIdentifierSQL, identifier); err != nil {
+		return fmt.Errorf("lock email change: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM email_change_requests WHERE user_id = $1`, parsedID); err != nil {
+		return fmt.Errorf("delete email change request: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM verification_tokens WHERE identifier = $1`, identifier); err != nil {
+		return fmt.Errorf("delete email change tokens: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit email change cancellation: %w", err)
+	}
+	return nil
+}
+
 func (r *Repository) VerifyEmailChange(
 	ctx context.Context,
 	id string,
