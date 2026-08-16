@@ -32,7 +32,7 @@ func TestSendIncludesReference(t *testing.T) {
 	}))
 	defer server.Close()
 
-	p, err := moolre.New(moolre.Config{VASKey: "secret", BaseURL: server.URL})
+	p, err := moolre.NewTestProvider(moolre.Config{VASKey: "secret"}, server.URL)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -66,7 +66,7 @@ func TestCreateSenderID(t *testing.T) {
 	}))
 	defer server.Close()
 
-	p, err := moolre.New(moolre.Config{VASKey: "secret", BaseURL: server.URL})
+	p, err := moolre.NewTestProvider(moolre.Config{VASKey: "secret"}, server.URL)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -108,7 +108,7 @@ func TestCheckSenderIDStatus(t *testing.T) {
 			}))
 			defer server.Close()
 
-			p, err := moolre.New(moolre.Config{VASKey: "secret", BaseURL: server.URL})
+			p, err := moolre.NewTestProvider(moolre.Config{VASKey: "secret"}, server.URL)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -142,7 +142,7 @@ func TestCheckSMSStatusPreservesNativeStatus(t *testing.T) {
 	}))
 	defer server.Close()
 
-	p, err := moolre.New(moolre.Config{VASKey: "secret", BaseURL: server.URL})
+	p, err := moolre.NewTestProvider(moolre.Config{VASKey: "secret"}, server.URL)
 	if err != nil {
 		t.Fatal(err)
 	}
