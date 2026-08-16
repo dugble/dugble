@@ -9,6 +9,17 @@ const (
 )
 
 const (
+	TeamStatusActive   = "active"
+	TeamStatusDisabled = "disabled"
+)
+
+const (
+	MemberStatusActive    = "active"
+	MemberStatusSuspended = "suspended"
+	MemberStatusInvited   = "invited"
+)
+
+const (
 	InvitationStatusPending  = "pending"
 	InvitationStatusAccepted = "accepted"
 	InvitationStatusDeclined = "declined"

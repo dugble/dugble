@@ -136,6 +136,10 @@ Errors use the standard envelope in [README.md](README.md). Expected statuses de
 }
 ```
 
+#### Email verification flow
+
+The current implementation applies the new email immediately, sets `email_verified` to `false`, and sends email-change notifications to the old and new addresses. It does not create a pending email address or require confirmation before changing `email`.
+
 #### Response — `200 OK`
 
 ```json
@@ -144,7 +148,7 @@ Errors use the standard envelope in [README.md](README.md). Expected statuses de
   "data": {
     "id": "string",
     "email": "string",
-    "email_verified": true,
+    "email_verified": false,
     "name": "string",
     "created_at": "2026-08-09T17:00:00Z",
     "updated_at": "2026-08-09T17:00:00Z"

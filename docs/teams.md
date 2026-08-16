@@ -2,12 +2,29 @@
 
 Customer dashboard HTTP contracts. Payloads and responses are generated from the public Go request and response types.
 
+## Enums
+
+The team APIs use the following string enum values:
+
+| Field | Values |
+| --- | --- |
+| `team.status` | `active`, `disabled` |
+| `team.user_role` | `owner`, `admin`, `member` |
+| `member.role` | `owner`, `admin`, `member` |
+| `member.status` | `active`, `suspended`, `invited` |
+| `invitation.status` | `pending`, `accepted`, `declined`, `revoked` |
+| `invitation.role` | `owner`, `admin`, `member` |
+
 ## Team
 
 ### `GET /teams`
 
 - Session: required.
 - CSRF: not required.
+
+#### Query parameters
+
+None currently supported. Pagination and filtering parameters such as `search` or `status` are not part of this contract yet.
 
 #### Payload
 
