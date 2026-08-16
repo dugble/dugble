@@ -64,17 +64,13 @@ type rawResponse struct {
 	rawBody    []byte
 }
 
-func newClient(config Config) (*client, error) {
+func newClient(config Config, baseURL string) (*client, error) {
 	vasKey := strings.TrimSpace(config.VASKey)
 	if vasKey == "" {
 		return nil, fmt.Errorf("%w: VAS key is required", ErrInvalidConfig)
 	}
 
-	base := strings.TrimSpace(config.BaseURL)
-	if base == "" {
-		base = defaultBaseURL
-	}
-	parsed, err := url.Parse(base)
+	parsed, err := url.Parse(strings.TrimSpace(baseURL))
 	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
 		return nil, fmt.Errorf("%w: invalid base URL", ErrInvalidConfig)
 	}
