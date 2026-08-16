@@ -8,14 +8,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/dugble/dugble/server/internal/adapters/dns/netdns"
-	leamoutsms "github.com/dugble/dugble/server/internal/adapters/leamout/sms"
-	mnotifyadapter "github.com/dugble/dugble/server/internal/adapters/mnotify"
-	mnotifysms "github.com/dugble/dugble/server/internal/adapters/mnotify/sms"
 	sentrymonitoring "github.com/dugble/dugble/server/internal/adapters/monitoring/sentry"
-	"github.com/dugble/dugble/server/internal/adapters/moolre"
-	moolresender "github.com/dugble/dugble/server/internal/adapters/moolre/sender"
-	moolresms "github.com/dugble/dugble/server/internal/adapters/moolre/sms"
-	runnagesms "github.com/dugble/dugble/server/internal/adapters/runnage/sms"
 	chargeSubscription "github.com/dugble/dugble/server/internal/billing/charge/subscription"
 	platformbilling "github.com/dugble/dugble/server/internal/billing/charge/usage"
 	subscriptionLifecycle "github.com/dugble/dugble/server/internal/billing/subscription/lifecycle"
@@ -38,10 +31,11 @@ import (
 	webhookmodule "github.com/dugble/dugble/server/internal/modules/webhooks"
 	platformevent "github.com/dugble/dugble/server/internal/platform/event"
 	"github.com/dugble/dugble/server/internal/platform/outbox"
-	platformsms "github.com/dugble/dugble/server/internal/platform/sms"
 	"github.com/dugble/dugble/server/internal/platform/systemmail"
 	platformwebhook "github.com/dugble/dugble/server/internal/platform/webhook"
 	awsses "github.com/dugble/dugble/server/internal/providers/aws/ses"
+	moolreprovider "github.com/dugble/dugble/server/internal/providers/moolre"
+	relaysms "github.com/dugble/dugble/server/internal/relay/sms"
 )
 
 type modules struct {
@@ -89,7 +83,6 @@ func (registry *Registry) newModules(startupCtx context.Context) (modules, error
 		cfg.AWS.FromEmail,
 		cfg.AWS.AccessKey,
 		cfg.AWS.SecretKey,
-		awsses.TransactionalConfigurationSet,
 	)
 	if err != nil {
 		return modules{}, fmt.Errorf("initialize SES email sender: %w", err)
@@ -197,42 +190,30 @@ func (registry *Registry) newModules(startupCtx context.Context) (modules, error
 		return modules{}, fmt.Errorf("initialize domain claim reconciliation: %w", err)
 	}
 
-	senderIDRun := disabledSenderIDReconciliation
-	if cfg.Moolre.VASKey == "" {
-		sentrymonitoring.Warn("Moolre Sender ID reconciliation is disabled because MOOLRE_VAS_KEY is empty")
-	} else {
-		senderIDProvider := moolresender.NewProvider(moolre.NewClient(cfg.Moolre.VASKey))
-		senderIDJob, jobErr := senderidmodule.NewJob(
-			senderidmodule.NewRepository(db),
-			senderidmodule.DefaultJobConfig(),
-			"sender-id-reconciliation-"+uuid.NewString(),
-			senderIDProvider,
-		)
-		if jobErr != nil {
-			return modules{}, fmt.Errorf("initialize Sender ID reconciliation: %w", jobErr)
-		}
-		senderIDJob.WithNotifier(notificationEmailService)
-		senderIDRun = senderIDJob.Run
+	moolreProvider, err := moolreprovider.New(moolreprovider.Config{VASKey: cfg.Moolre.VASKey})
+	if err != nil {
+		return modules{}, fmt.Errorf("initialize Moolre provider: %w", err)
+	}
+	smsSender, err := relaysms.NewRelay(moolreProvider)
+	if err != nil {
+		return modules{}, fmt.Errorf("initialize SMS relay: %w", err)
 	}
 
-	smsRouter, err := platformsms.NewRoutingService(
-		platformsms.DefaultRoutingConfig(),
-		mnotifysms.NewProvider(mnotifyadapter.NewClient(cfg.MNotify.APIKey)),
-		moolresms.NewProvider(moolre.NewClient(cfg.Moolre.VASKey)),
-		leamoutsms.NewProvider(),
-		runnagesms.NewProvider(),
+	senderIDJob, err := senderidmodule.NewJob(
+		senderidmodule.NewRepository(db),
+		senderidmodule.DefaultJobConfig(),
+		"sender-id-reconciliation-"+uuid.NewString(),
+		moolreProvider,
 	)
 	if err != nil {
-		return modules{}, fmt.Errorf("initialize SMS router: %w", err)
+		return modules{}, fmt.Errorf("initialize Sender ID reconciliation: %w", err)
 	}
-	smsSender, err := platformsms.NewService(smsRouter)
-	if err != nil {
-		return modules{}, fmt.Errorf("initialize SMS sender: %w", err)
-	}
+	senderIDJob.WithNotifier(notificationEmailService)
+
 	smsRepository := smsmodule.NewRepositoryWithWebhookEmitter(db, lifecycleEmitter)
 	smsCampaignSMSService := smsmodule.NewService(
 		smsRepository,
-		nil,
+		smsSender,
 		smsdelivery.NewQueue(outboxRepository),
 		platformbilling.NewService(platformbilling.NewRepository(db)),
 	)
@@ -309,11 +290,6 @@ func (registry *Registry) newModules(startupCtx context.Context) (modules, error
 		domainReconciliation:      domainJob.Run,
 		domainClaimReconciliation: domainClaimJob.Run,
 		broadcastExecution:        broadcastExecutionJob.Run,
-		senderIDReconciliation:    senderIDRun,
+		senderIDReconciliation:    senderIDJob.Run,
 	}, nil
-}
-
-func disabledSenderIDReconciliation(ctx context.Context) error {
-	<-ctx.Done()
-	return ctx.Err()
 }
