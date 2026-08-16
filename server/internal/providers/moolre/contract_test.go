@@ -35,7 +35,7 @@ func scenario(status int, body string) relaytest.Factory[sms.Message] {
 			_, _ = w.Write([]byte(body))
 		}))
 		t.Cleanup(server.Close)
-		provider, err := moolre.New(moolre.Config{VASKey: "vas-secret", BaseURL: server.URL})
+		provider, err := moolre.NewTestProvider(moolre.Config{VASKey: "vas-secret"}, server.URL)
 		if err != nil {
 			t.Fatal(err)
 		}
