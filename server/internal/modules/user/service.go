@@ -227,6 +227,21 @@ func (s *Service) ResendEmailChange(ctx context.Context) (EmailChangePending, er
 	}, nil
 }
 
+func (s *Service) CancelEmailChange(ctx context.Context) error {
+	principal, ok := authn.PrincipalFromContext(ctx)
+	if !ok {
+		return apperrors.NewUnauthorized("Authentication is required")
+	}
+	if err := s.repository.CancelEmailChange(
+		ctx,
+		principal.UserID.String(),
+		emailChangeIdentifier(principal.UserID.String()),
+	); err != nil {
+		return apperrors.NewInternal("Unable to cancel email change", err)
+	}
+	return nil
+}
+
 func newEmailChangeToken() (string, time.Time, error) {
 	token, err := security.NewSessionToken()
 	if err != nil {
