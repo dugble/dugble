@@ -51,6 +51,7 @@ type APIError struct {
 	StatusCode int
 	Code       string
 	Message    string
+	Definitive bool
 }
 
 func (e *APIError) Error() string {
@@ -62,6 +63,24 @@ func (e *APIError) Error() string {
 		return fmt.Sprintf("Moolre returned HTTP %d code %s: %s", e.StatusCode, e.Code, message)
 	}
 	return fmt.Sprintf("Moolre returned HTTP %d: %s", e.StatusCode, message)
+}
+
+func (e *APIError) SafeToFallback() bool {
+	if e == nil {
+		return false
+	}
+	if e.Definitive {
+		return true
+	}
+	if e.StatusCode < http.StatusBadRequest || e.StatusCode >= http.StatusInternalServerError {
+		return false
+	}
+	switch e.StatusCode {
+	case http.StatusRequestTimeout, http.StatusConflict, http.StatusTooEarly, http.StatusTooManyRequests:
+		return false
+	default:
+		return true
+	}
 }
 
 // Send submits an SMS to Moolre. Submission classification remains a Relay
@@ -126,7 +145,9 @@ func (p *Provider) CreateSenderID(ctx context.Context, request provider.CreateSe
 		result.Status = provider.SenderIDPending
 		return result, nil
 	}
-	return result, apiError(response)
+	providerErr := apiError(response)
+	providerErr.Definitive = true
+	return result, providerErr
 }
 
 func isSafeToFallbackStatus(statusCode int) bool {
@@ -138,7 +159,7 @@ func isSafeToFallbackStatus(statusCode int) bool {
 	}
 }
 
-func apiError(response rawResponse) error {
+func apiError(response rawResponse) *APIError {
 	return &APIError{
 		StatusCode: response.statusCode,
 		Code:       response.body.Code,
