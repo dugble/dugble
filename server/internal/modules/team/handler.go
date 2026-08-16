@@ -1,12 +1,18 @@
 package team
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
 
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/labstack/echo/v5"
 
+	"github.com/dugble/dugble/server/internal/authn"
 	apperrors "github.com/dugble/dugble/server/pkg/errors"
 	"github.com/dugble/dugble/server/pkg/httputil"
+	"github.com/dugble/dugble/server/pkg/pgconv"
 )
 
 type Handler struct {
@@ -18,11 +24,92 @@ func NewHandler(service *Service) *Handler {
 }
 
 func (h *Handler) List(c *echo.Context) error {
-	teams, err := h.service.List(c.Request().Context())
+	options, err := parseListOptions(
+		c.QueryParam("page"),
+		c.QueryParam("limit"),
+		c.QueryParam("search"),
+		c.QueryParam("status"),
+	)
 	if err != nil {
 		return httputil.Error(c, err)
 	}
-	return httputil.OK(c, teams)
+	teams, meta, err := h.listTeamsPaginated(c.Request().Context(), options)
+	if err != nil {
+		return httputil.Error(c, err)
+	}
+	return httputil.OKWithMeta(c, teams, meta)
+}
+
+func (h *Handler) listTeamsPaginated(ctx context.Context, options ListOptions) ([]Team, ListMeta, error) {
+	principal, ok := authn.PrincipalFromContext(ctx)
+	if !ok {
+		return nil, ListMeta{}, apperrors.NewUnauthorized("Authentication is required")
+	}
+
+	searchPattern := "%" + options.Search + "%"
+	var total int64
+	if err := h.service.repository.db.QueryRow(ctx, `
+		SELECT count(*)
+		FROM teams AS t
+		JOIN team_members AS tm ON tm.team_id = t.id
+		WHERE tm.user_id = $1
+		  AND tm.status = 'active'
+		  AND t.status = $2
+		  AND ($3 = '' OR t.name ILIKE $4)`, principal.UserID, options.Status, options.Search, searchPattern).Scan(&total); err != nil {
+		return nil, ListMeta{}, apperrors.NewInternal("Unable to list teams", fmt.Errorf("count teams for user: %w", err))
+	}
+
+	offset := (options.Page - 1) * options.Limit
+	rows, err := h.service.repository.db.Query(ctx, `
+		SELECT t.id, t.name, t.market_code, t.phone, t.address, t.website, t.status, t.created_by, t.created_at, t.updated_at, tm.role
+		FROM teams AS t
+		JOIN team_members AS tm ON tm.team_id = t.id
+		WHERE tm.user_id = $1
+		  AND tm.status = 'active'
+		  AND t.status = $2
+		  AND ($3 = '' OR t.name ILIKE $4)
+		ORDER BY t.created_at DESC, t.id DESC
+		LIMIT $5 OFFSET $6`, principal.UserID, options.Status, options.Search, searchPattern, options.Limit, offset)
+	if err != nil {
+		return nil, ListMeta{}, apperrors.NewInternal("Unable to list teams", fmt.Errorf("list teams for user: %w", err))
+	}
+	defer rows.Close()
+
+	teams := make([]Team, 0, options.Limit)
+	for rows.Next() {
+		var (
+			team      Team
+			teamID    uuid.UUID
+			createdBy *uuid.UUID
+			createdAt pgtype.Timestamptz
+			updatedAt pgtype.Timestamptz
+		)
+		if err := rows.Scan(
+			&teamID, &team.Name, &team.MarketCode, &team.Phone, &team.Address, &team.Website,
+			&team.Status, &createdBy, &createdAt, &updatedAt, &team.UserRole,
+		); err != nil {
+			return nil, ListMeta{}, apperrors.NewInternal("Unable to list teams", fmt.Errorf("scan team: %w", err))
+		}
+		team.ID = teamID.String()
+		team.CreatedBy = stringPointer(createdBy)
+		team.CreatedAt = pgconv.TimestamptzToTime(createdAt)
+		team.UpdatedAt = pgconv.TimestamptzToTime(updatedAt)
+		teams = append(teams, team)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, ListMeta{}, apperrors.NewInternal("Unable to list teams", fmt.Errorf("iterate teams: %w", err))
+	}
+
+	totalPages := 0
+	if total > 0 {
+		totalPages = int((total + int64(options.Limit) - 1) / int64(options.Limit))
+	}
+	return teams, ListMeta{Pagination: PaginationMeta{
+		Page:       options.Page,
+		Limit:      options.Limit,
+		Total:      total,
+		TotalPages: totalPages,
+	}}, nil
 }
 
 func (h *Handler) Create(c *echo.Context) error {
