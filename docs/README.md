@@ -111,6 +111,7 @@ Do not infer fields from database tables. Payloads and responses must come from 
 - [Authentication](authentication.md)
 - [Users](users.md)
 - [Teams](teams.md)
+- [Team Tokens](team-tokens.md)
 - [Contacts](contacts.md)
 - [Segments](segments.md)
 - [Messaging](messaging.md)
