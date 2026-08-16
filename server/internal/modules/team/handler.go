@@ -18,11 +18,20 @@ func NewHandler(service *Service) *Handler {
 }
 
 func (h *Handler) List(c *echo.Context) error {
-	teams, err := h.service.List(c.Request().Context())
+	options, err := parseListOptions(
+		c.QueryParam("page"),
+		c.QueryParam("limit"),
+		c.QueryParam("search"),
+		c.QueryParam("status"),
+	)
 	if err != nil {
 		return httputil.Error(c, err)
 	}
-	return httputil.OK(c, teams)
+	teams, meta, err := h.service.ListPaginated(c.Request().Context(), options)
+	if err != nil {
+		return httputil.Error(c, err)
+	}
+	return httputil.OKWithMeta(c, teams, meta)
 }
 
 func (h *Handler) Create(c *echo.Context) error {
