@@ -335,3 +335,31 @@ No JSON request body.
 #### Errors
 
 If there is no unexpired pending email change, the endpoint returns `400 Bad Request`. If the pending address has become unavailable, it returns `409 Conflict`.
+
+### `DELETE /users/email/pending`
+
+Cancels the authenticated user's pending email change and invalidates any outstanding email-change verification token. The current verified email and active sessions are not changed.
+
+- Session: required.
+- CSRF: required for browser requests.
+
+#### Payload
+
+No JSON request body.
+
+#### Response — `200 OK`
+
+```json
+{
+  "success": true,
+  "data": {
+    "cancelled": true
+  }
+}
+```
+
+Cancellation is idempotent. Calling the endpoint when no pending email change exists still returns success.
+
+#### Errors
+
+Authentication and infrastructure failures use the standard error envelope in [README.md](README.md).
