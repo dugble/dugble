@@ -58,7 +58,7 @@ func TestSendUsesHTTPContract(t *testing.T) {
 	}))
 	defer server.Close()
 
-	p, err := sendexa.New(sendexa.Config{Token: "token", BaseURL: server.URL})
+	p, err := sendexa.NewTestProvider(sendexa.Config{Token: "token"}, server.URL)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -110,7 +110,7 @@ func TestCheckSMSStatus(t *testing.T) {
 			}))
 			defer server.Close()
 
-			p, err := sendexa.New(sendexa.Config{Token: "token", BaseURL: server.URL})
+			p, err := sendexa.NewTestProvider(sendexa.Config{Token: "token"}, server.URL)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -153,7 +153,7 @@ func scenario(status int, body string) relaytest.Factory[sms.Message] {
 			_, _ = w.Write([]byte(body))
 		}))
 		t.Cleanup(server.Close)
-		p, err := sendexa.New(sendexa.Config{Token: "token", BaseURL: server.URL})
+		p, err := sendexa.NewTestProvider(sendexa.Config{Token: "token"}, server.URL)
 		if err != nil {
 			t.Fatal(err)
 		}
