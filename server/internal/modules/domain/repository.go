@@ -8,8 +8,8 @@ import (
 	"time"
 
 	dbsqlc "github.com/dugble/dugble/server/internal/database/sqlc"
-	platformemail "github.com/dugble/dugble/server/internal/platform/awsses"
 	"github.com/dugble/dugble/server/internal/platform/systemmail"
+	platformemail "github.com/dugble/dugble/server/internal/providers/aws/ses"
 	"github.com/dugble/dugble/server/pkg/pgconv"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"

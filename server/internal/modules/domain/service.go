@@ -11,8 +11,8 @@ import (
 
 	"github.com/dugble/dugble/server/internal/authz"
 	"github.com/dugble/dugble/server/internal/modules/emailtenant"
-	platformemail "github.com/dugble/dugble/server/internal/platform/awsses"
 	"github.com/dugble/dugble/server/internal/platform/systemmail"
+	platformemail "github.com/dugble/dugble/server/internal/providers/aws/ses"
 	apperrors "github.com/dugble/dugble/server/pkg/errors"
 )
 

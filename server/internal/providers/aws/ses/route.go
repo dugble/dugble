@@ -1,4 +1,4 @@
-package awsses
+package ses
 
 import (
 	"errors"
@@ -10,12 +10,10 @@ const (
 	internalConfigurationSetHeader = "X-Dugble-Internal-SES-Configuration-Set"
 	internalSESTenantHeader        = "X-Dugble-Internal-SES-Tenant"
 
-	SystemSESTenantName           = "dugble-system"
-	SandboxSESTenantName          = "dugble-sandbox"
-	SandboxFromEmail              = "onboarding@dugble.me"
-	SandboxSenderDomain           = "dugble.me"
-	TransactionalConfigurationSet = "dugble-transactional"
-	MarketingConfigurationSet     = "dugble-marketing"
+	SystemSESTenantName  = "dugble-system"
+	SandboxSESTenantName = "dugble-sandbox"
+	SandboxFromEmail     = "onboarding@dugble.me"
+	SandboxSenderDomain  = "dugble.me"
 )
 
 // DeliveryRoute is the immutable provider route selected when a message is

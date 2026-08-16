@@ -7,7 +7,6 @@ import (
 
 	"github.com/google/uuid"
 
-	awsses "github.com/dugble/dugble/server/internal/adapters/amazon/ses"
 	"github.com/dugble/dugble/server/internal/adapters/dns/netdns"
 	leamoutsms "github.com/dugble/dugble/server/internal/adapters/leamout/sms"
 	mnotifyadapter "github.com/dugble/dugble/server/internal/adapters/mnotify"
@@ -37,12 +36,12 @@ import (
 	senderidmodule "github.com/dugble/dugble/server/internal/modules/senderid"
 	smsmodule "github.com/dugble/dugble/server/internal/modules/sms"
 	webhookmodule "github.com/dugble/dugble/server/internal/modules/webhooks"
-	platformemail "github.com/dugble/dugble/server/internal/platform/awsses"
 	platformevent "github.com/dugble/dugble/server/internal/platform/event"
 	"github.com/dugble/dugble/server/internal/platform/outbox"
 	platformsms "github.com/dugble/dugble/server/internal/platform/sms"
 	"github.com/dugble/dugble/server/internal/platform/systemmail"
 	platformwebhook "github.com/dugble/dugble/server/internal/platform/webhook"
+	awsses "github.com/dugble/dugble/server/internal/providers/aws/ses"
 )
 
 type modules struct {
@@ -90,7 +89,7 @@ func (registry *Registry) newModules(startupCtx context.Context) (modules, error
 		cfg.AWS.FromEmail,
 		cfg.AWS.AccessKey,
 		cfg.AWS.SecretKey,
-		platformemail.TransactionalConfigurationSet,
+		awsses.TransactionalConfigurationSet,
 	)
 	if err != nil {
 		return modules{}, fmt.Errorf("initialize SES email sender: %w", err)
@@ -133,7 +132,7 @@ func (registry *Registry) newModules(startupCtx context.Context) (modules, error
 	if err != nil {
 		return modules{}, fmt.Errorf("initialize system email renderer: %w", err)
 	}
-	systemEmailQueue := systememail.NewQueue(outboxRepository, platformemail.Message{Provider: awsses.ProviderSES, Region: cfg.AWS.Region, Stream: "transactional", ConfigurationSet: platformemail.TransactionalConfigurationSet, SESTenantName: platformemail.SystemSESTenantName})
+	systemEmailQueue := systememail.NewQueue(outboxRepository, awsses.Message{Provider: awsses.ProviderSES, Region: cfg.AWS.Region, Stream: "transactional", ConfigurationSet: awsses.TransactionalConfigurationSet, SESTenantName: awsses.SystemSESTenantName})
 	notificationEmailService := systemmail.NewEmailService(systemEmailQueue, systemEmailRenderer, cfg.FrontendURL, cfg.AWS.FromEmail)
 	emailTenantRepository := emailtenant.NewRepository(db)
 	emailTenantService := emailtenant.NewService(db, emailTenantRepository, emailtenant.NewProvisioningQueue(outboxRepository))

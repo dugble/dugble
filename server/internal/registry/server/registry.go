@@ -13,8 +13,6 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 
-	awsses "github.com/dugble/dugble/server/internal/adapters/amazon/ses"
-	awssns "github.com/dugble/dugble/server/internal/adapters/amazon/sns"
 	"github.com/dugble/dugble/server/internal/adapters/hubtel"
 	leamoutsms "github.com/dugble/dugble/server/internal/adapters/leamout/sms"
 	mnotifyadapter "github.com/dugble/dugble/server/internal/adapters/mnotify"
@@ -31,10 +29,11 @@ import (
 	"github.com/dugble/dugble/server/internal/config"
 	"github.com/dugble/dugble/server/internal/delivery/email/feedback"
 	systememail "github.com/dugble/dugble/server/internal/delivery/email/system"
-	platformemail "github.com/dugble/dugble/server/internal/platform/awsses"
 	"github.com/dugble/dugble/server/internal/platform/idempotency"
 	"github.com/dugble/dugble/server/internal/platform/outbox"
 	platformsms "github.com/dugble/dugble/server/internal/platform/sms"
+	awsses "github.com/dugble/dugble/server/internal/providers/aws/ses"
+	awssns "github.com/dugble/dugble/server/internal/providers/aws/sns"
 	httptransport "github.com/dugble/dugble/server/internal/transport"
 	httpmiddleware "github.com/dugble/dugble/server/internal/transport/middleware"
 	providersns "github.com/dugble/dugble/server/internal/transport/provider/aws/sns"
@@ -162,14 +161,14 @@ func (registry *Registry) routerConfig() httptransport.RouterConfig {
 		Development: registry.config.IsDevelopment(),
 		CORSOrigins: registry.config.CORSOrigins,
 		Arcjet:      registry.arcjet,
-		BodyLimit:   platformemail.MaxHTTPRequestBytes,
+		BodyLimit:   awsses.MaxHTTPRequestBytes,
 		Idempotency: httpmiddleware.IdempotencyConfig{Repository: idempotency.NewRepository(registry.postgres)},
 		Middleware:  defaultHTTPMiddleware(),
 	}
 }
 
 func newEmailClient(cfg *config.Config) (*awsses.Client, error) {
-	return awsses.NewClient(cfg.AWS.Region, cfg.AWS.FromEmail, cfg.AWS.AccessKey, cfg.AWS.SecretKey, platformemail.TransactionalConfigurationSet)
+	return awsses.NewClient(cfg.AWS.Region, cfg.AWS.FromEmail, cfg.AWS.AccessKey, cfg.AWS.SecretKey, awsses.TransactionalConfigurationSet)
 }
 
 func newHubtelServices(cfg *config.Config, db *pgxpool.Pool) (*hubtel.Provider, *paymentmodule.Service) {
@@ -181,7 +180,7 @@ func newHubtelServices(cfg *config.Config, db *pgxpool.Pool) (*hubtel.Provider, 
 }
 
 func newSystemEmailQueue(cfg *config.Config, repository *outbox.Repository) *systememail.Queue {
-	return systememail.NewQueue(repository, platformemail.Message{Provider: awsses.ProviderSES, Region: cfg.AWS.Region, Stream: "transactional", ConfigurationSet: platformemail.TransactionalConfigurationSet, SESTenantName: platformemail.SystemSESTenantName})
+	return systememail.NewQueue(repository, awsses.Message{Provider: awsses.ProviderSES, Region: cfg.AWS.Region, Stream: "transactional", ConfigurationSet: awsses.TransactionalConfigurationSet, SESTenantName: awsses.SystemSESTenantName})
 }
 
 func newProviderSNSHandler(cfg *config.Config, db *pgxpool.Pool, repository *outbox.Repository) *providersns.Handler {

@@ -15,7 +15,7 @@ import (
 	"github.com/dugble/dugble/server/internal/authn"
 	"github.com/dugble/dugble/server/internal/authz"
 	platformbilling "github.com/dugble/dugble/server/internal/billing/charge/usage"
-	platformemail "github.com/dugble/dugble/server/internal/platform/awsses"
+	platformemail "github.com/dugble/dugble/server/internal/providers/aws/ses"
 	apperrors "github.com/dugble/dugble/server/pkg/errors"
 )
 
