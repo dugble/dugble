@@ -120,7 +120,7 @@ func (c *client) post(ctx context.Context, path string, payload any) (rawRespons
 	if err != nil {
 		return rawResponse{}, fmt.Errorf("send Moolre request: %w", err)
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 
 	data, readErr := io.ReadAll(io.LimitReader(response.Body, 1<<20))
 	parsed := responseBody{}
