@@ -87,10 +87,11 @@ func (p *Provider) CheckSenderIDStatus(ctx context.Context, request provider.Sen
 	if err := json.Unmarshal(response.body.Data, &data); err != nil {
 		return result, fmt.Errorf("decode Moolre Sender ID status: %w", err)
 	}
-	if strings.TrimSpace(data.SenderID) != "" {
-		result.SenderID = strings.TrimSpace(data.SenderID)
+	if returned := strings.TrimSpace(data.SenderID); returned != "" && !strings.EqualFold(returned, senderID) {
+		return result, fmt.Errorf("moolre Sender ID status returned %q for %q", returned, senderID)
 	}
 	result.ProviderStatus = strings.TrimSpace(data.Approval)
+	result.Whitelisted = data.Whitelisted
 	switch strings.ToLower(result.ProviderStatus) {
 	case "approved":
 		result.Status = provider.SenderIDActive
