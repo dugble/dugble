@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -11,7 +12,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	smsmodule "github.com/dugble/dugble/server/internal/modules/sms"
-	smsapi "github.com/dugble/dugble/server/internal/platform/sms"
+	relaysms "github.com/dugble/dugble/server/internal/relay/sms"
 )
 
 var ErrNoEligibleRoute = errors.New("no eligible SMS delivery route")
@@ -248,11 +249,21 @@ func (r *Repository) MarkDeliveryAttemptSubmitted(
 	id uuid.UUID,
 	teamID uuid.UUID,
 	attemptID uuid.UUID,
-	response *smsapi.SendResponse,
+	result relaysms.SendResult,
 ) error {
-	if response == nil {
-		return errors.New("SMS provider response is required")
+	providerID := strings.ToLower(strings.TrimSpace(result.Provider))
+	providerMessageID := strings.TrimSpace(result.ProviderMessageID)
+	providerStatus := strings.ToLower(strings.TrimSpace(result.ProviderStatus))
+	if providerID == "" {
+		return errors.New("SMS provider result is missing provider")
 	}
+	if providerMessageID == "" {
+		return errors.New("SMS provider result is missing provider message ID")
+	}
+	if providerStatus == "" {
+		providerStatus = smsmodule.StatusSubmitted
+	}
+
 	tx, err := r.db.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("begin submitted SMS attempt completion: %w", err)
@@ -266,7 +277,7 @@ func (r *Repository) MarkDeliveryAttemptSubmitted(
 			error_code = NULL, error_message = NULL, updated_at = now()
 		WHERE id = $3 AND sms_message_id = $1 AND team_id = $2
 		  AND channel = 'sms' AND status = 'request_started'
-	`, id, teamID, attemptID, response.ProviderID, response.ProviderMsgID, response.Status)
+	`, id, teamID, attemptID, providerID, providerMessageID, providerStatus)
 	if err != nil {
 		return fmt.Errorf("mark SMS attempt submitted: %w", err)
 	}
@@ -277,9 +288,9 @@ func (r *Repository) MarkDeliveryAttemptSubmitted(
 		ctx,
 		id,
 		teamID,
-		response.ProviderID,
-		response.ProviderMsgID,
-		smsmodule.MapProviderStatus(response.Status),
+		providerID,
+		providerMessageID,
+		smsmodule.MapProviderStatus(providerStatus),
 	); err != nil {
 		return err
 	}
@@ -432,11 +443,11 @@ type messageRepository interface {
 	MarkDeliveryAttemptRetryable(context.Context, uuid.UUID, uuid.UUID, uuid.UUID, error) error
 	MarkDeliveryAttemptUnknown(context.Context, uuid.UUID, uuid.UUID, uuid.UUID, error) error
 	MarkDeliveryAttemptFailed(context.Context, uuid.UUID, uuid.UUID, uuid.UUID, error) error
-	MarkDeliveryAttemptSubmitted(context.Context, uuid.UUID, uuid.UUID, uuid.UUID, *smsapi.SendResponse) error
+	MarkDeliveryAttemptSubmitted(context.Context, uuid.UUID, uuid.UUID, uuid.UUID, relaysms.SendResult) error
 	FinalizeInFlightDelivery(context.Context, uuid.UUID, uuid.UUID, error) error
 }
 
 type providerSender interface {
-	SendWithProvider(context.Context, string, smsapi.SendRequest) (*smsapi.SendResponse, error)
+	SendWithProvider(context.Context, string, relaysms.Message) (relaysms.SendResult, error)
 	ProviderIDs() []string
 }
