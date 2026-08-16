@@ -5,7 +5,7 @@ import (
 	"net"
 	"strings"
 
-	platformemail "github.com/dugble/dugble/server/internal/platform/awsses"
+	platformemail "github.com/dugble/dugble/server/internal/providers/aws/ses"
 )
 
 // Resolver verifies provider-neutral DNS records using the standard library resolver.

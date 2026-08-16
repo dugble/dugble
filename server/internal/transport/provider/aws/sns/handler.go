@@ -11,8 +11,8 @@ import (
 
 	"github.com/labstack/echo/v5"
 
-	awsses "github.com/dugble/dugble/server/internal/adapters/amazon/ses"
-	awssns "github.com/dugble/dugble/server/internal/adapters/amazon/sns"
+	awsses "github.com/dugble/dugble/server/internal/providers/aws/ses"
+	awssns "github.com/dugble/dugble/server/internal/providers/aws/sns"
 	apperrors "github.com/dugble/dugble/server/pkg/errors"
 	"github.com/dugble/dugble/server/pkg/httputil"
 )

@@ -11,7 +11,6 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	platformemail "github.com/dugble/dugble/server/internal/platform/awsses"
 	"github.com/dugble/dugble/server/internal/platform/outbox"
 )
 
@@ -61,8 +60,8 @@ func (service *Service) RequestProvisioning(ctx context.Context, teamID uuid.UUI
 	if teamID == uuid.Nil {
 		return Tenant{}, errors.New("email tenant team id is required")
 	}
-	region, supported := platformemail.NormalizeSESRegion(region)
-	if !supported {
+	region = strings.ToLower(strings.TrimSpace(region))
+	if !isSupportedSESRegion(region) {
 		return Tenant{}, fmt.Errorf("unsupported SES region %q", region)
 	}
 
@@ -116,6 +115,15 @@ func (service *Service) RequestProvisioning(ctx context.Context, teamID uuid.UUI
 		return Tenant{}, fmt.Errorf("commit email tenant provisioning transaction: %w", err)
 	}
 	return tenant, nil
+}
+
+func isSupportedSESRegion(region string) bool {
+	switch region {
+	case "us-east-1", "eu-north-1":
+		return true
+	default:
+		return false
+	}
 }
 
 const awsTenantNamePrefix = "dugble-t-"

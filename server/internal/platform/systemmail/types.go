@@ -5,7 +5,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	platformemail "github.com/dugble/dugble/server/internal/platform/awsses"
+	platformemail "github.com/dugble/dugble/server/internal/providers/aws/ses"
 )
 
 type Recipient struct {

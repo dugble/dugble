@@ -12,7 +12,7 @@ import (
 	natsjs "github.com/nats-io/nats.go/jetstream"
 
 	jetstreammessaging "github.com/dugble/dugble/server/internal/adapters/nats"
-	platformemail "github.com/dugble/dugble/server/internal/platform/awsses"
+	platformemail "github.com/dugble/dugble/server/internal/providers/aws/ses"
 )
 
 type processedEventStore interface {

@@ -4,7 +4,7 @@ import (
 	"errors"
 	"time"
 
-	platformemail "github.com/dugble/dugble/server/internal/platform/awsses"
+	platformemail "github.com/dugble/dugble/server/internal/providers/aws/ses"
 )
 
 const (
