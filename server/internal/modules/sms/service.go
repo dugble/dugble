@@ -12,13 +12,13 @@ import (
 
 	"github.com/dugble/dugble/server/internal/authz"
 	platformbilling "github.com/dugble/dugble/server/internal/billing/charge/usage"
-	provider "github.com/dugble/dugble/server/internal/providers"
-	relaysms "github.com/dugble/dugble/server/internal/relay/sms"
+	smsapi "github.com/dugble/dugble/server/internal/platform/sms"
 	apperrors "github.com/dugble/dugble/server/pkg/errors"
 )
 
-type providerLookup interface {
-	Provider(string) relaysms.Provider
+type Sender interface {
+	Send(ctx context.Context, req smsapi.SendRequest) (*smsapi.SendResponse, error)
+	CheckStatus(ctx context.Context, providerID string, providerMessageID string) (*smsapi.StatusResponse, error)
 }
 
 type scheduledDeliveryQueue interface {
@@ -37,12 +37,12 @@ type DeliveryQueue interface {
 
 type Service struct {
 	repository *Repository
-	sender     providerLookup
+	sender     Sender
 	delivery   DeliveryQueue
 	billing    platformbilling.SMSBilling
 }
 
-func NewService(repository *Repository, sender providerLookup, delivery DeliveryQueue, billing platformbilling.SMSBilling) *Service {
+func NewService(repository *Repository, sender Sender, delivery DeliveryQueue, billing platformbilling.SMSBilling) *Service {
 	return &Service{repository: repository, sender: sender, delivery: delivery, billing: billing}
 }
 
@@ -156,6 +156,8 @@ func (s *Service) Send(ctx context.Context, req SendRequest) (Message, error) {
 	}
 
 	messageID := uuid.MustParse(created.ID)
+	// Billing settles when the message and its durable delivery job commit, not
+	// when a provider later accepts or delivers the SMS.
 	charge, err := s.billing.ChargeSMS(ctx, tx, platformbilling.SMSChargeInput{
 		TeamID: tenantContext.Scope.TeamID, MessageID: messageID,
 		DestinationNumber: normalized.To, Segments: segments,
@@ -229,15 +231,300 @@ func (s *Service) BatchSend(ctx context.Context, req BatchSendRequest) ([]Messag
 	result := make([]Message, 0, len(prepared))
 	committedCharges := make([]platformbilling.CommittedCharge, 0, len(prepared))
 	for _, item := range prepared {
+
 		created, err := txRepository.Create(ctx, createMessageParams{
-			TeamID: item.requestTeamID(), SenderID: item.senderID, To: item.request.To, From: item.request.From,
+			TeamID: tenantContext.Scope.TeamID, SenderID: item.senderID, To: item.request.To, From: item.request.From,
 			Body: item.request.Body, Status: StatusQueued, Segments: item.segments,
 			Metadata:           item.request.Metadata,
 			ScheduledAt:        normalizedScheduledAt(item.request.ScheduledAt),
 			DestinationCountry: item.request.DestinationCountry,
 		})
-		_ = created
-		_ = err
+		if err != nil {
+			return nil, apperrors.NewInternal("Unable to create SMS batch message", err)
+		}
+		messageID := uuid.MustParse(created.ID)
+		charge, err := s.billing.ChargeSMS(ctx, tx, platformbilling.SMSChargeInput{
+			TeamID: tenantContext.Scope.TeamID, MessageID: messageID,
+			DestinationNumber: item.request.To, Segments: item.segments,
+		})
+		if err != nil {
+			return nil, smsBillingError(err)
+		}
+		if err := enqueueSMSDelivery(ctx, s.delivery, tx, messageID, tenantContext.Scope.TeamID, created.ScheduledAt); err != nil {
+			return nil, apperrors.NewInternal("Unable to enqueue SMS batch delivery", err)
+		}
+		result = append(result, created)
+		committedCharges = append(committedCharges, platformbilling.CommittedCharge{
+			Charge: charge, Channel: platformbilling.ChannelSMS,
+			Settlement: platformbilling.SettlementAcceptedForDelivery,
+			TeamID:     tenantContext.Scope.TeamID, MessageID: messageID,
+		})
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, apperrors.NewInternal("Unable to commit SMS batch transaction", err)
+	}
+	for _, charge := range committedCharges {
+		s.billing.ObserveCommittedCharge(ctx, charge)
 	}
 	return result, nil
+}
+
+// EnqueueCampaignTx is the internal campaign-only path. The caller owns the
+// transaction and must call ObserveCampaignCommitted only after committing it.
+func (s *Service) EnqueueCampaignTx(ctx context.Context, tx pgx.Tx, teamID uuid.UUID, req CampaignEnqueueRequest) (CampaignQueuedMessage, error) {
+	if s.delivery == nil || s.billing == nil {
+		return CampaignQueuedMessage{}, errors.New("SMS campaign enqueue dependencies are not configured")
+	}
+	normalized, err := validateSend(SendRequest{To: req.To, From: req.From, Body: req.Body, Metadata: req.Metadata})
+	if err != nil {
+		return CampaignQueuedMessage{}, err
+	}
+	repository := s.repository.WithTx(tx)
+	approvedSenderID, err := repository.FindApprovedSender(ctx, teamID, normalized.From)
+	if err != nil {
+		return CampaignQueuedMessage{}, fmt.Errorf("validate campaign SMS sender: %w", err)
+	}
+	if approvedSenderID == nil || *approvedSenderID != req.SenderID {
+		return CampaignQueuedMessage{}, errors.New("campaign SMS sender is no longer approved")
+	}
+	created, err := repository.Create(ctx, createMessageParams{TeamID: teamID, SenderID: &req.SenderID, To: normalized.To, From: normalized.From, Body: normalized.Body, Status: StatusQueued, Segments: countSegments(normalized.Body), Metadata: normalized.Metadata, DestinationCountry: normalized.DestinationCountry})
+	if err != nil {
+		return CampaignQueuedMessage{}, fmt.Errorf("create campaign SMS message: %w", err)
+	}
+	messageID := uuid.MustParse(created.ID)
+	charge, err := s.billing.ChargeSMS(ctx, tx, platformbilling.SMSChargeInput{TeamID: teamID, MessageID: messageID, DestinationNumber: normalized.To, Segments: created.Segments})
+	if err != nil {
+		return CampaignQueuedMessage{}, err
+	}
+	if err := s.delivery.EnqueueSMSDeliveryTx(ctx, tx, messageID, teamID); err != nil {
+		return CampaignQueuedMessage{}, fmt.Errorf("enqueue campaign SMS delivery: %w", err)
+	}
+	return CampaignQueuedMessage{Message: created, Charge: platformbilling.CommittedCharge{Charge: charge, Channel: platformbilling.ChannelSMS, Settlement: platformbilling.SettlementAcceptedForDelivery, TeamID: teamID, MessageID: messageID}}, nil
+}
+
+func (s *Service) ObserveCampaignCommitted(ctx context.Context, queued CampaignQueuedMessage) {
+	if s != nil && s.billing != nil {
+		s.billing.ObserveCommittedCharge(ctx, queued.Charge)
+	}
+}
+
+func smsBillingError(err error) error {
+	switch {
+	case errors.Is(err, platformbilling.ErrInsufficientBalance):
+		return apperrors.NewPaymentRequired("Insufficient wallet balance")
+	case errors.Is(err, platformbilling.ErrInvalidDestination):
+		return apperrors.NewBadRequest("SMS recipient must be a supported E.164 phone number")
+	case errors.Is(err, platformbilling.ErrInvalidSegments):
+		return apperrors.NewBadRequest("SMS segment count is invalid")
+	case errors.Is(err, platformbilling.ErrTeamNotFound):
+		return apperrors.NewNotFound("Billing team not found")
+	case errors.Is(err, platformbilling.ErrTeamInactive):
+		return apperrors.NewConflict("Team is not active for billing")
+	case errors.Is(err, platformbilling.ErrUnsupportedMarket):
+		return apperrors.NewConflict("Team market is not supported for billing")
+	case errors.Is(err, platformbilling.ErrWalletNotFound):
+		return apperrors.NewConflict("Team wallet is not initialized")
+	case errors.Is(err, platformbilling.ErrSubscriptionUnavailable):
+		return apperrors.NewPaymentRequired("An active subscription is required")
+	case errors.Is(err, platformbilling.ErrRateNotFound):
+		return apperrors.NewServiceUnavailable("SMS pricing is unavailable", err)
+	case errors.Is(err, platformbilling.ErrCurrencyMismatch):
+		return apperrors.NewConflict("Wallet currency does not match the team market")
+	case errors.Is(err, platformbilling.ErrAmountOverflow):
+		return apperrors.NewInternal("SMS charge amount exceeds the supported range", err)
+	default:
+		return apperrors.NewInternal("Unable to apply SMS billing charge", err)
+	}
+}
+
+func (s *Service) Cancel(ctx context.Context, value string) (SendResponse, error) {
+	tenantContext, id, queue, err := s.scheduledMutationContext(ctx, value)
+	if err != nil {
+		return SendResponse{}, err
+	}
+	tx, err := s.repository.BeginTx(ctx)
+	if err != nil {
+		return SendResponse{}, apperrors.NewInternal("Unable to begin SMS cancellation transaction", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	message, err := s.repository.CancelTx(ctx, tx, id, tenantContext.Scope.TeamID)
+	if err != nil {
+		return SendResponse{}, scheduledMutationError(err, "canceled")
+	}
+	if err := queue.CancelSMSDeliveryTx(ctx, tx, id, tenantContext.Scope.TeamID); err != nil {
+		return SendResponse{}, apperrors.NewInternal("Unable to cancel SMS delivery", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return SendResponse{}, apperrors.NewInternal("Unable to commit SMS cancellation", err)
+	}
+	return message.SendResponse(), nil
+}
+
+func (s *Service) Update(ctx context.Context, value string, req UpdateRequest) (SendResponse, error) {
+	tenantContext, id, queue, err := s.scheduledMutationContext(ctx, value)
+	if err != nil {
+		return SendResponse{}, err
+	}
+	scheduledAt, err := normalizeSMSSchedule(req.ScheduledAt, false)
+	if err != nil {
+		return SendResponse{}, err
+	}
+	if scheduledAt == nil {
+		return SendResponse{}, apperrors.NewBadRequest("scheduled_at is required")
+	}
+	tx, err := s.repository.BeginTx(ctx)
+	if err != nil {
+		return SendResponse{}, apperrors.NewInternal("Unable to begin SMS update transaction", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	message, err := s.repository.RescheduleTx(ctx, tx, id, tenantContext.Scope.TeamID, *scheduledAt)
+	if err != nil {
+		return SendResponse{}, scheduledMutationError(err, "updated")
+	}
+	if err := queue.RescheduleSMSDeliveryTx(ctx, tx, id, tenantContext.Scope.TeamID, *scheduledAt); err != nil {
+		return SendResponse{}, apperrors.NewInternal("Unable to reschedule SMS delivery", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return SendResponse{}, apperrors.NewInternal("Unable to commit SMS update", err)
+	}
+	return message.SendResponse(), nil
+}
+
+func (s *Service) scheduledMutationContext(ctx context.Context, value string) (authz.Access, uuid.UUID, scheduledDeliveryQueue, error) {
+	tenantContext, err := requireTenant(ctx, authz.PermissionSMSSend)
+	if err != nil {
+		return authz.Access{}, uuid.Nil, nil, err
+	}
+	id, err := uuid.Parse(strings.TrimSpace(value))
+	if err != nil {
+		return authz.Access{}, uuid.Nil, nil, apperrors.NewBadRequest("SMS message id must be a valid UUID")
+	}
+	queue, ok := s.delivery.(scheduledDeliveryQueue)
+	if !ok {
+		return authz.Access{}, uuid.Nil, nil, apperrors.NewInternal("SMS delivery queue does not support scheduling", nil)
+	}
+	return tenantContext, id, queue, nil
+}
+
+func scheduledMutationError(err error, action string) error {
+	if errors.Is(err, ErrMessageNotFound) {
+		return apperrors.NewNotFound("SMS message not found")
+	}
+	if errors.Is(err, ErrMessageNotSchedulable) {
+		return apperrors.NewConflict("Only pending scheduled SMS messages outside the delivery cutoff can be " + action)
+	}
+	return apperrors.NewInternal("Unable to update SMS message", err)
+}
+
+func normalizedScheduledAt(value string) *time.Time {
+	if value == "" {
+		return nil
+	}
+	parsed, _ := time.Parse(time.RFC3339Nano, value)
+	return &parsed
+}
+
+func enqueueSMSDelivery(ctx context.Context, queue DeliveryQueue, tx pgx.Tx, messageID, teamID uuid.UUID, scheduledAt *time.Time) error {
+	if scheduledAt == nil {
+		return queue.EnqueueSMSDeliveryTx(ctx, tx, messageID, teamID)
+	}
+	scheduled, ok := queue.(scheduledDeliveryQueue)
+	if !ok {
+		return errors.New("SMS delivery queue does not support scheduled delivery")
+	}
+	return scheduled.EnqueueSMSDeliveryAtTx(ctx, tx, messageID, teamID, *scheduledAt)
+}
+
+func (s *Service) SyncStatus(ctx context.Context, messageID string) (Message, error) {
+	tenantContext, err := requireTenant(ctx, authz.PermissionSMSSend)
+	if err != nil {
+		return Message{}, err
+	}
+	parsedID, err := uuid.Parse(strings.TrimSpace(messageID))
+	if err != nil {
+		return Message{}, apperrors.NewBadRequest("SMS message id must be a valid UUID")
+	}
+	message, err := s.repository.Get(ctx, parsedID, tenantContext.Scope.TeamID)
+	if err != nil {
+		if errors.Is(err, ErrMessageNotFound) {
+			return Message{}, apperrors.NewNotFound("SMS message not found")
+		}
+		return Message{}, apperrors.NewInternal("Unable to get SMS message", err)
+	}
+	if message.ProviderID == nil || message.ProviderMessageID == nil {
+		return Message{}, apperrors.NewBadRequest("SMS message has not been submitted to a provider")
+	}
+	if s.sender == nil {
+		return Message{}, apperrors.NewInternal("SMS sender is not configured", nil)
+	}
+	status, err := s.sender.CheckStatus(ctx, *message.ProviderID, *message.ProviderMessageID)
+	if err != nil {
+		return Message{}, apperrors.NewInternal("Unable to sync SMS status", err)
+	}
+	nextStatus := resolveProviderStatus(message.Status, status.Status)
+	if nextStatus == message.Status {
+		return message, nil
+	}
+	updated, err := s.repository.UpdateStatus(ctx, parsedID, tenantContext.Scope.TeamID, nextStatus)
+	if err != nil {
+		return Message{}, apperrors.NewInternal("Unable to update SMS status", err)
+	}
+	return updated, nil
+}
+
+func resolveProviderStatus(current string, providerStatus string) string {
+	current = strings.ToLower(strings.TrimSpace(current))
+	next := MapProviderStatus(providerStatus)
+	if next == StatusUnknown || isTerminalStatus(current) {
+		return current
+	}
+
+	currentRank, currentIsProgress := statusProgressRank(current)
+	nextRank, nextIsProgress := statusProgressRank(next)
+	if currentIsProgress && nextIsProgress && nextRank < currentRank {
+		return current
+	}
+	return next
+}
+
+func isTerminalStatus(status string) bool {
+	switch status {
+	case StatusDelivered, StatusUndelivered, StatusRejected, StatusFailed, StatusExpired, StatusCanceled:
+		return true
+	default:
+		return false
+	}
+}
+
+func statusProgressRank(status string) (int, bool) {
+	switch status {
+	case StatusQueued:
+		return 0, true
+	case StatusProcessing:
+		return 1, true
+	case StatusSubmitted:
+		return 2, true
+	case StatusSent:
+		return 3, true
+	default:
+		return 0, false
+	}
+}
+
+func MapProviderStatus(status string) string {
+	status = strings.ToLower(strings.TrimSpace(status))
+	switch status {
+	case StatusQueued, StatusProcessing, StatusSubmitted, StatusSent, StatusDelivered, StatusUndelivered, StatusRejected, StatusFailed, StatusExpired, StatusUnknown, StatusCanceled:
+		return status
+	default:
+		return StatusUnknown
+	}
+}
+
+func requireTenant(ctx context.Context, permission authz.Permission) (authz.Access, error) {
+	tenantContext, decision := authz.ResolveAccess(ctx, permission)
+	if !decision.Allowed {
+		return authz.Access{}, apperrors.NewForbidden(decision.Reason)
+	}
+	return tenantContext, nil
 }
