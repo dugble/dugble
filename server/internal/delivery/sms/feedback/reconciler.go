@@ -7,15 +7,16 @@ import (
 	"sync"
 	"time"
 
-	smsapi "github.com/dugble/dugble/server/internal/platform/sms"
+	provider "github.com/dugble/dugble/server/internal/providers"
+	relaysms "github.com/dugble/dugble/server/internal/relay/sms"
 )
 
 type pendingRepository interface {
 	ListPending(context.Context, int32) ([]PendingMessage, error)
 }
 
-type statusChecker interface {
-	CheckStatus(context.Context, string, string) (*smsapi.StatusResponse, error)
+type providerLookup interface {
+	Provider(string) relaysms.Provider
 }
 
 type ReconcilerConfig struct {
@@ -26,13 +27,13 @@ type ReconcilerConfig struct {
 
 type Reconciler struct {
 	repository pendingRepository
-	checker    statusChecker
+	providers  providerLookup
 	processor  *Processor
 	config     ReconcilerConfig
 	now        func() time.Time
 }
 
-func NewReconciler(repository pendingRepository, checker statusChecker, processor *Processor, config ReconcilerConfig) *Reconciler {
+func NewReconciler(repository pendingRepository, providers providerLookup, processor *Processor, config ReconcilerConfig) *Reconciler {
 	if config.BatchSize <= 0 {
 		config.BatchSize = 100
 	}
@@ -44,7 +45,7 @@ func NewReconciler(repository pendingRepository, checker statusChecker, processo
 	}
 	return &Reconciler{
 		repository: repository,
-		checker:    checker,
+		providers:  providers,
 		processor:  processor,
 		config:     config,
 		now:        func() time.Time { return time.Now().UTC() },
@@ -52,7 +53,7 @@ func NewReconciler(repository pendingRepository, checker statusChecker, processo
 }
 
 func (reconciler *Reconciler) ReconcileBatch(ctx context.Context) (int, error) {
-	if reconciler == nil || reconciler.repository == nil || reconciler.checker == nil || reconciler.processor == nil {
+	if reconciler == nil || reconciler.repository == nil || reconciler.providers == nil || reconciler.processor == nil {
 		return 0, ErrReconcilerNotConfigured
 	}
 	messages, err := reconciler.repository.ListPending(ctx, reconciler.config.BatchSize)
@@ -83,12 +84,20 @@ func (reconciler *Reconciler) ReconcileBatch(ctx context.Context) (int, error) {
 				return
 			}
 
+			upstream := reconciler.providers.Provider(message.ProviderID)
+			checker, ok := upstream.(provider.SMSStatusChecker)
+			if !ok {
+				mutex.Lock()
+				joined = errors.Join(joined, fmt.Errorf("SMS provider %q does not support status reconciliation", message.ProviderID))
+				mutex.Unlock()
+				return
+			}
+
 			providerCtx, cancel := context.WithTimeout(ctx, reconciler.config.ProviderTimeout)
-			response, checkErr := reconciler.checker.CheckStatus(
-				providerCtx,
-				message.ProviderID,
-				message.ProviderMessageID,
-			)
+			response, checkErr := checker.CheckSMSStatus(providerCtx, provider.SMSStatusRequest{
+				Reference:         message.ID.String(),
+				ProviderMessageID: message.ProviderMessageID,
+			})
 			cancel()
 			if checkErr != nil {
 				mutex.Lock()
