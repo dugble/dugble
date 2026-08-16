@@ -10,23 +10,21 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/dugble/dugble/server/internal/adapters/postgres"
 	dbsqlc "github.com/dugble/dugble/server/internal/database/sqlc"
 	platformwebhook "github.com/dugble/dugble/server/internal/platform/webhook"
 	"github.com/dugble/dugble/server/pkg/pgconv"
 )
 
 type Repository struct {
-	db      *pgxpool.Pool
 	queries *dbsqlc.Queries
 }
 
 func NewRepository(db *pgxpool.Pool) *Repository {
-	return &Repository{db: db, queries: dbsqlc.New(db)}
+	return &Repository{queries: dbsqlc.New(db)}
 }
 
-func (r *Repository) InTransaction(ctx context.Context, operation func(pgx.Tx) error) error {
-	return postgres.InTransaction(ctx, r.db, operation)
+func (r *Repository) WithTx(tx pgx.Tx) *Repository {
+	return &Repository{queries: r.queries.WithTx(tx)}
 }
 
 func (r *Repository) CreateEndpoint(ctx context.Context, teamID uuid.UUID, endpoint validatedEndpoint, secret []byte) (Endpoint, error) {
@@ -62,46 +60,27 @@ func (r *Repository) GetEndpoint(ctx context.Context, id, teamID uuid.UUID) (End
 }
 
 func (r *Repository) UpdateEndpoint(ctx context.Context, id, teamID uuid.UUID, endpoint validatedEndpoint) (Endpoint, error) {
-	var row dbsqlc.WebhookEndpoint
-	err := r.InTransaction(ctx, func(tx pgx.Tx) error {
-		queries := r.queries.WithTx(tx)
-		updated, err := queries.UpdateWebhookEndpoint(ctx, dbsqlc.UpdateWebhookEndpointParams{
-			ID: id, TeamID: teamID, Url: endpoint.URL, Enabled: endpoint.Enabled, SubscribedEvents: endpoint.SubscribedEvents,
-		})
-		if err != nil {
-			return fmt.Errorf("update webhook endpoint: %w", err)
-		}
-		row = updated
-		if endpoint.Enabled {
-			return nil
-		}
-		if _, err := queries.CancelWebhookDeliveriesForEndpoint(ctx, dbsqlc.CancelWebhookDeliveriesForEndpointParams{EndpointID: id}); err != nil {
-			return fmt.Errorf("cancel webhook endpoint deliveries: %w", err)
-		}
-		return nil
+	row, err := r.queries.UpdateWebhookEndpoint(ctx, dbsqlc.UpdateWebhookEndpointParams{
+		ID: id, TeamID: teamID, Url: endpoint.URL, Enabled: endpoint.Enabled, SubscribedEvents: endpoint.SubscribedEvents,
 	})
 	if err != nil {
-		return Endpoint{}, err
+		return Endpoint{}, fmt.Errorf("update webhook endpoint: %w", err)
+	}
+	if !endpoint.Enabled {
+		if _, err := r.queries.CancelWebhookDeliveriesForEndpoint(ctx, dbsqlc.CancelWebhookDeliveriesForEndpointParams{EndpointID: id}); err != nil {
+			return Endpoint{}, fmt.Errorf("cancel webhook endpoint deliveries: %w", err)
+		}
 	}
 	return endpointFromSQLC(row), nil
 }
 
 func (r *Repository) DisableEndpoint(ctx context.Context, id, teamID uuid.UUID) (Endpoint, error) {
-	var row dbsqlc.WebhookEndpoint
-	err := r.InTransaction(ctx, func(tx pgx.Tx) error {
-		queries := r.queries.WithTx(tx)
-		disabled, err := queries.DisableWebhookEndpoint(ctx, dbsqlc.DisableWebhookEndpointParams{ID: id, TeamID: teamID})
-		if err != nil {
-			return fmt.Errorf("disable webhook endpoint: %w", err)
-		}
-		row = disabled
-		if _, err := queries.CancelWebhookDeliveriesForEndpoint(ctx, dbsqlc.CancelWebhookDeliveriesForEndpointParams{EndpointID: id}); err != nil {
-			return fmt.Errorf("cancel webhook endpoint deliveries: %w", err)
-		}
-		return nil
-	})
+	row, err := r.queries.DisableWebhookEndpoint(ctx, dbsqlc.DisableWebhookEndpointParams{ID: id, TeamID: teamID})
 	if err != nil {
-		return Endpoint{}, err
+		return Endpoint{}, fmt.Errorf("disable webhook endpoint: %w", err)
+	}
+	if _, err := r.queries.CancelWebhookDeliveriesForEndpoint(ctx, dbsqlc.CancelWebhookDeliveriesForEndpointParams{EndpointID: id}); err != nil {
+		return Endpoint{}, fmt.Errorf("cancel webhook endpoint deliveries: %w", err)
 	}
 	return endpointFromSQLC(row), nil
 }

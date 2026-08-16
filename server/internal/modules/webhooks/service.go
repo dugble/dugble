@@ -4,11 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/dugble/dugble/server/internal/authz"
 	"github.com/dugble/dugble/server/internal/platform/audit"
@@ -17,13 +19,32 @@ import (
 )
 
 type Service struct {
+	db         *pgxpool.Pool
 	repository *Repository
 	emitter    *platformwebhook.Emitter
 	now        func() time.Time
 }
 
-func NewService(repository *Repository, emitter *platformwebhook.Emitter) *Service {
-	return &Service{repository: repository, emitter: emitter, now: time.Now}
+func NewService(db *pgxpool.Pool, repository *Repository, emitter *platformwebhook.Emitter) *Service {
+	return &Service{db: db, repository: repository, emitter: emitter, now: time.Now}
+}
+
+func (s *Service) inTransaction(ctx context.Context, operation string, fn func(pgx.Tx) error) error {
+	if s == nil || s.db == nil {
+		return errors.New("webhook transaction service is not configured")
+	}
+	tx, err := s.db.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return fmt.Errorf("begin %s: %w", operation, err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if err := fn(tx); err != nil {
+		return err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit %s: %w", operation, err)
+	}
+	return nil
 }
 
 func (s *Service) CreateEndpoint(ctx context.Context, req CreateEndpointRequest) (CreatedEndpoint, error) {
@@ -99,7 +120,7 @@ func (s *Service) UpdateEndpoint(ctx context.Context, value string, req UpdateEn
 	if err != nil {
 		return Endpoint{}, err
 	}
-	endpoint, err := s.repository.UpdateEndpoint(ctx, id, tenantContext.Scope.TeamID, validated)
+	endpoint, err := s.updateEndpoint(ctx, id, tenantContext.Scope.TeamID, validated)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Endpoint{}, apperrors.NewNotFound("Webhook endpoint not found")
 	}
@@ -119,7 +140,7 @@ func (s *Service) DeleteEndpoint(ctx context.Context, value string) error {
 	if err != nil {
 		return err
 	}
-	endpoint, err := s.repository.DisableEndpoint(ctx, id, tenantContext.Scope.TeamID)
+	endpoint, err := s.disableEndpoint(ctx, id, tenantContext.Scope.TeamID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return apperrors.NewNotFound("Webhook endpoint not found")
 	}
@@ -182,7 +203,7 @@ func (s *Service) TestEndpoint(ctx context.Context, value string) (Delivery, err
 	}
 
 	var deliveryID uuid.UUID
-	err = s.repository.InTransaction(ctx, func(tx pgx.Tx) error {
+	err = s.inTransaction(ctx, "webhook test delivery", func(tx pgx.Tx) error {
 		_, createdDeliveryID, emitErr := s.emitter.EmitToEndpointTx(ctx, tx, platformwebhook.Event{
 			ID:         uuid.New(),
 			TeamID:     tenantContext.Scope.TeamID,
@@ -274,6 +295,26 @@ func (s *Service) RetryDelivery(ctx context.Context, value string) (Delivery, er
 	}
 	audit.Record(ctx, tenantContext, audit.Event{Action: "webhook_delivery.retried", ResourceType: "webhook_delivery", ResourceID: delivery.ID})
 	return delivery, nil
+}
+
+func (s *Service) updateEndpoint(ctx context.Context, id, teamID uuid.UUID, endpoint validatedEndpoint) (Endpoint, error) {
+	var updated Endpoint
+	err := s.inTransaction(ctx, "webhook endpoint update", func(tx pgx.Tx) error {
+		var updateErr error
+		updated, updateErr = s.repository.WithTx(tx).UpdateEndpoint(ctx, id, teamID, endpoint)
+		return updateErr
+	})
+	return updated, err
+}
+
+func (s *Service) disableEndpoint(ctx context.Context, id, teamID uuid.UUID) (Endpoint, error) {
+	var disabled Endpoint
+	err := s.inTransaction(ctx, "webhook endpoint disable", func(tx pgx.Tx) error {
+		var disableErr error
+		disabled, disableErr = s.repository.WithTx(tx).DisableEndpoint(ctx, id, teamID)
+		return disableErr
+	})
+	return disabled, err
 }
 
 func requireTenant(ctx context.Context, permission authz.Permission) (authz.Access, error) {
