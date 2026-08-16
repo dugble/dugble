@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/dugble/dugble/server/internal/authz"
@@ -69,13 +70,41 @@ func (r *Repository) Get(ctx context.Context, id uuid.UUID) (Team, error) {
 }
 
 func (r *Repository) ListForUser(ctx context.Context, userID uuid.UUID) ([]Team, error) {
-	rows, err := r.queries.ListTeamsForUser(ctx, dbsqlc.ListTeamsForUserParams{UserID: userID})
+	rows, err := r.db.Query(ctx, `
+		SELECT t.id, t.name, t.market_code, t.phone, t.address, t.website, t.status, t.created_by, t.created_at, t.updated_at, tm.role
+		FROM teams AS t
+		JOIN team_members AS tm ON tm.team_id = t.id
+		WHERE tm.user_id = $1
+		  AND tm.status = 'active'
+		  AND t.status = 'active'
+		ORDER BY t.created_at DESC`, userID)
 	if err != nil {
 		return nil, fmt.Errorf("list teams for user: %w", err)
 	}
-	teams := make([]Team, 0, len(rows))
-	for _, row := range rows {
-		teams = append(teams, teamFromSQLC(row))
+	defer rows.Close()
+	teams := make([]Team, 0)
+	for rows.Next() {
+		var (
+			team      Team
+			teamID    uuid.UUID
+			createdBy *uuid.UUID
+			createdAt pgtype.Timestamptz
+			updatedAt pgtype.Timestamptz
+		)
+		if err := rows.Scan(
+			&teamID, &team.Name, &team.MarketCode, &team.Phone, &team.Address, &team.Website,
+			&team.Status, &createdBy, &createdAt, &updatedAt, &team.UserRole,
+		); err != nil {
+			return nil, fmt.Errorf("scan team: %w", err)
+		}
+		team.ID = teamID.String()
+		team.CreatedBy = stringPointer(createdBy)
+		team.CreatedAt = pgconv.TimestamptzToTime(createdAt)
+		team.UpdatedAt = pgconv.TimestamptzToTime(updatedAt)
+		teams = append(teams, team)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate teams: %w", err)
 	}
 	return teams, nil
 }
@@ -134,13 +163,42 @@ func (r *Repository) GetTenantMembership(ctx context.Context, teamID, userID uui
 }
 
 func (r *Repository) ListMembers(ctx context.Context, teamID uuid.UUID) ([]Member, error) {
-	rows, err := r.queries.ListTeamMembers(ctx, dbsqlc.ListTeamMembersParams{TeamID: teamID})
+	rows, err := r.db.Query(ctx, `
+		SELECT tm.team_id, tm.user_id, tm.role, tm.status, tm.created_at, tm.updated_at, u.name, u.email
+		FROM team_members AS tm
+		JOIN users AS u ON u.id = tm.user_id
+		WHERE tm.team_id = $1
+		ORDER BY tm.created_at ASC`, teamID)
 	if err != nil {
 		return nil, fmt.Errorf("list team members: %w", err)
 	}
-	members := make([]Member, 0, len(rows))
-	for _, row := range rows {
-		members = append(members, memberFromSQLC(row))
+	defer rows.Close()
+	members := make([]Member, 0)
+	for rows.Next() {
+		var (
+			member    Member
+			profile   MemberProfile
+			teamID    uuid.UUID
+			userID    uuid.UUID
+			createdAt pgtype.Timestamptz
+			updatedAt pgtype.Timestamptz
+		)
+		if err := rows.Scan(
+			&teamID, &userID, &member.Role, &member.Status, &createdAt, &updatedAt,
+			&profile.Name, &profile.Email,
+		); err != nil {
+			return nil, fmt.Errorf("scan team member: %w", err)
+		}
+		member.TeamID = teamID.String()
+		member.UserID = userID.String()
+		member.CreatedAt = pgconv.TimestamptzToTime(createdAt)
+		member.UpdatedAt = pgconv.TimestamptzToTime(updatedAt)
+		profile.ID = member.UserID
+		member.User = &profile
+		members = append(members, member)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate team members: %w", err)
 	}
 	return members, nil
 }

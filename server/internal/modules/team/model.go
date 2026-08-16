@@ -23,18 +23,26 @@ type Team struct {
 	Address    string    `json:"address"`
 	Website    *string   `json:"website,omitempty"`
 	Status     string    `json:"status"`
+	UserRole   string    `json:"user_role,omitempty"`
 	CreatedBy  *string   `json:"created_by,omitempty"`
 	CreatedAt  time.Time `json:"created_at"`
 	UpdatedAt  time.Time `json:"updated_at"`
 }
 
+type MemberProfile struct {
+	ID    string `json:"id"`
+	Name  string `json:"name"`
+	Email string `json:"email"`
+}
+
 type Member struct {
-	TeamID    string    `json:"team_id"`
-	UserID    string    `json:"user_id"`
-	Role      string    `json:"role"`
-	Status    string    `json:"status"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	TeamID    string         `json:"team_id"`
+	UserID    string         `json:"user_id"`
+	User      *MemberProfile `json:"user,omitempty"`
+	Role      string         `json:"role"`
+	Status    string         `json:"status"`
+	CreatedAt time.Time      `json:"created_at"`
+	UpdatedAt time.Time      `json:"updated_at"`
 }
 
 type CreateRequest struct {

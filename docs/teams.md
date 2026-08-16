@@ -27,6 +27,7 @@ No JSON request body.
       "address": "string",
       "website": "string",
       "status": "string",
+      "user_role": "owner",
       "created_by": "string",
       "created_at": "2026-08-09T17:00:00Z",
       "updated_at": "2026-08-09T17:00:00Z"
@@ -306,6 +307,11 @@ No JSON request body.
     {
       "team_id": "string",
       "user_id": "string",
+      "user": {
+        "id": "string",
+        "name": "string",
+        "email": "user@example.com"
+      },
       "role": "string",
       "status": "string",
       "created_at": "2026-08-09T17:00:00Z",
