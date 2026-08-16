@@ -3,6 +3,7 @@ package sendexa_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -136,7 +137,7 @@ func TestCheckSMSStatusRequiresProviderMessageID(t *testing.T) {
 		t.Fatal(err)
 	}
 	result, err := p.CheckSMSStatus(context.Background(), provider.SMSStatusRequest{Reference: "attempt-123"})
-	if err != sendexa.ErrInvalidRequest {
+	if !errors.Is(err, sendexa.ErrInvalidRequest) {
 		t.Fatalf("err=%v, want ErrInvalidRequest", err)
 	}
 	if result.Reference != "attempt-123" || result.Status != provider.SMSUnknown {
