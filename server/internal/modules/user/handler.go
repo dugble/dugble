@@ -87,3 +87,10 @@ func (h *Handler) ResendEmailChange(c *echo.Context) error {
 	}
 	return httputil.Accepted(c, pending)
 }
+
+func (h *Handler) CancelEmailChange(c *echo.Context) error {
+	if err := h.service.CancelEmailChange(c.Request().Context()); err != nil {
+		return httputil.Error(c, err)
+	}
+	return httputil.OK(c, map[string]bool{"cancelled": true})
+}
