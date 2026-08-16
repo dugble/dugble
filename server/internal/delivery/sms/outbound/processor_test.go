@@ -7,24 +7,8 @@ import (
 	"github.com/google/uuid"
 
 	smsmodule "github.com/dugble/dugble/server/internal/modules/sms"
-	smsapi "github.com/dugble/dugble/server/internal/platform/sms"
+	relaysms "github.com/dugble/dugble/server/internal/relay/sms"
 )
-
-func TestProviderAvailable(t *testing.T) {
-	t.Parallel()
-
-	providers := []string{"mnotify", " moolre "}
-	for _, provider := range []string{"MNOTIFY", "moolre"} {
-		if !providerAvailable(provider, providers) {
-			t.Fatalf("providerAvailable(%q) = false, want true", provider)
-		}
-	}
-	for _, provider := range []string{"", "unknown"} {
-		if providerAvailable(provider, providers) {
-			t.Fatalf("providerAvailable(%q) = true, want false", provider)
-		}
-	}
-}
 
 type processorRepositoryStub struct {
 	message          smsmodule.Message
@@ -69,7 +53,7 @@ func (*processorRepositoryStub) MarkDeliveryAttemptUnknown(context.Context, uuid
 func (*processorRepositoryStub) MarkDeliveryAttemptFailed(context.Context, uuid.UUID, uuid.UUID, uuid.UUID, error) error {
 	return nil
 }
-func (stub *processorRepositoryStub) MarkDeliveryAttemptSubmitted(context.Context, uuid.UUID, uuid.UUID, uuid.UUID, *smsapi.SendResponse) error {
+func (stub *processorRepositoryStub) MarkDeliveryAttemptSubmitted(context.Context, uuid.UUID, uuid.UUID, uuid.UUID, relaysms.SendResult) error {
 	stub.attemptSubmitted = true
 	return nil
 }
@@ -83,9 +67,14 @@ type processorSenderStub struct {
 }
 
 func (stub *processorSenderStub) ProviderIDs() []string { return stub.providers }
-func (stub *processorSenderStub) SendWithProvider(context.Context, string, smsapi.SendRequest) (*smsapi.SendResponse, error) {
+func (stub *processorSenderStub) SendWithProvider(context.Context, string, relaysms.Message) (relaysms.SendResult, error) {
 	stub.sent = true
-	return &smsapi.SendResponse{ProviderID: "moolre", ProviderMsgID: "provider-message", Status: "submitted"}, nil
+	return relaysms.SendResult{
+		Provider:          "moolre",
+		ProviderMessageID: "provider-message",
+		ProviderStatus:    "submitted",
+		State:             relaysms.SubmissionAccepted,
+	}, nil
 }
 
 func TestProcessorHandleSubmitsThroughCanonicalRoute(t *testing.T) {
@@ -115,7 +104,7 @@ func TestProcessorHandleFailsBeforeAttemptWhenProviderUnavailable(t *testing.T) 
 		message: smsmodule.Message{ID: uuid.NewString(), Status: smsmodule.StatusProcessing},
 		route:   DeliveryRoute{SenderID: uuid.New(), Provider: "moolre"},
 	}
-	sender := &processorSenderStub{providers: []string{"mnotify"}}
+	sender := &processorSenderStub{providers: []string{"sendexa"}}
 	processor := NewProcessor(repository, sender)
 	command := DeliverCommand{MessageID: uuid.New(), TeamID: uuid.New()}
 
