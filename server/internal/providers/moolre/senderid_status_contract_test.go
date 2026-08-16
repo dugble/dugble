@@ -67,7 +67,7 @@ func TestCheckSenderIDStatusUsesHTTPContract(t *testing.T) {
 			}))
 			defer server.Close()
 
-			p, err := moolre.New(moolre.Config{VASKey: "vas-secret", BaseURL: server.URL})
+			p, err := moolre.NewTestProvider(moolre.Config{VASKey: "vas-secret"}, server.URL)
 			if err != nil {
 				t.Fatal(err)
 			}
