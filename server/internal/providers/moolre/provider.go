@@ -17,7 +17,6 @@ var ErrInvalidRequest = errors.New("invalid Moolre request")
 // Config configures the Moolre provider.
 type Config struct {
 	VASKey     string
-	BaseURL    string
 	HTTPClient *http.Client
 }
 
@@ -27,7 +26,11 @@ type Provider struct {
 }
 
 func New(config Config) (*Provider, error) {
-	client, err := newClient(config)
+	return newProvider(config, defaultBaseURL)
+}
+
+func newProvider(config Config, baseURL string) (*Provider, error) {
+	client, err := newClient(config, baseURL)
 	if err != nil {
 		return nil, err
 	}
