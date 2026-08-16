@@ -20,6 +20,7 @@ func RegisterRoutes(
 
 	teams.GET("", handler.List)
 	teams.POST("", handler.Create)
+	teams.GET("/invitations", handler.ListPendingInvitations)
 	teams.GET("/invitations/:token", handler.GetInvitation)
 	teams.POST("/invitations/:token/accept", handler.AcceptInvitation)
 	teams.POST("/invitations/:token/decline", handler.DeclineInvitation)
@@ -37,6 +38,16 @@ func RegisterRoutes(
 	teamRoutes.POST(
 		"/members/invite",
 		handler.InviteMember,
+		tenantMiddleware(authz.PermissionTeamMemberInvite),
+	)
+	teamRoutes.GET(
+		"/invitations",
+		handler.ListTeamInvitations,
+		tenantMiddleware(authz.PermissionTeamMemberInvite),
+	)
+	teamRoutes.DELETE(
+		"/invitations/:invitation_id",
+		handler.RevokeInvitation,
 		tenantMiddleware(authz.PermissionTeamMemberInvite),
 	)
 	teamRoutes.DELETE(

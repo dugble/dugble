@@ -75,6 +75,7 @@ type UpdateMemberRoleRequest struct {
 type Invitation struct {
 	ID         string     `json:"id"`
 	TeamID     string     `json:"team_id"`
+	TeamName   string     `json:"team_name,omitempty"`
 	Email      string     `json:"email"`
 	Role       string     `json:"role"`
 	Status     string     `json:"status"`

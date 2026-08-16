@@ -203,6 +203,150 @@ func (r *Repository) ListMembers(ctx context.Context, teamID uuid.UUID) ([]Membe
 	return members, nil
 }
 
+func (r *Repository) ListPendingInvitationsForEmail(ctx context.Context, email string) ([]Invitation, error) {
+	rows, err := r.db.Query(ctx, `
+		SELECT invitation.id, invitation.team_id, team.name, invitation.email, invitation.role, invitation.status,
+		       invitation.invited_by, invitation.expires_at, invitation.accepted_at, invitation.declined_at,
+		       invitation.created_at, invitation.updated_at
+		FROM team_invitations AS invitation
+		JOIN teams AS team ON team.id = invitation.team_id
+		WHERE lower(invitation.email) = lower($1)
+		  AND invitation.status = 'pending'
+		  AND invitation.expires_at > now()
+		  AND team.status = 'active'
+		ORDER BY invitation.created_at DESC`, email)
+	if err != nil {
+		return nil, fmt.Errorf("list pending invitations for email: %w", err)
+	}
+	defer rows.Close()
+	invitations := make([]Invitation, 0)
+	for rows.Next() {
+		invitation, err := scanInvitationWithTeamName(rows)
+		if err != nil {
+			return nil, err
+		}
+		invitations = append(invitations, invitation)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate pending invitations: %w", err)
+	}
+	return invitations, nil
+}
+
+func (r *Repository) ListPendingInvitationsForTeam(ctx context.Context, teamID uuid.UUID) ([]Invitation, error) {
+	rows, err := r.queries.ListPendingTeamInvitations(ctx, dbsqlc.ListPendingTeamInvitationsParams{TeamID: teamID})
+	if err != nil {
+		return nil, fmt.Errorf("list pending team invitations: %w", err)
+	}
+	invitations := make([]Invitation, 0, len(rows))
+	for _, row := range rows {
+		invitations = append(invitations, invitationFromSQLC(row))
+	}
+	return invitations, nil
+}
+
+func (r *Repository) RevokeInvitation(ctx context.Context, teamID, invitationID uuid.UUID) (Invitation, error) {
+	row, err := r.db.Query(ctx, `
+		UPDATE team_invitations AS invitation
+		SET status = 'revoked', updated_at = now()
+		FROM teams AS team
+		WHERE invitation.id = $1
+		  AND invitation.team_id = $2
+		  AND invitation.status = 'pending'
+		  AND team.id = invitation.team_id
+		  AND team.status = 'active'
+		RETURNING invitation.id, invitation.team_id, team.name, invitation.email, invitation.role, invitation.status,
+		          invitation.invited_by, invitation.expires_at, invitation.accepted_at, invitation.declined_at,
+		          invitation.created_at, invitation.updated_at`, invitationID, teamID)
+	if err != nil {
+		return Invitation{}, fmt.Errorf("revoke team invitation: %w", err)
+	}
+	defer row.Close()
+	if !row.Next() {
+		if err := row.Err(); err != nil {
+			return Invitation{}, fmt.Errorf("revoke team invitation: %w", err)
+		}
+		return Invitation{}, pgx.ErrNoRows
+	}
+	invitation, err := scanInvitationWithTeamName(row)
+	if err != nil {
+		return Invitation{}, err
+	}
+	if err := row.Err(); err != nil {
+		return Invitation{}, fmt.Errorf("revoke team invitation: %w", err)
+	}
+	return invitation, nil
+}
+
+func (r *Repository) GetPendingInvitationByIDForEmail(ctx context.Context, invitationID uuid.UUID, email string) (Invitation, error) {
+	row := r.db.QueryRow(ctx, `
+		SELECT invitation.id, invitation.team_id, team.name, invitation.email, invitation.role, invitation.status,
+		       invitation.invited_by, invitation.expires_at, invitation.accepted_at, invitation.declined_at,
+		       invitation.created_at, invitation.updated_at
+		FROM team_invitations AS invitation
+		JOIN teams AS team ON team.id = invitation.team_id
+		WHERE invitation.id = $1
+		  AND lower(invitation.email) = lower($2)
+		  AND invitation.status = 'pending'
+		  AND invitation.expires_at > now()
+		  AND team.status = 'active'`, invitationID, email)
+	return scanInvitationWithTeamName(row)
+}
+
+func (r *Repository) AcceptInvitationByIDAndCreateMember(ctx context.Context, invitationID, teamID, userID uuid.UUID, role, status string) (Invitation, error) {
+	tx, err := r.db.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return Invitation{}, fmt.Errorf("begin invitation transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	row := tx.QueryRow(ctx, `
+		UPDATE team_invitations AS invitation
+		SET status = 'accepted', accepted_at = now(), updated_at = now()
+		FROM teams AS team
+		WHERE invitation.id = $1
+		  AND invitation.status = 'pending'
+		  AND invitation.expires_at > now()
+		  AND team.id = invitation.team_id
+		  AND team.status = 'active'
+		RETURNING invitation.id, invitation.team_id, team.name, invitation.email, invitation.role, invitation.status,
+		          invitation.invited_by, invitation.expires_at, invitation.accepted_at, invitation.declined_at,
+		          invitation.created_at, invitation.updated_at`, invitationID)
+	invitation, err := scanInvitationWithTeamName(row)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return Invitation{}, ErrInvitationNotAccepted
+		}
+		return Invitation{}, fmt.Errorf("accept team invitation by id: %w", err)
+	}
+	if _, err := r.queries.WithTx(tx).CreateTeamMember(ctx, dbsqlc.CreateTeamMemberParams{TeamID: teamID, UserID: userID, Role: role, Status: status}); err != nil {
+		if isUniqueViolation(err) {
+			return Invitation{}, ErrTeamMemberAlreadyExists
+		}
+		return Invitation{}, fmt.Errorf("create team member: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return Invitation{}, fmt.Errorf("commit invitation acceptance: %w", err)
+	}
+	return invitation, nil
+}
+
+func (r *Repository) DeclineInvitationByIDForEmail(ctx context.Context, invitationID uuid.UUID, email string) (Invitation, error) {
+	row := r.db.QueryRow(ctx, `
+		UPDATE team_invitations AS invitation
+		SET status = 'declined', declined_at = now(), updated_at = now()
+		FROM teams AS team
+		WHERE invitation.id = $1
+		  AND lower(invitation.email) = lower($2)
+		  AND invitation.status = 'pending'
+		  AND invitation.expires_at > now()
+		  AND team.id = invitation.team_id
+		  AND team.status = 'active'
+		RETURNING invitation.id, invitation.team_id, team.name, invitation.email, invitation.role, invitation.status,
+		          invitation.invited_by, invitation.expires_at, invitation.accepted_at, invitation.declined_at,
+		          invitation.created_at, invitation.updated_at`, invitationID, email)
+	return scanInvitationWithTeamName(row)
+}
+
 func (r *Repository) CreateInvitation(ctx context.Context, teamID uuid.UUID, email, role, tokenHash string, invitedBy uuid.UUID, expiresAt time.Time) (Invitation, error) {
 	row, err := r.queries.CreateTeamInvitation(ctx, dbsqlc.CreateTeamInvitationParams{
 		TeamID: teamID, Email: email, Role: role, TokenHash: tokenHash,
@@ -319,6 +463,39 @@ func invitationFromSQLC(row dbsqlc.TeamInvitation) Invitation {
 		Role: row.Role, Status: row.Status, InvitedBy: invitedBy, ExpiresAt: row.ExpiresAt.Time,
 		AcceptedAt: acceptedAt, DeclinedAt: declinedAt, CreatedAt: row.CreatedAt.Time, UpdatedAt: row.UpdatedAt.Time,
 	}
+}
+
+type invitationScanner interface {
+	Scan(dest ...any) error
+}
+
+func scanInvitationWithTeamName(row invitationScanner) (Invitation, error) {
+	var (
+		id         uuid.UUID
+		teamID     uuid.UUID
+		invitedBy  *uuid.UUID
+		expiresAt  pgtype.Timestamptz
+		acceptedAt pgtype.Timestamptz
+		declinedAt pgtype.Timestamptz
+		createdAt  pgtype.Timestamptz
+		updatedAt  pgtype.Timestamptz
+		invitation Invitation
+	)
+	if err := row.Scan(
+		&id, &teamID, &invitation.TeamName, &invitation.Email, &invitation.Role, &invitation.Status,
+		&invitedBy, &expiresAt, &acceptedAt, &declinedAt, &createdAt, &updatedAt,
+	); err != nil {
+		return Invitation{}, err
+	}
+	invitation.ID = id.String()
+	invitation.TeamID = teamID.String()
+	invitation.InvitedBy = stringPointer(invitedBy)
+	invitation.ExpiresAt = pgconv.TimestamptzToTime(expiresAt)
+	invitation.AcceptedAt = pgconv.TimestamptzToTimePtr(acceptedAt)
+	invitation.DeclinedAt = pgconv.TimestamptzToTimePtr(declinedAt)
+	invitation.CreatedAt = pgconv.TimestamptzToTime(createdAt)
+	invitation.UpdatedAt = pgconv.TimestamptzToTime(updatedAt)
+	return invitation, nil
 }
 
 func memberFromSQLC(row dbsqlc.TeamMember) Member {

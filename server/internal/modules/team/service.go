@@ -253,6 +253,47 @@ func (s *Service) notifyMemberChange(ctx context.Context, teamID, userID uuid.UU
 	}
 }
 
+func (s *Service) ListPendingInvitations(ctx context.Context) ([]Invitation, error) {
+	principal, ok := authn.PrincipalFromContext(ctx)
+	if !ok {
+		return nil, apperrors.NewUnauthorized("Authentication is required")
+	}
+	invitations, err := s.repository.ListPendingInvitationsForEmail(ctx, principal.Email)
+	if err != nil {
+		return nil, apperrors.NewInternal("Unable to list pending invitations", err)
+	}
+	return invitations, nil
+}
+
+func (s *Service) ListTeamInvitations(ctx context.Context, teamID string) ([]Invitation, error) {
+	tenantContext, err := requireTenantPermission(ctx, teamID, authz.PermissionTeamMemberInvite)
+	if err != nil {
+		return nil, err
+	}
+	invitations, err := s.repository.ListPendingInvitationsForTeam(ctx, tenantContext.Scope.TeamID)
+	if err != nil {
+		return nil, apperrors.NewInternal("Unable to list team invitations", err)
+	}
+	return invitations, nil
+}
+
+func (s *Service) RevokeInvitation(ctx context.Context, teamID, invitationID string) (Invitation, error) {
+	tenantContext, err := requireTenantPermission(ctx, teamID, authz.PermissionTeamMemberInvite)
+	if err != nil {
+		return Invitation{}, err
+	}
+	parsedInvitationID, err := validateInvitationID(invitationID)
+	if err != nil {
+		return Invitation{}, err
+	}
+	invitation, err := s.repository.RevokeInvitation(ctx, tenantContext.Scope.TeamID, parsedInvitationID)
+	if err != nil {
+		return Invitation{}, apperrors.NewNotFound("Team invitation not found")
+	}
+	audit.Record(ctx, tenantContext, audit.Event{Action: "team_invitation.revoked", ResourceType: "team_invitation", ResourceID: invitation.ID, Metadata: map[string]any{"email": invitation.Email, "role": invitation.Role}})
+	return invitation, nil
+}
+
 func (s *Service) InviteMember(ctx context.Context, teamID string, req InviteMemberRequest) (Invitation, error) {
 	tenantContext, err := requireTenantPermission(ctx, teamID, authz.PermissionTeamMemberInvite)
 	if err != nil {
@@ -321,7 +362,14 @@ func (s *Service) GetInvitation(ctx context.Context, token string) (Invitation, 
 }
 
 func (s *Service) AcceptInvitation(ctx context.Context, token string) (Invitation, error) {
-	principal, invitation, err := s.invitationForPrincipal(ctx, token)
+	principal, ok := authn.PrincipalFromContext(ctx)
+	if !ok {
+		return Invitation{}, apperrors.NewUnauthorized("Authentication is required")
+	}
+	if invitationID, parseErr := uuid.Parse(strings.TrimSpace(token)); parseErr == nil {
+		return s.acceptInvitationByID(ctx, principal, invitationID)
+	}
+	_, invitation, err := s.invitationForPrincipal(ctx, token)
 	if err != nil {
 		return Invitation{}, err
 	}
@@ -351,7 +399,20 @@ func (s *Service) AcceptInvitation(ctx context.Context, token string) (Invitatio
 }
 
 func (s *Service) DeclineInvitation(ctx context.Context, token string) (Invitation, error) {
-	principal, invitation, err := s.invitationForPrincipal(ctx, token)
+	principal, ok := authn.PrincipalFromContext(ctx)
+	if !ok {
+		return Invitation{}, apperrors.NewUnauthorized("Authentication is required")
+	}
+	if invitationID, parseErr := uuid.Parse(strings.TrimSpace(token)); parseErr == nil {
+		declined, err := s.repository.DeclineInvitationByIDForEmail(ctx, invitationID, principal.Email)
+		if err != nil {
+			return Invitation{}, apperrors.NewBadRequest("Invitation token is invalid or expired")
+		}
+		teamID, _ := uuid.Parse(declined.TeamID)
+		audit.Record(ctx, authz.Access{Actor: authz.Actor{Type: authz.ActorTypeUser, UserID: principal.UserID, SessionID: principal.SessionID}, Scope: authz.TeamScope{TeamID: teamID}}, audit.Event{Action: "team_invitation.declined", ResourceType: "team_invitation", ResourceID: declined.ID})
+		return declined, nil
+	}
+	_, invitation, err := s.invitationForPrincipal(ctx, token)
 	if err != nil {
 		return Invitation{}, err
 	}
@@ -365,6 +426,33 @@ func (s *Service) DeclineInvitation(ctx context.Context, token string) (Invitati
 	teamID, _ := uuid.Parse(declined.TeamID)
 	audit.Record(ctx, authz.Access{Actor: authz.Actor{Type: authz.ActorTypeUser, UserID: principal.UserID, SessionID: principal.SessionID}, Scope: authz.TeamScope{TeamID: teamID}}, audit.Event{Action: "team_invitation.declined", ResourceType: "team_invitation", ResourceID: declined.ID})
 	return declined, nil
+}
+
+func (s *Service) acceptInvitationByID(ctx context.Context, principal authn.Principal, invitationID uuid.UUID) (Invitation, error) {
+	invitation, err := s.repository.GetPendingInvitationByIDForEmail(ctx, invitationID, principal.Email)
+	if err != nil {
+		return Invitation{}, apperrors.NewBadRequest("Invitation token is invalid or expired")
+	}
+	teamID, err := uuid.Parse(invitation.TeamID)
+	if err != nil {
+		return Invitation{}, apperrors.NewInternal("Unable to parse invitation team id", err)
+	}
+	if _, err := s.repository.GetMember(ctx, teamID, principal.UserID); err == nil {
+		return Invitation{}, apperrors.NewBadRequest("User is already a team member")
+	}
+	accepted, err := s.repository.AcceptInvitationByIDAndCreateMember(ctx, invitationID, teamID, principal.UserID, invitation.Role, "active")
+	if err != nil {
+		switch {
+		case errors.Is(err, ErrInvitationNotAccepted):
+			return Invitation{}, apperrors.NewBadRequest("Invitation token is invalid or expired")
+		case errors.Is(err, ErrTeamMemberAlreadyExists):
+			return Invitation{}, apperrors.NewBadRequest("User is already a team member")
+		default:
+			return Invitation{}, apperrors.NewInternal("Unable to accept invitation", err)
+		}
+	}
+	audit.Record(ctx, authz.Access{Actor: authz.Actor{Type: authz.ActorTypeUser, UserID: principal.UserID, SessionID: principal.SessionID}, Scope: authz.TeamScope{TeamID: teamID, Role: invitation.Role, Status: authz.StatusActive}}, audit.Event{Action: "team_invitation.accepted", ResourceType: "team_invitation", ResourceID: accepted.ID})
+	return accepted, nil
 }
 
 func (s *Service) invitationForPrincipal(ctx context.Context, token string) (authn.Principal, Invitation, error) {

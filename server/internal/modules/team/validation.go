@@ -57,6 +57,14 @@ func validateMemberID(value string) (uuid.UUID, error) {
 	return id, nil
 }
 
+func validateInvitationID(value string) (uuid.UUID, error) {
+	id, err := uuid.Parse(strings.TrimSpace(value))
+	if err != nil {
+		return uuid.Nil, apperrors.NewBadRequest("Invitation id must be a valid UUID")
+	}
+	return id, nil
+}
+
 func validateMemberRole(value string) (string, error) {
 	role := strings.TrimSpace(value)
 	if role != RoleAdmin && role != RoleMember {
