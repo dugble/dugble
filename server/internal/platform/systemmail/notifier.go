@@ -264,6 +264,23 @@ func (s *EmailService) SendEmailVerification(ctx context.Context, input SendEmai
 	return s.SendTemplateEmail(ctx, SendTemplateEmailInput{To: input.ToEmail, Subject: "Verify your Dugble email address", TemplateName: verifyEmailTemplate, Data: map[string]string{"Name": displayName(input.Name), "PreviewText": "Verify your dugble email address.", "VerificationURL": s.verificationURL(input.ToEmail, input.Token)}})
 }
 
+func (s *EmailService) SendEmailChangeVerification(ctx context.Context, input SendEmailChangeVerificationInput) error {
+	query := url.Values{}
+	query.Set("token", input.Token)
+	verificationURL := s.frontendURL + "/verify-email-change?" + query.Encode()
+
+	return s.SendTemplateEmail(ctx, SendTemplateEmailInput{
+		To:           input.ToEmail,
+		Subject:      "Verify your new Dugble email address",
+		TemplateName: verifyEmailTemplate,
+		Data: map[string]string{
+			"Name":            displayName(input.Name),
+			"PreviewText":     "Verify your new Dugble email address.",
+			"VerificationURL": verificationURL,
+		},
+	})
+}
+
 func (s *EmailService) SendPasswordReset(ctx context.Context, input SendPasswordResetInput) error {
 	return s.SendTemplateEmail(ctx, SendTemplateEmailInput{To: input.ToEmail, Subject: "Reset your Dugble password", TemplateName: forgotPasswordTemplate, Data: map[string]string{"Name": displayName(input.Name), "PreviewText": "Reset your dugble password.", "ResetURL": s.passwordResetURL(input.ToEmail, input.Token)}})
 }
