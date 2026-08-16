@@ -9,7 +9,6 @@ import (
 	"time"
 
 	sentrymonitoring "github.com/dugble/dugble/server/internal/adapters/monitoring/sentry"
-	platformsenderid "github.com/dugble/dugble/server/internal/platform/senderid"
 )
 
 type JobConfig struct {
@@ -48,13 +47,13 @@ func (config JobConfig) validate() error {
 type Job struct {
 	repository *Repository
 	service    *ReconciliationService
-	providers  map[string]platformsenderid.Provider
+	providers  map[string]reconciliationProvider
 	config     JobConfig
 	workerID   string
 	now        func() time.Time
 }
 
-func NewJob(repository *Repository, config JobConfig, workerID string, providers ...platformsenderid.Provider) (*Job, error) {
+func NewJob(repository *Repository, config JobConfig, workerID string, providers ...reconciliationProvider) (*Job, error) {
 	if err := config.validate(); err != nil {
 		return nil, err
 	}
@@ -62,19 +61,19 @@ func NewJob(repository *Repository, config JobConfig, workerID string, providers
 	if workerID == "" {
 		return nil, ErrWorkerIDRequired
 	}
-	registry := make(map[string]platformsenderid.Provider, len(providers))
-	for _, provider := range providers {
-		if provider == nil {
+	registry := make(map[string]reconciliationProvider, len(providers))
+	for _, upstream := range providers {
+		if upstream == nil {
 			return nil, errors.New("sender ID provider is required")
 		}
-		providerID := strings.ToLower(strings.TrimSpace(provider.ID()))
+		providerID := strings.ToLower(strings.TrimSpace(upstream.Name()))
 		if providerID == "" {
-			return nil, errors.New("sender ID provider ID is required")
+			return nil, errors.New("sender ID provider name is required")
 		}
 		if _, exists := registry[providerID]; exists {
 			return nil, fmt.Errorf("duplicate Sender ID provider %q", providerID)
 		}
-		registry[providerID] = provider
+		registry[providerID] = upstream
 	}
 	if len(registry) == 0 {
 		return nil, errors.New("at least one Sender ID provider is required")
@@ -113,7 +112,7 @@ func (job *Job) Run(ctx context.Context) error {
 }
 
 type workItem struct {
-	provider platformsenderid.Provider
+	provider reconciliationProvider
 	claim    RegistrationClaim
 }
 
@@ -121,14 +120,14 @@ func (job *Job) poll(ctx context.Context) error {
 	now := job.now()
 	items := make([]workItem, 0, int(job.config.BatchSize)*len(job.providers))
 	var joined error
-	for providerID, provider := range job.providers {
+	for providerID, upstream := range job.providers {
 		claims, err := job.repository.ClaimPendingRegistrations(ctx, job.workerID, providerID, job.config.BatchSize, now.Add(-job.config.LockTimeout))
 		if err != nil {
 			joined = errors.Join(joined, fmt.Errorf("claim %s Sender ID registrations: %w", providerID, err))
 			continue
 		}
 		for _, claim := range claims {
-			items = append(items, workItem{provider: provider, claim: claim})
+			items = append(items, workItem{provider: upstream, claim: claim})
 		}
 	}
 
