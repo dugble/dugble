@@ -82,4 +82,5 @@ type SenderIDStatusResult struct {
 	Status            SenderIDStatus
 	ProviderStatus    string
 	ProviderCode      string
+	Whitelisted       bool
 }
