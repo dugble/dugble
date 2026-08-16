@@ -21,10 +21,11 @@ const (
 
 // Message is the provider-neutral SMS request accepted by Relay.
 type Message struct {
-	To      string
-	From    string
-	Text    string
-	Purpose Purpose
+	Reference string
+	To        string
+	From      string
+	Text      string
+	Purpose   Purpose
 }
 
 func (m Message) validate() error {

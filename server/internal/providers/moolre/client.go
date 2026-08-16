@@ -11,7 +11,7 @@ import (
 	"strings"
 )
 
-const defaultBaseURL = "https://api.moolre.com/open/sms/send"
+const defaultBaseURL = "https://api.moolre.com"
 
 type client struct {
 	vasKey  string
@@ -29,6 +29,25 @@ type sendPayload struct {
 	Type     int              `json:"type"`
 	SenderID string           `json:"senderid"`
 	Messages []messagePayload `json:"messages"`
+}
+
+type createSenderIDPayload struct {
+	Type      int               `json:"type"`
+	SenderIDs []senderIDPayload `json:"senderids"`
+}
+
+type senderIDPayload struct {
+	SenderID string `json:"senderid"`
+}
+
+type senderIDStatusPayload struct {
+	Type     int    `json:"type"`
+	SenderID string `json:"senderid"`
+}
+
+type smsStatusPayload struct {
+	Type int      `json:"type"`
+	Ref  []string `json:"ref"`
 }
 
 type responseBody struct {
@@ -59,6 +78,7 @@ func newClient(config Config) (*client, error) {
 	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
 		return nil, fmt.Errorf("%w: invalid base URL", ErrInvalidConfig)
 	}
+	parsed.Path = strings.TrimRight(parsed.Path, "/")
 
 	httpClient := config.HTTPClient
 	if httpClient == nil {
@@ -69,12 +89,26 @@ func newClient(config Config) (*client, error) {
 }
 
 func (c *client) send(ctx context.Context, payload sendPayload) (rawResponse, error) {
+	return c.post(ctx, "/open/sms/send", payload)
+}
+
+func (c *client) query(ctx context.Context, payload createSenderIDPayload) (rawResponse, error) {
+	return c.post(ctx, "/open/sms/query", payload)
+}
+
+func (c *client) status(ctx context.Context, payload any) (rawResponse, error) {
+	return c.post(ctx, "/open/sms/status", payload)
+}
+
+func (c *client) post(ctx context.Context, path string, payload any) (rawResponse, error) {
 	body, err := json.Marshal(payload)
 	if err != nil {
 		return rawResponse{}, fmt.Errorf("encode Moolre request: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL.String(), bytes.NewReader(body))
+	endpoint := *c.baseURL
+	endpoint.Path = strings.TrimRight(endpoint.Path, "/") + path
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint.String(), bytes.NewReader(body))
 	if err != nil {
 		return rawResponse{}, fmt.Errorf("create Moolre request: %w", err)
 	}

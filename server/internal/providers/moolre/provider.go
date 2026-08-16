@@ -7,10 +7,12 @@ import (
 	"net/http"
 	"strings"
 
+	provider "github.com/dugble/dugble/server/internal/providers"
 	"github.com/dugble/dugble/server/internal/relay/sms"
 )
 
 var ErrInvalidConfig = errors.New("invalid Moolre configuration")
+var ErrInvalidRequest = errors.New("invalid Moolre request")
 
 // Config configures the Moolre provider.
 type Config struct {
@@ -75,6 +77,7 @@ func (p *Provider) Send(ctx context.Context, message sms.Message) (sms.SendResul
 		Messages: []messagePayload{{
 			Recipient: strings.TrimSpace(message.To),
 			Message:   message.Text,
+			Ref:       strings.TrimSpace(message.Reference),
 		}},
 	})
 
@@ -83,22 +86,40 @@ func (p *Provider) Send(ctx context.Context, message sms.Message) (sms.SendResul
 	}
 
 	if isSafeToFallbackStatus(response.statusCode) {
-		return sms.SendResult{State: sms.SubmissionRejected}, &APIError{
-			StatusCode: response.statusCode,
-			Code:       response.body.Code,
-			Message:    response.body.Message,
-		}
+		return sms.SendResult{State: sms.SubmissionRejected}, apiError(response)
 	}
 
 	if requestErr != nil {
 		return sms.SendResult{State: sms.SubmissionUnknown}, requestErr
 	}
 
-	return sms.SendResult{State: sms.SubmissionUnknown}, &APIError{
-		StatusCode: response.statusCode,
-		Code:       response.body.Code,
-		Message:    response.body.Message,
+	return sms.SendResult{State: sms.SubmissionUnknown}, apiError(response)
+}
+
+// CreateSenderID submits a Sender ID registration request to Moolre.
+func (p *Provider) CreateSenderID(ctx context.Context, request provider.CreateSenderIDRequest) (provider.CreateSenderIDResult, error) {
+	senderID := strings.TrimSpace(request.SenderID)
+	result := provider.CreateSenderIDResult{SenderID: senderID, Status: provider.SenderIDUnknown}
+	if p == nil || p.client == nil {
+		return result, ErrInvalidConfig
 	}
+	if senderID == "" || len(senderID) > 11 {
+		return result, ErrInvalidRequest
+	}
+
+	response, err := p.client.query(ctx, createSenderIDPayload{
+		Type:      3,
+		SenderIDs: []senderIDPayload{{SenderID: senderID}},
+	})
+	if err != nil {
+		return result, err
+	}
+	result.ProviderCode = response.body.Code
+	if response.statusCode == http.StatusOK && response.body.Status == 1 && strings.EqualFold(strings.TrimSpace(response.body.Code), "ASMQ12") {
+		result.Status = provider.SenderIDPending
+		return result, nil
+	}
+	return result, apiError(response)
 }
 
 func isSafeToFallbackStatus(statusCode int) bool {
@@ -109,3 +130,16 @@ func isSafeToFallbackStatus(statusCode int) bool {
 		return false
 	}
 }
+
+func apiError(response rawResponse) error {
+	return &APIError{
+		StatusCode: response.statusCode,
+		Code:       response.body.Code,
+		Message:    response.body.Message,
+	}
+}
+
+var _ provider.Sender = (*Provider)(nil)
+var _ provider.SenderIDCreator = (*Provider)(nil)
+var _ provider.SMSStatusChecker = (*Provider)(nil)
+var _ provider.SenderIDStatusChecker = (*Provider)(nil)
