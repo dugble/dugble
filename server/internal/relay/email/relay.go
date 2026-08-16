@@ -13,6 +13,7 @@ var (
 	ErrNoCapableProviders   = relaycore.ErrNoCapableProviders
 	ErrNoAvailableProviders = relaycore.ErrNoAvailableProviders
 	ErrAllRejected          = relaycore.ErrAllRejected
+	ErrSubmissionUnknown    = relaycore.ErrSubmissionUnknown
 )
 
 // Relay executes email providers in configured order and only falls back after
@@ -107,7 +108,7 @@ func (r *Relay) Send(ctx context.Context, message Message) (SendResult, error) {
 			if err != nil {
 				return result, fmt.Errorf("provider %s submission state unknown: %w", provider.Name(), err)
 			}
-			return result, nil
+			return result, fmt.Errorf("provider %s submission state unknown: %w", provider.Name(), ErrSubmissionUnknown)
 		}
 	}
 

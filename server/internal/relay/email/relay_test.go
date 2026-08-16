@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	relaycore "github.com/dugble/dugble/server/internal/relay"
 	"github.com/dugble/dugble/server/internal/relay/email"
 )
 
@@ -93,4 +94,47 @@ func TestRelaySubmissionSafety(t *testing.T) {
 			t.Fatalf("result=%+v fallback calls=%d", result, fallback.calls)
 		}
 	})
+
+	t.Run("missing state is unknown error", func(t *testing.T) {
+		primary := &provider{name: "primary", send: func(context.Context, email.Message) (email.SendResult, error) {
+			return email.SendResult{}, nil
+		}}
+		fallback := &provider{name: "fallback", send: func(context.Context, email.Message) (email.SendResult, error) {
+			t.Fatal("fallback must not run for unrecognized state")
+			return email.SendResult{}, nil
+		}}
+		router, err := email.NewRelay(primary, fallback)
+		if err != nil {
+			t.Fatal(err)
+		}
+		result, err := router.Send(context.Background(), message())
+		if !errors.Is(err, email.ErrSubmissionUnknown) {
+			t.Fatalf("error=%v, want ErrSubmissionUnknown", err)
+		}
+		if result.State != email.SubmissionUnknown || fallback.calls != 0 {
+			t.Fatalf("result=%+v fallback calls=%d", result, fallback.calls)
+		}
+	})
+}
+
+func TestRelayUnknownHealthIsUnavailable(t *testing.T) {
+	primary := &provider{name: "primary", send: func(context.Context, email.Message) (email.SendResult, error) {
+		t.Fatal("provider with unknown health must not receive traffic")
+		return email.SendResult{}, nil
+	}}
+	router, err := email.NewRelay(primary)
+	if err != nil {
+		t.Fatal(err)
+	}
+	router = router.WithHealth(relaycore.HealthFunc(func(context.Context, string) relaycore.HealthStatus {
+		return relaycore.HealthStatus("")
+	}))
+
+	result, err := router.Send(context.Background(), message())
+	if !errors.Is(err, email.ErrNoAvailableProviders) {
+		t.Fatalf("error=%v, want ErrNoAvailableProviders", err)
+	}
+	if result.State != email.SubmissionRejected || primary.calls != 0 {
+		t.Fatalf("result=%+v primary calls=%d", result, primary.calls)
+	}
 }
