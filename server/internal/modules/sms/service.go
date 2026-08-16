@@ -12,13 +12,13 @@ import (
 
 	"github.com/dugble/dugble/server/internal/authz"
 	platformbilling "github.com/dugble/dugble/server/internal/billing/charge/usage"
-	smsapi "github.com/dugble/dugble/server/internal/platform/sms"
+	provider "github.com/dugble/dugble/server/internal/providers"
+	relaysms "github.com/dugble/dugble/server/internal/relay/sms"
 	apperrors "github.com/dugble/dugble/server/pkg/errors"
 )
 
-type Sender interface {
-	Send(ctx context.Context, req smsapi.SendRequest) (*smsapi.SendResponse, error)
-	CheckStatus(ctx context.Context, providerID string, providerMessageID string) (*smsapi.StatusResponse, error)
+type providerLookup interface {
+	Provider(string) relaysms.Provider
 }
 
 type scheduledDeliveryQueue interface {
@@ -37,12 +37,12 @@ type DeliveryQueue interface {
 
 type Service struct {
 	repository *Repository
-	sender     Sender
+	sender     providerLookup
 	delivery   DeliveryQueue
 	billing    platformbilling.SMSBilling
 }
 
-func NewService(repository *Repository, sender Sender, delivery DeliveryQueue, billing platformbilling.SMSBilling) *Service {
+func NewService(repository *Repository, sender providerLookup, delivery DeliveryQueue, billing platformbilling.SMSBilling) *Service {
 	return &Service{repository: repository, sender: sender, delivery: delivery, billing: billing}
 }
 
@@ -457,11 +457,32 @@ func (s *Service) SyncStatus(ctx context.Context, messageID string) (Message, er
 	if s.sender == nil {
 		return Message{}, apperrors.NewInternal("SMS sender is not configured", nil)
 	}
-	status, err := s.sender.CheckStatus(ctx, *message.ProviderID, *message.ProviderMessageID)
+	upstream := s.sender.Provider(*message.ProviderID)
+	checker, ok := upstream.(provider.SMSStatusChecker)
+	if !ok {
+		return Message{}, apperrors.NewInternal("SMS provider does not support status reconciliation", nil)
+	}
+	status, err := checker.CheckSMSStatus(ctx, provider.SMSStatusRequest{
+		Reference:         message.ID,
+		ProviderMessageID: *message.ProviderMessageID,
+	})
 	if err != nil {
 		return Message{}, apperrors.NewInternal("Unable to sync SMS status", err)
 	}
-	nextStatus := resolveProviderStatus(message.Status, status.Status)
+	providerStatus := strings.ToLower(strings.TrimSpace(status.ProviderStatus))
+	if providerStatus == "" {
+		switch status.Status {
+		case provider.SMSPending:
+			providerStatus = StatusSubmitted
+		case provider.SMSDelivered:
+			providerStatus = StatusDelivered
+		case provider.SMSFailed:
+			providerStatus = StatusFailed
+		default:
+			providerStatus = StatusUnknown
+		}
+	}
+	nextStatus := resolveProviderStatus(message.Status, providerStatus)
 	if nextStatus == message.Status {
 		return message, nil
 	}
