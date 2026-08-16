@@ -16,6 +16,7 @@ import (
 type Response struct {
 	Success bool      `json:"success"`
 	Data    any       `json:"data,omitempty"`
+	Meta    any       `json:"meta,omitempty"`
 	Error   *ErrorObj `json:"error,omitempty"`
 }
 
@@ -33,8 +34,20 @@ func JSON(c *echo.Context, status int, data any) error {
 	return c.JSON(status, Response{Success: true, Data: data})
 }
 
+// JSONWithMeta sends a successful JSON response with optional response metadata.
+func JSONWithMeta(c *echo.Context, status int, data, meta any) error {
+	if status == http.StatusNoContent {
+		return c.NoContent(status)
+	}
+	return c.JSON(status, Response{Success: true, Data: data, Meta: meta})
+}
+
 func OK(c *echo.Context, data any) error {
 	return JSON(c, http.StatusOK, data)
+}
+
+func OKWithMeta(c *echo.Context, data, meta any) error {
+	return JSONWithMeta(c, http.StatusOK, data, meta)
 }
 
 func Created(c *echo.Context, data any) error {
