@@ -20,7 +20,6 @@ var ErrInvalidRequest = errors.New("invalid Sendexa request")
 // Config configures the Sendexa provider.
 type Config struct {
 	Token      string
-	BaseURL    string
 	HTTPClient *http.Client
 }
 
@@ -30,16 +29,16 @@ type Provider struct {
 }
 
 func New(config Config) (*Provider, error) {
+	return newProvider(config, defaultBaseURL)
+}
+
+func newProvider(config Config, baseURL string) (*Provider, error) {
 	token := strings.TrimSpace(config.Token)
 	if token == "" {
 		return nil, fmt.Errorf("%w: token is required", ErrInvalidConfig)
 	}
 
-	base := strings.TrimSpace(config.BaseURL)
-	if base == "" {
-		base = defaultBaseURL
-	}
-	parsed, err := url.Parse(base)
+	parsed, err := url.Parse(strings.TrimSpace(baseURL))
 	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
 		return nil, fmt.Errorf("%w: invalid base URL", ErrInvalidConfig)
 	}
