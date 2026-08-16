@@ -52,7 +52,7 @@ func (p *Provider) CheckSMSStatus(ctx context.Context, request provider.SMSStatu
 		result.ProviderStatus = strconv.Itoa(status.Status)
 		return result, nil
 	}
-	return result, fmt.Errorf("Moolre SMS status did not include ref %q", reference)
+	return result, fmt.Errorf("moolre SMS status did not include ref %q", reference)
 }
 
 // CheckSenderIDStatus reconciles the approval state of a Moolre Sender ID.
