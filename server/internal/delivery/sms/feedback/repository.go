@@ -15,7 +15,6 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	smsmodule "github.com/dugble/dugble/server/internal/modules/sms"
-	smsapi "github.com/dugble/dugble/server/internal/platform/sms"
 )
 
 type PendingMessage struct {
@@ -168,7 +167,7 @@ func smsMessageStatus(event feedback.Event) (string, bool) {
 	case attempt.StatusDelivered:
 		return smsmodule.StatusDelivered, true
 	case attempt.StatusPermanentFailure:
-		if strings.HasSuffix(event.EventType, "."+smsapi.StatusUndelivered) {
+		if strings.HasSuffix(event.EventType, "."+smsmodule.StatusUndelivered) {
 			return smsmodule.StatusUndelivered, true
 		}
 		return smsmodule.StatusFailed, true
