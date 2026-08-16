@@ -98,7 +98,10 @@ func (p *Provider) Send(ctx context.Context, message sms.Message) (sms.SendResul
 	}
 
 	status := strings.ToLower(strings.TrimSpace(response.body.Data.Status))
-	result := sms.SendResult{ProviderMessageID: strings.TrimSpace(response.body.Data.MessageID)}
+	result := sms.SendResult{
+		ProviderMessageID: strings.TrimSpace(response.body.Data.MessageID),
+		ProviderStatus:    status,
+	}
 	if response.statusCode >= http.StatusOK && response.statusCode < http.StatusMultipleChoices && response.body.Success && result.ProviderMessageID != "" && isAcceptedStatus(status) {
 		result.State = sms.SubmissionAccepted
 		return result, nil
