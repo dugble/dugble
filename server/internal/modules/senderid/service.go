@@ -11,7 +11,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/dugble/dugble/server/internal/authz"
-	platformsenderid "github.com/dugble/dugble/server/internal/platform/senderid"
+	provider "github.com/dugble/dugble/server/internal/providers"
 	"github.com/dugble/dugble/server/internal/platform/systemmail"
 	apperrors "github.com/dugble/dugble/server/pkg/errors"
 )
@@ -60,11 +60,11 @@ func (s *Service) Create(ctx context.Context, req CreateRequest) (SenderID, erro
 	if err != nil {
 		return SenderID{}, err
 	}
-	name, countryCode, purpose, provider, err := validateCreate(req)
+	name, countryCode, purpose, providerName, err := validateCreate(req)
 	if err != nil {
 		return SenderID{}, err
 	}
-	senderID, err := s.repository.Create(ctx, tenantContext.Scope.TeamID, name, countryCode, purpose, provider, tenantContext.Actor.UserIDPtr())
+	senderID, err := s.repository.Create(ctx, tenantContext.Scope.TeamID, name, countryCode, purpose, providerName, tenantContext.Actor.UserIDPtr())
 	if err != nil {
 		if errors.Is(err, ErrSenderIDAlreadyExists) {
 			return SenderID{}, apperrors.NewConflict("Sender ID already exists for this team and country")
@@ -94,6 +94,11 @@ type reconciliationNotifier interface {
 	SendSenderIDStatus(context.Context, systemmail.SendSenderIDStatusInput) error
 }
 
+type reconciliationProvider interface {
+	provider.SenderIDCreator
+	provider.SenderIDStatusChecker
+}
+
 type ReconciliationService struct {
 	repository           *Repository
 	providerTimeout      time.Duration
@@ -119,16 +124,16 @@ func (s *ReconciliationService) WithNotifier(notifier reconciliationNotifier) *R
 	return s
 }
 
-func (s *ReconciliationService) Process(ctx context.Context, provider platformsenderid.Provider, claim RegistrationClaim) error {
+func (s *ReconciliationService) Process(ctx context.Context, upstream reconciliationProvider, claim RegistrationClaim) error {
 	if claim.ProviderSubmittedAt == nil && !strings.EqualFold(claim.ProviderStatus, providerStatusSubmissionUnknown) {
-		return s.submit(ctx, provider, claim)
+		return s.submit(ctx, upstream, claim)
 	}
-	return s.checkStatus(ctx, provider, claim)
+	return s.checkStatus(ctx, upstream, claim)
 }
 
-func (s *ReconciliationService) submit(ctx context.Context, provider platformsenderid.Provider, claim RegistrationClaim) error {
+func (s *ReconciliationService) submit(ctx context.Context, upstream reconciliationProvider, claim RegistrationClaim) error {
 	providerCtx, cancel := context.WithTimeout(ctx, s.providerTimeout)
-	response, err := provider.Create(providerCtx, platformsenderid.CreateRequest{SenderID: claim.Name})
+	response, err := upstream.CreateSenderID(providerCtx, provider.CreateSenderIDRequest{SenderID: claim.Name})
 	cancel()
 	if err != nil {
 		providerStatus := providerStatusSubmissionFailed
@@ -137,54 +142,65 @@ func (s *ReconciliationService) submit(ctx context.Context, provider platformsen
 		}
 		return s.recordFailure(ctx, claim, providerStatus, err)
 	}
-	if err := validateCreateResponse(provider, claim, response); err != nil {
+	if err := validateCreateResponse(claim, response); err != nil {
 		return s.recordFailure(ctx, claim, providerStatusSubmissionUnknown, err)
 	}
-	switch response.Status {
-	case platformsenderid.StatusPending:
-		return s.repository.CompleteSubmission(ctx, claim.ID, s.workerID, response.Status, s.now().Add(s.pendingCheckInterval))
-	case platformsenderid.StatusApproved, platformsenderid.StatusRejected, platformsenderid.StatusSuspended:
-		return s.completeStatus(ctx, claim, &platformsenderid.StatusResponse{ProviderID: response.ProviderID, SenderID: response.SenderID, Status: response.Status, ProviderStatus: response.Status})
+	status := normalizedSenderIDStatus(response.Status, "")
+	switch status {
+	case StatusPending:
+		return s.repository.CompleteSubmission(ctx, claim.ID, s.workerID, status, s.now().Add(s.pendingCheckInterval))
+	case StatusApproved, StatusRejected, StatusSuspended:
+		return s.completeStatus(ctx, claim, upstream.Name(), provider.SenderIDStatusResult{
+			SenderID:          response.SenderID,
+			ProviderReference: response.ProviderReference,
+			Status:            response.Status,
+			ProviderStatus:    status,
+		})
 	default:
 		return s.recordFailure(ctx, claim, providerStatusSubmissionUnknown, fmt.Errorf("provider returned unknown Sender ID creation status %q", response.Status))
 	}
 }
 
-func (s *ReconciliationService) checkStatus(ctx context.Context, provider platformsenderid.Provider, claim RegistrationClaim) error {
+func (s *ReconciliationService) checkStatus(ctx context.Context, upstream reconciliationProvider, claim RegistrationClaim) error {
 	providerCtx, cancel := context.WithTimeout(ctx, s.providerTimeout)
-	response, err := provider.CheckStatus(providerCtx, claim.Name)
+	response, err := upstream.CheckSenderIDStatus(providerCtx, provider.SenderIDStatusRequest{SenderID: claim.Name})
 	cancel()
 	if err != nil {
 		providerStatus := claim.ProviderStatus
 		if providerStatus == "" {
-			providerStatus = platformsenderid.StatusUnknown
+			providerStatus = string(provider.SenderIDUnknown)
 		}
 		return s.recordFailure(ctx, claim, providerStatus, err)
 	}
-	if err := validateStatusResponse(provider, claim, response); err != nil {
-		return s.recordFailure(ctx, claim, platformsenderid.StatusUnknown, err)
+	if err := validateStatusResponse(claim, response); err != nil {
+		return s.recordFailure(ctx, claim, string(provider.SenderIDUnknown), err)
 	}
-	return s.completeStatus(ctx, claim, response)
+	return s.completeStatus(ctx, claim, upstream.Name(), response)
 }
 
-func (s *ReconciliationService) completeStatus(ctx context.Context, claim RegistrationClaim, response *platformsenderid.StatusResponse) error {
+func (s *ReconciliationService) completeStatus(ctx context.Context, claim RegistrationClaim, providerName string, response provider.SenderIDStatusResult) error {
+	status := normalizedSenderIDStatus(response.Status, response.ProviderStatus)
+	providerStatus := strings.TrimSpace(response.ProviderStatus)
+	if providerStatus == "" {
+		providerStatus = status
+	}
 	var rejectionReason *string
 	nextCheckAt := s.now()
-	switch response.Status {
-	case platformsenderid.StatusPending:
+	switch status {
+	case StatusPending:
 		nextCheckAt = nextCheckAt.Add(s.pendingCheckInterval)
-	case platformsenderid.StatusApproved:
-	case platformsenderid.StatusRejected:
-		reason := "Sender ID was rejected by " + response.ProviderID
+	case StatusApproved:
+	case StatusRejected:
+		reason := "Sender ID was rejected by " + strings.TrimSpace(providerName)
 		rejectionReason = &reason
-	case platformsenderid.StatusSuspended:
+	case StatusSuspended:
 	default:
-		return s.recordFailure(ctx, claim, response.ProviderStatus, fmt.Errorf("provider returned unknown Sender ID status %q", response.Status))
+		return s.recordFailure(ctx, claim, providerStatus, fmt.Errorf("provider returned unknown Sender ID status %q", response.Status))
 	}
-	if err := s.repository.CompleteStatus(ctx, claim.ID, s.workerID, response.Status, response.ProviderStatus, response.Whitelisted, rejectionReason, nextCheckAt); err != nil {
+	if err := s.repository.CompleteStatus(ctx, claim.ID, s.workerID, status, providerStatus, response.Whitelisted, rejectionReason, nextCheckAt); err != nil {
 		return err
 	}
-	s.notify(ctx, claim, response.Status, rejectionReason)
+	s.notify(ctx, claim, status, rejectionReason)
 	return nil
 }
 
@@ -227,33 +243,44 @@ func (s *ReconciliationService) notify(ctx context.Context, claim RegistrationCl
 
 func notifiableStatus(status string) bool {
 	switch strings.ToLower(strings.TrimSpace(status)) {
-	case platformsenderid.StatusApproved, platformsenderid.StatusRejected, platformsenderid.StatusSuspended:
+	case StatusApproved, StatusRejected, StatusSuspended:
 		return true
 	default:
 		return false
 	}
 }
 
-func validateCreateResponse(provider platformsenderid.Provider, claim RegistrationClaim, response *platformsenderid.CreateResponse) error {
-	if response == nil {
-		return errors.New("sender ID provider returned an empty creation response")
+func normalizedSenderIDStatus(status provider.SenderIDStatus, providerStatus string) string {
+	switch strings.ToLower(strings.TrimSpace(providerStatus)) {
+	case StatusPending:
+		return StatusPending
+	case StatusApproved:
+		return StatusApproved
+	case StatusRejected:
+		return StatusRejected
+	case StatusSuspended:
+		return StatusSuspended
 	}
-	if !strings.EqualFold(strings.TrimSpace(response.ProviderID), strings.TrimSpace(provider.ID())) {
-		return fmt.Errorf("sender ID provider response ID %q does not match %q", response.ProviderID, provider.ID())
+	switch status {
+	case provider.SenderIDPending:
+		return StatusPending
+	case provider.SenderIDActive:
+		return StatusApproved
+	case provider.SenderIDRejected:
+		return StatusRejected
+	default:
+		return ""
 	}
+}
+
+func validateCreateResponse(claim RegistrationClaim, response provider.CreateSenderIDResult) error {
 	if !strings.EqualFold(strings.TrimSpace(response.SenderID), strings.TrimSpace(claim.Name)) {
 		return fmt.Errorf("sender ID provider response name %q does not match %q", response.SenderID, claim.Name)
 	}
 	return nil
 }
 
-func validateStatusResponse(provider platformsenderid.Provider, claim RegistrationClaim, response *platformsenderid.StatusResponse) error {
-	if response == nil {
-		return errors.New("sender ID provider returned an empty status response")
-	}
-	if !strings.EqualFold(strings.TrimSpace(response.ProviderID), strings.TrimSpace(provider.ID())) {
-		return fmt.Errorf("sender ID provider response ID %q does not match %q", response.ProviderID, provider.ID())
-	}
+func validateStatusResponse(claim RegistrationClaim, response provider.SenderIDStatusResult) error {
 	if !strings.EqualFold(strings.TrimSpace(response.SenderID), strings.TrimSpace(claim.Name)) {
 		return fmt.Errorf("sender ID provider response name %q does not match %q", response.SenderID, claim.Name)
 	}
@@ -266,11 +293,11 @@ func definitiveProviderError(err error) bool {
 }
 
 func validateCreate(req CreateRequest) (string, string, string, *string, error) {
-	name := platformsenderid.NormalizeName(req.Name)
+	name := normalizeName(req.Name)
 	countryCode := strings.ToUpper(strings.TrimSpace(req.CountryCode))
 	purpose := strings.TrimSpace(req.Purpose)
-	provider := normalizeOptional(req.Provider)
-	if err := platformsenderid.ValidateName(name); err != nil {
+	providerName := normalizeOptional(req.Provider)
+	if err := validateName(name); err != nil {
 		return "", "", "", nil, apperrors.NewBadRequest(err.Error())
 	}
 	if !countryCodePattern.MatchString(countryCode) {
@@ -282,19 +309,19 @@ func validateCreate(req CreateRequest) (string, string, string, *string, error) 
 	if len(purpose) > maxPurposeLength {
 		return "", "", "", nil, apperrors.NewBadRequest("Sender ID purpose must be at most 500 characters")
 	}
-	if provider != nil && len(*provider) > maxProviderLength {
+	if providerName != nil && len(*providerName) > maxProviderLength {
 		return "", "", "", nil, apperrors.NewBadRequest("Sender ID provider must be at most 120 characters")
 	}
 	if countryCode == "GH" {
-		if provider != nil && !strings.EqualFold(*provider, platformsenderid.ProviderMoolre) {
+		if providerName != nil && !strings.EqualFold(*providerName, ProviderMoolre) {
 			return "", "", "", nil, apperrors.NewBadRequest("Ghana Sender IDs are registered through Moolre")
 		}
-		value := platformsenderid.ProviderMoolre
-		provider = &value
-	} else if provider != nil && strings.EqualFold(*provider, platformsenderid.ProviderMoolre) {
+		value := ProviderMoolre
+		providerName = &value
+	} else if providerName != nil && strings.EqualFold(*providerName, ProviderMoolre) {
 		return "", "", "", nil, apperrors.NewBadRequest("Moolre Sender ID registration is currently available only for Ghana")
 	}
-	return name, countryCode, purpose, provider, nil
+	return name, countryCode, purpose, providerName, nil
 }
 
 func normalizeOptional(value *string) *string {
