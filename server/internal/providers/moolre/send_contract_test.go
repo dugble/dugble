@@ -55,7 +55,7 @@ func TestSendUsesMoolreHTTPContract(t *testing.T) {
 	}))
 	defer server.Close()
 
-	provider, err := moolre.New(moolre.Config{VASKey: "vas-secret", BaseURL: server.URL})
+	provider, err := moolre.NewTestProvider(moolre.Config{VASKey: "vas-secret"}, server.URL)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -107,7 +107,7 @@ func TestSendClassifiesDocumentedRejections(t *testing.T) {
 			}))
 			defer server.Close()
 
-			provider, err := moolre.New(moolre.Config{VASKey: "vas-secret", BaseURL: server.URL})
+			provider, err := moolre.NewTestProvider(moolre.Config{VASKey: "vas-secret"}, server.URL)
 			if err != nil {
 				t.Fatal(err)
 			}
