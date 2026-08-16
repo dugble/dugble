@@ -526,7 +526,18 @@ Errors use the standard envelope in [README.md](README.md). Expected statuses de
 {
   "success": true,
   "data": {
-    "secret": "string"
+    "id": "string",
+    "team_id": "string",
+    "name": "string",
+    "token_prefix": "dgb_team_xxxxxxxx",
+    "permissions": [
+      "team:read"
+    ],
+    "created_by": "string",
+    "expires_at": "2026-11-07T17:00:00Z",
+    "created_at": "2026-08-09T17:00:00Z",
+    "updated_at": "2026-08-09T17:00:00Z",
+    "secret": "dgb_team_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
   }
 }
 ```
