@@ -6,7 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/dugble/dugble/server/internal/relay/providers/mnotify"
+	"github.com/dugble/dugble/server/internal/providers/mnotify"
 	"github.com/dugble/dugble/server/internal/relay/relaytest"
 	"github.com/dugble/dugble/server/internal/relay/sms"
 )
@@ -14,19 +14,19 @@ import (
 func TestProviderContract(t *testing.T) {
 	relaytest.Contract[sms.Message]{
 		Name:     "mnotify",
-		Accepted: mnotifyScenario(http.StatusOK, `{"status":"success","code":2000,"summary":{"message_id":"msg-1"}}`),
-		Unknown:  mnotifyScenario(http.StatusBadRequest, `{"status":"error","code":4000,"message":"invalid request"}`),
+		Accepted: scenario(http.StatusOK, `{"status":"success","code":2000,"summary":{"message_id":"msg-1"}}`),
+		Unknown:  scenario(http.StatusBadRequest, `{"status":"error","code":4000,"message":"invalid request"}`),
 		RunRelay: func(ctx context.Context, primary, fallback relaytest.Provider[sms.Message], message sms.Message) (sms.SendResult, error) {
-			router, err := sms.NewRelay(primary, fallback)
+			r, err := sms.NewRelay(primary, fallback)
 			if err != nil {
 				return sms.SendResult{}, err
 			}
-			return router.Send(ctx, message)
+			return r.Send(ctx, message)
 		},
 	}.Run(t)
 }
 
-func mnotifyScenario(status int, body string) relaytest.Factory[sms.Message] {
+func scenario(status int, body string) relaytest.Factory[sms.Message] {
 	return func(t *testing.T) (relaytest.Provider[sms.Message], sms.Message) {
 		t.Helper()
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
