@@ -24,7 +24,20 @@ The team APIs use the following string enum values:
 
 #### Query parameters
 
-None currently supported. Pagination and filtering parameters such as `search` or `status` are not part of this contract yet.
+| Parameter | Type | Default | Description |
+| --- | --- | --- | --- |
+| `page` | positive integer | `1` | Page number to return. |
+| `limit` | integer from `1` to `100` | `20` | Maximum number of teams per page. |
+| `search` | string | empty | Case-insensitive substring match against the team name. |
+| `status` | `active` or `disabled` | `active` | Filters teams by team status. |
+
+Example:
+
+```http
+GET /teams?page=2&limit=20&search=acme&status=active
+```
+
+When query parameters are omitted, the endpoint returns the first 20 active teams for the authenticated user.
 
 #### Payload
 
@@ -38,24 +51,34 @@ No JSON request body.
   "data": [
     {
       "id": "string",
-      "name": "string",
+      "name": "Acme",
       "market_code": "string",
       "phone": "string",
       "address": "string",
       "website": "string",
-      "status": "string",
+      "status": "active",
       "user_role": "owner",
       "created_by": "string",
       "created_at": "2026-08-09T17:00:00Z",
       "updated_at": "2026-08-09T17:00:00Z"
     }
-  ]
+  ],
+  "meta": {
+    "pagination": {
+      "page": 2,
+      "limit": 20,
+      "total": 37,
+      "total_pages": 2
+    }
+  }
 }
 ```
 
+Teams are ordered by newest creation time first, with team id as the deterministic secondary ordering key.
+
 #### Errors
 
-Errors use the standard envelope in [README.md](README.md). Expected statuses depend on validation, authentication, permission, resource existence, conflict, rate limiting, and service availability.
+Invalid `page`, `limit`, or `status` values return `400 Bad Request`. Other errors use the standard envelope in [README.md](README.md).
 
 ### `POST /teams`
 
