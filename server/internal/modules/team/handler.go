@@ -116,6 +116,30 @@ func (h *Handler) ListPendingInvitations(c *echo.Context) error {
 	return httputil.OK(c, invitations)
 }
 
+func (h *Handler) AcceptPendingInvitation(c *echo.Context) error {
+	invitationID, err := validateInvitationID(c.Param("invitation_id"))
+	if err != nil {
+		return httputil.Error(c, err)
+	}
+	invitation, err := h.service.AcceptInvitation(c.Request().Context(), invitationID.String())
+	if err != nil {
+		return httputil.Error(c, err)
+	}
+	return httputil.OK(c, invitation)
+}
+
+func (h *Handler) DeclinePendingInvitation(c *echo.Context) error {
+	invitationID, err := validateInvitationID(c.Param("invitation_id"))
+	if err != nil {
+		return httputil.Error(c, err)
+	}
+	invitation, err := h.service.DeclineInvitation(c.Request().Context(), invitationID.String())
+	if err != nil {
+		return httputil.Error(c, err)
+	}
+	return httputil.OK(c, invitation)
+}
+
 func (h *Handler) ListTeamInvitations(c *echo.Context) error {
 	invitations, err := h.service.ListTeamInvitations(c.Request().Context(), c.Param("team_id"))
 	if err != nil {

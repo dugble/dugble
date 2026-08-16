@@ -18,6 +18,8 @@ func RegisterRoutes(
 	users := router.Group("/users")
 	users.Use(authMiddleware, csrfMiddleware)
 	users.GET("/me/invitations", handler.ListPendingInvitations)
+	users.POST("/me/invitations/:invitation_id/accept", handler.AcceptPendingInvitation)
+	users.POST("/me/invitations/:invitation_id/decline", handler.DeclinePendingInvitation)
 
 	teams := router.Group("/teams")
 	teams.Use(authMiddleware, csrfMiddleware)
