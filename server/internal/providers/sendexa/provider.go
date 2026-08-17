@@ -59,6 +59,7 @@ func (p *Provider) Capabilities() sms.Capabilities {
 	return sms.Capabilities{
 		AlphanumericSenderID: true,
 		MaxSenderIDLength:    11,
+		SupportedCountries:   []string{"GH"},
 	}
 }
 
@@ -119,7 +120,7 @@ func (p *Provider) CreateSenderID(ctx context.Context, request provider.CreateSe
 	if p == nil || p.client == nil {
 		return result, ErrInvalidConfig
 	}
-	if senderID == "" || len(senderID) > p.Capabilities().MaxSenderIDLength || purpose == "" {
+	if senderID == "" || len(senderID) > p.Capabilities().MaxSenderIDLength || purpose == "" || !p.Capabilities().SupportsCountry(request.CountryCode) {
 		return result, ErrInvalidRequest
 	}
 
