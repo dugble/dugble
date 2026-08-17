@@ -55,6 +55,7 @@ type RegistrationClaim struct {
 	TeamID              uuid.UUID
 	Name                string
 	CountryCode         string
+	Purpose             string
 	Provider            string
 	ProviderStatus      string
 	ProviderSubmittedAt *time.Time
