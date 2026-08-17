@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 )
 
 type client struct {
@@ -85,7 +86,8 @@ func (c *client) do(ctx context.Context, method, path string, payload any) (rawR
 		body = bytes.NewReader(encoded)
 	}
 
-	endpoint := c.baseURL.ResolveReference(&url.URL{Path: path})
+	endpoint := *c.baseURL
+	endpoint.Path = strings.TrimRight(endpoint.Path, "/") + path
 	req, err := http.NewRequestWithContext(ctx, method, endpoint.String(), body)
 	if err != nil {
 		return rawResponse{}, fmt.Errorf("create Sendexa request: %w", err)
@@ -127,7 +129,8 @@ func (c *client) senderIDRequest(ctx context.Context, method, path string, paylo
 		body = bytes.NewReader(encoded)
 	}
 
-	endpoint := c.baseURL.ResolveReference(&url.URL{Path: path})
+	endpoint := *c.baseURL
+	endpoint.Path = strings.TrimRight(endpoint.Path, "/") + path
 	req, err := http.NewRequestWithContext(ctx, method, endpoint.String(), body)
 	if err != nil {
 		return senderIDRawResponse{}, fmt.Errorf("create Sendexa sender ID request: %w", err)
