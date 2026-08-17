@@ -104,11 +104,12 @@ func (p *Provider) Send(ctx context.Context, message sms.Message) (sms.SendResul
 // Moolre only consumes the canonical name; country and purpose remain Dugble routing metadata.
 func (p *Provider) CreateSenderID(ctx context.Context, request provider.CreateSenderIDRequest) (provider.CreateSenderIDResult, error) {
 	senderID := strings.TrimSpace(request.Name)
+	countryCode := strings.ToUpper(strings.TrimSpace(request.CountryCode))
 	result := provider.CreateSenderIDResult{SenderID: senderID, Status: provider.SenderIDUnknown}
 	if p == nil || p.client == nil {
 		return result, ErrInvalidConfig
 	}
-	if senderID == "" || len(senderID) > 11 || !p.Capabilities().SupportsCountry(request.CountryCode) {
+	if senderID == "" || len(senderID) > 11 || len(countryCode) != 2 || !p.Capabilities().SupportsCountry(countryCode) {
 		return result, ErrInvalidRequest
 	}
 
