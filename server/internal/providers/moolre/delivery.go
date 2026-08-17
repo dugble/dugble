@@ -9,12 +9,9 @@ import (
 	"strings"
 
 	provider "github.com/dugble/dugble/server/internal/providers"
+	relaysenderid "github.com/dugble/dugble/server/internal/relay/senderid"
 )
 
-// CheckSMSStatus reconciles an SMS previously submitted with a Moolre ref.
-// Moolre documents numeric provider statuses but does not currently document
-// their semantic mapping, so the native value is preserved and the normalized
-// status remains unknown until that mapping is authoritative.
 func (p *Provider) CheckSMSStatus(ctx context.Context, request provider.SMSStatusRequest) (provider.SMSStatusResult, error) {
 	reference := strings.TrimSpace(request.Reference)
 	result := provider.SMSStatusResult{
@@ -29,7 +26,10 @@ func (p *Provider) CheckSMSStatus(ctx context.Context, request provider.SMSStatu
 		return result, ErrInvalidRequest
 	}
 
-	response, err := p.client.status(ctx, smsStatusPayload{Type: 5, Ref: []string{reference}})
+	response, err := p.client.status(ctx, smsStatusPayload{
+		Type: 5,
+		Ref:  []string{reference},
+	})
 	if err != nil {
 		return result, err
 	}
@@ -50,18 +50,28 @@ func (p *Provider) CheckSMSStatus(ctx context.Context, request provider.SMSStatu
 			continue
 		}
 		result.ProviderStatus = strconv.Itoa(status.Status)
+		switch status.Status {
+		case 1:
+			result.Status = provider.SMSPending
+		case 2:
+			result.Status = provider.SMSDelivered
+		case 3:
+			result.Status = provider.SMSFailed
+		default:
+			result.Status = provider.SMSUnknown
+		}
 		return result, nil
 	}
 	return result, fmt.Errorf("moolre SMS status did not include ref %q", reference)
 }
 
-// CheckSenderIDStatus reconciles the approval state of a Moolre Sender ID.
-func (p *Provider) CheckSenderIDStatus(ctx context.Context, request provider.SenderIDStatusRequest) (provider.SenderIDStatusResult, error) {
-	senderID := strings.TrimSpace(request.SenderID)
-	result := provider.SenderIDStatusResult{
-		SenderID:          senderID,
+func (p *Provider) CheckSenderIDStatus(ctx context.Context, request relaysenderid.StatusRequest) (relaysenderid.StatusResult, error) {
+	senderID := strings.TrimSpace(request.Name)
+	result := relaysenderid.StatusResult{
+		Provider:          p.Name(),
+		Name:              senderID,
 		ProviderReference: strings.TrimSpace(request.ProviderReference),
-		Status:            provider.SenderIDUnknown,
+		Status:            relaysenderid.StatusUnknown,
 	}
 	if p == nil || p.client == nil {
 		return result, ErrInvalidConfig
@@ -70,7 +80,10 @@ func (p *Provider) CheckSenderIDStatus(ctx context.Context, request provider.Sen
 		return result, ErrInvalidRequest
 	}
 
-	response, err := p.client.status(ctx, senderIDStatusPayload{Type: 1, SenderID: senderID})
+	response, err := p.client.status(ctx, senderIDStatusPayload{
+		Type:     1,
+		SenderID: senderID,
+	})
 	if err != nil {
 		return result, err
 	}
@@ -87,19 +100,19 @@ func (p *Provider) CheckSenderIDStatus(ctx context.Context, request provider.Sen
 	if err := json.Unmarshal(response.body.Data, &data); err != nil {
 		return result, fmt.Errorf("decode Moolre Sender ID status: %w", err)
 	}
-	if strings.TrimSpace(data.SenderID) != "" {
-		result.SenderID = strings.TrimSpace(data.SenderID)
+	if value := strings.TrimSpace(data.SenderID); value != "" {
+		result.Name = value
 	}
 	result.ProviderStatus = strings.TrimSpace(data.Approval)
 	switch strings.ToLower(result.ProviderStatus) {
 	case "approved":
-		result.Status = provider.SenderIDActive
+		result.Status = relaysenderid.StatusApproved
 	case "pending":
-		result.Status = provider.SenderIDPending
+		result.Status = relaysenderid.StatusPending
 	case "rejected":
-		result.Status = provider.SenderIDRejected
+		result.Status = relaysenderid.StatusRejected
 	default:
-		result.Status = provider.SenderIDUnknown
+		result.Status = relaysenderid.StatusUnknown
 	}
 	return result, nil
 }

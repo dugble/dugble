@@ -12,16 +12,18 @@ import (
 // use the channel-neutral relay errors directly.
 var (
 	ErrNoProviders          = relaycore.ErrNoProviders
+	ErrNoRoute              = relaycore.ErrNoRoute
 	ErrNoCapableProviders   = relaycore.ErrNoCapableProviders
 	ErrNoAvailableProviders = relaycore.ErrNoAvailableProviders
 	ErrAllRejected          = relaycore.ErrAllRejected
 	ErrSubmissionUnknown    = relaycore.ErrSubmissionUnknown
 )
 
-// Relay executes providers in configured order and only falls back after a
+// Relay executes providers in routed order and only falls back after a
 // definitive rejection.
 type Relay struct {
 	providers []Provider
+	routes    *relaycore.RouteTable
 	health    relaycore.HealthSource
 	observer  relaycore.Observer
 }
@@ -38,6 +40,17 @@ func NewRelay(providers ...Provider) (*Relay, error) {
 		return nil, ErrNoProviders
 	}
 	return &Relay{providers: filtered}, nil
+}
+
+// WithRoutes configures country-specific provider priority. Without a route
+// table Relay preserves provider constructor order for backwards compatibility.
+func (r *Relay) WithRoutes(routes *relaycore.RouteTable) *Relay {
+	if r == nil {
+		return nil
+	}
+	clone := *r
+	clone.routes = routes
+	return &clone
 }
 
 func (r *Relay) WithHealth(source relaycore.HealthSource) *Relay {
@@ -71,6 +84,9 @@ func (r *Relay) Send(ctx context.Context, message Message) (SendResult, error) {
 	route := r.route(ctx, message)
 	if len(route.providers) == 0 {
 		switch {
+		case r.routes != nil && !route.routed:
+			r.observe(ctx, relaycore.Event{Kind: relaycore.EventRouteExhausted, Channel: relaycore.ChannelSMS, Reason: relaycore.ReasonNoRoute})
+			return SendResult{State: SubmissionRejected}, ErrNoRoute
 		case !route.capable:
 			r.observe(ctx, relaycore.Event{Kind: relaycore.EventRouteExhausted, Channel: relaycore.ChannelSMS, Reason: relaycore.ReasonNoCapableProviders})
 			return SendResult{State: SubmissionRejected}, ErrNoCapableProviders

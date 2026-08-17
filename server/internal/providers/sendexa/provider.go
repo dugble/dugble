@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	provider "github.com/dugble/dugble/server/internal/providers"
+	relaysenderid "github.com/dugble/dugble/server/internal/relay/senderid"
 	"github.com/dugble/dugble/server/internal/relay/sms"
 )
 
@@ -19,13 +20,11 @@ const alphanumericSenderIDType = "ALPHANUMERIC"
 var ErrInvalidConfig = errors.New("invalid Sendexa configuration")
 var ErrInvalidRequest = errors.New("invalid Sendexa request")
 
-// Config configures the Sendexa provider.
 type Config struct {
 	Token      string
 	HTTPClient *http.Client
 }
 
-// Provider owns communication with Sendexa.
 type Provider struct {
 	client *client
 }
@@ -49,7 +48,6 @@ func newProvider(config Config, baseURL string) (*Provider, error) {
 	if httpClient == nil {
 		httpClient = http.DefaultClient
 	}
-
 	return &Provider{client: &client{token: token, baseURL: parsed, http: httpClient}}, nil
 }
 
@@ -63,7 +61,6 @@ func (p *Provider) Capabilities() sms.Capabilities {
 	}
 }
 
-// APIError records a non-success response returned by Sendexa.
 type APIError struct {
 	StatusCode int
 	Status     string
@@ -81,8 +78,6 @@ func (e *APIError) Error() string {
 	return fmt.Sprintf("Sendexa returned HTTP %d: %s", e.StatusCode, message)
 }
 
-// Send submits an SMS to Sendexa. Only a successful HTTP response with a
-// Sendexa message ID and a known accepted submission status is accepted.
 func (p *Provider) Send(ctx context.Context, message sms.Message) (sms.SendResult, error) {
 	if p == nil || p.client == nil {
 		return sms.SendResult{State: sms.SubmissionRejected}, ErrInvalidConfig
@@ -111,23 +106,23 @@ func (p *Provider) Send(ctx context.Context, message sms.Message) (sms.SendResul
 	return result, apiError(response)
 }
 
-// CreateSenderID submits an alphanumeric Sender ID registration request to Sendexa.
-// The canonical Dugble purpose maps directly to Sendexa's useCase field.
-func (p *Provider) CreateSenderID(ctx context.Context, request provider.CreateSenderIDRequest) (provider.CreateSenderIDResult, error) {
-	senderID := strings.TrimSpace(request.Name)
-	countryCode := strings.ToUpper(strings.TrimSpace(request.CountryCode))
-	purpose := strings.TrimSpace(request.Purpose)
-	result := provider.CreateSenderIDResult{SenderID: senderID, Status: provider.SenderIDUnknown}
+func (p *Provider) CreateSenderID(ctx context.Context, request relaysenderid.CreateRequest) (relaysenderid.CreateResult, error) {
+	request = request.Normalize()
+	result := relaysenderid.CreateResult{
+		Provider: p.Name(),
+		Name:     request.Name,
+		Status:   relaysenderid.StatusUnknown,
+	}
 	if p == nil || p.client == nil {
 		return result, ErrInvalidConfig
 	}
-	if senderID == "" || len(senderID) > p.Capabilities().MaxSenderIDLength || len(countryCode) != 2 || purpose == "" || !p.Capabilities().SupportsCountry(countryCode) {
+	if err := request.Validate(); err != nil || !p.Capabilities().SupportsCountry(request.CountryCode) {
 		return result, ErrInvalidRequest
 	}
 
 	response, err := p.client.createSenderID(ctx, createSenderIDPayload{
-		Name:    senderID,
-		UseCase: purpose,
+		Name:    request.Name,
+		UseCase: request.Purpose,
 		Type:    alphanumericSenderIDType,
 	})
 	if err != nil {
@@ -141,10 +136,11 @@ func (p *Provider) CreateSenderID(ctx context.Context, request provider.CreateSe
 	if err != nil {
 		return result, err
 	}
-	if strings.TrimSpace(record.Name) != "" {
-		result.SenderID = strings.TrimSpace(record.Name)
+	if value := strings.TrimSpace(record.Name); value != "" {
+		result.Name = value
 	}
 	result.ProviderReference = strings.TrimSpace(record.ID)
+	result.ProviderStatus = strings.TrimSpace(record.Status)
 	result.Status = normalizeSenderIDStatus(record.Status)
 	return result, nil
 }
@@ -159,8 +155,7 @@ func isAcceptedStatus(status string) bool {
 }
 
 func normalizeRecipient(recipient string) string {
-	value := strings.TrimSpace(recipient)
-	return strings.TrimPrefix(value, "+")
+	return strings.TrimPrefix(strings.TrimSpace(recipient), "+")
 }
 
 func apiError(response rawResponse) error {
@@ -199,6 +194,5 @@ func senderIDAPIError(statusCode int, message, status string) error {
 }
 
 var _ provider.Sender = (*Provider)(nil)
-var _ provider.SenderIDCreator = (*Provider)(nil)
 var _ provider.SMSStatusChecker = (*Provider)(nil)
-var _ provider.SenderIDStatusChecker = (*Provider)(nil)
+var _ relaysenderid.Provider = (*Provider)(nil)

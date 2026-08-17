@@ -18,6 +18,10 @@ func NormalizeName(name string) string {
 	return strings.TrimSpace(name)
 }
 
+func NormalizeCountryCode(countryCode string) string {
+	return strings.ToUpper(strings.TrimSpace(countryCode))
+}
+
 func ValidateName(name string) error {
 	name = NormalizeName(name)
 	switch {
@@ -34,12 +38,36 @@ func ValidateName(name string) error {
 	}
 }
 
+func ValidateCountryCode(countryCode string) error {
+	countryCode = NormalizeCountryCode(countryCode)
+	if len(countryCode) != 2 {
+		return fmt.Errorf("sender ID country code must be a 2-letter ISO country code")
+	}
+	for _, r := range countryCode {
+		if r < 'A' || r > 'Z' {
+			return fmt.Errorf("sender ID country code must contain only letters")
+		}
+	}
+	return nil
+}
+
 func (request CreateRequest) Normalize() CreateRequest {
-	request.SenderID = NormalizeName(request.SenderID)
+	request.Name = NormalizeName(request.Name)
+	request.CountryCode = NormalizeCountryCode(request.CountryCode)
 	request.Purpose = strings.TrimSpace(request.Purpose)
 	return request
 }
 
 func (request CreateRequest) Validate() error {
-	return ValidateName(request.SenderID)
+	request = request.Normalize()
+	if err := ValidateName(request.Name); err != nil {
+		return err
+	}
+	if err := ValidateCountryCode(request.CountryCode); err != nil {
+		return err
+	}
+	if request.Purpose == "" {
+		return fmt.Errorf("sender ID purpose is required")
+	}
+	return nil
 }

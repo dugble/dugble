@@ -9,18 +9,12 @@ import (
 
 	awsses "github.com/dugble/dugble/server/internal/adapters/amazon/ses"
 	"github.com/dugble/dugble/server/internal/adapters/dns/netdns"
-	leamoutsms "github.com/dugble/dugble/server/internal/adapters/leamout/sms"
-	mnotifyadapter "github.com/dugble/dugble/server/internal/adapters/mnotify"
-	mnotifysms "github.com/dugble/dugble/server/internal/adapters/mnotify/sms"
 	sentrymonitoring "github.com/dugble/dugble/server/internal/adapters/monitoring/sentry"
-	"github.com/dugble/dugble/server/internal/adapters/moolre"
-	moolresender "github.com/dugble/dugble/server/internal/adapters/moolre/sender"
-	moolresms "github.com/dugble/dugble/server/internal/adapters/moolre/sms"
-	runnagesms "github.com/dugble/dugble/server/internal/adapters/runnage/sms"
 	chargeSubscription "github.com/dugble/dugble/server/internal/billing/charge/subscription"
 	platformbilling "github.com/dugble/dugble/server/internal/billing/charge/usage"
 	subscriptionLifecycle "github.com/dugble/dugble/server/internal/billing/subscription/lifecycle"
 	subscriptionRenewal "github.com/dugble/dugble/server/internal/billing/subscription/renewal"
+	"github.com/dugble/dugble/server/internal/config"
 	broadcastexecution "github.com/dugble/dugble/server/internal/delivery/broadcast"
 	emailfeedback "github.com/dugble/dugble/server/internal/delivery/email/feedback"
 	emaildelivery "github.com/dugble/dugble/server/internal/delivery/email/outbound"
@@ -43,26 +37,31 @@ import (
 	platformsms "github.com/dugble/dugble/server/internal/platform/sms"
 	"github.com/dugble/dugble/server/internal/platform/systemmail"
 	platformwebhook "github.com/dugble/dugble/server/internal/platform/webhook"
+	moolreprovider "github.com/dugble/dugble/server/internal/providers/moolre"
+	sendexaprovider "github.com/dugble/dugble/server/internal/providers/sendexa"
+	relaycore "github.com/dugble/dugble/server/internal/relay"
+	relaysenderid "github.com/dugble/dugble/server/internal/relay/senderid"
+	relaysms "github.com/dugble/dugble/server/internal/relay/sms"
 )
 
 type modules struct {
-	subscriptionRenewal       func(context.Context) error
-	outboxRelay               func(context.Context) error
-	transactionalEmail        func(context.Context) error
-	marketingEmail            func(context.Context) error
-	systemEmail               func(context.Context) error
-	emailTenantProvisioning   func(context.Context) error
-	emailFeedback             func(context.Context) error
-	emailFeedbackReconciler   func(context.Context) error
-	emailFeedbackMetrics      func(context.Context) error
-	smsDelivery               func(context.Context) error
-	smsFeedback               func(context.Context) error
-	smsCampaign               func(context.Context) error
-	webhookDelivery           func(context.Context) error
-	domainReconciliation      func(context.Context) error
+	subscriptionRenewal      func(context.Context) error
+	outboxRelay              func(context.Context) error
+	transactionalEmail       func(context.Context) error
+	marketingEmail           func(context.Context) error
+	systemEmail              func(context.Context) error
+	emailTenantProvisioning  func(context.Context) error
+	emailFeedback            func(context.Context) error
+	emailFeedbackReconciler  func(context.Context) error
+	emailFeedbackMetrics     func(context.Context) error
+	smsDelivery              func(context.Context) error
+	smsFeedback              func(context.Context) error
+	smsCampaign              func(context.Context) error
+	webhookDelivery          func(context.Context) error
+	domainReconciliation     func(context.Context) error
 	domainClaimReconciliation func(context.Context) error
-	broadcastExecution        func(context.Context) error
-	senderIDReconciliation    func(context.Context) error
+	broadcastExecution       func(context.Context) error
+	senderIDReconciliation   func(context.Context) error
 }
 
 func (registry *Registry) newModules(startupCtx context.Context) (modules, error) {
@@ -95,7 +94,6 @@ func (registry *Registry) newModules(startupCtx context.Context) (modules, error
 	if err != nil {
 		return modules{}, fmt.Errorf("initialize SES email sender: %w", err)
 	}
-
 	emailDeliveryProcessor := emaildelivery.NewProcessor(emaildelivery.NewRepository(db), emailSender)
 	transactionalEmailConsumer := emaildelivery.NewConsumer(
 		messagingClient,
@@ -127,21 +125,46 @@ func (registry *Registry) newModules(startupCtx context.Context) (modules, error
 		messagingClient,
 		processedEvents,
 		emailSender,
-		systememail.ConsumerConfig{Concurrency: 3, AckWait: time.Minute, HandlerTimeout: 30 * time.Second, MaxDeliver: 6},
+		systememail.ConsumerConfig{
+			Concurrency:    3,
+			AckWait:        time.Minute,
+			HandlerTimeout: 30 * time.Second,
+			MaxDeliver:     6,
+		},
 	)
 	systemEmailRenderer, err := systemmail.NewRenderer()
 	if err != nil {
 		return modules{}, fmt.Errorf("initialize system email renderer: %w", err)
 	}
-	systemEmailQueue := systememail.NewQueue(outboxRepository, platformemail.Message{Provider: awsses.ProviderSES, Region: cfg.AWS.Region, Stream: "transactional", ConfigurationSet: platformemail.TransactionalConfigurationSet, SESTenantName: platformemail.SystemSESTenantName})
-	notificationEmailService := systemmail.NewEmailService(systemEmailQueue, systemEmailRenderer, cfg.FrontendURL, cfg.AWS.FromEmail)
+	systemEmailQueue := systememail.NewQueue(outboxRepository, platformemail.Message{
+		Provider:         awsses.ProviderSES,
+		Region:           cfg.AWS.Region,
+		Stream:           "transactional",
+		ConfigurationSet: platformemail.TransactionalConfigurationSet,
+		SESTenantName:    platformemail.SystemSESTenantName,
+	})
+	notificationEmailService := systemmail.NewEmailService(
+		systemEmailQueue,
+		systemEmailRenderer,
+		cfg.FrontendURL,
+		cfg.AWS.FromEmail,
+	)
 	emailTenantRepository := emailtenant.NewRepository(db)
-	emailTenantService := emailtenant.NewService(db, emailTenantRepository, emailtenant.NewProvisioningQueue(outboxRepository))
+	emailTenantService := emailtenant.NewService(
+		db,
+		emailTenantRepository,
+		emailtenant.NewProvisioningQueue(outboxRepository),
+	)
 	emailTenantConsumer := emailtenant.NewProvisioningConsumer(
 		messagingClient,
 		processedEvents,
 		emailtenant.NewProvisioningProcessor(emailTenantRepository, emailSender),
-		emailtenant.ProvisioningConsumerConfig{Concurrency: 3, AckWait: 2 * time.Minute, HandlerTimeout: 60 * time.Second, RetryBackOff: emailtenant.DefaultProvisioningRetryBackOff()},
+		emailtenant.ProvisioningConsumerConfig{
+			Concurrency:    3,
+			AckWait:        2 * time.Minute,
+			HandlerTimeout: 60 * time.Second,
+			RetryBackOff:   emailtenant.DefaultProvisioningRetryBackOff(),
+		},
 	)
 
 	feedbackMetrics := emailfeedback.DefaultMetrics
@@ -185,9 +208,14 @@ func (registry *Registry) newModules(startupCtx context.Context) (modules, error
 		return modules{}, fmt.Errorf("initialize sender domain reconciliation: %w", err)
 	}
 	domainJob.WithNotifier(notificationEmailService)
-
 	domainClaimRepository := domainclaimmodule.NewRepository(db)
-	domainClaimService := domainclaimmodule.NewService(db, domainClaimRepository, emailSender, dnsVerifier, emailTenantService)
+	domainClaimService := domainclaimmodule.NewService(
+		db,
+		domainClaimRepository,
+		emailSender,
+		dnsVerifier,
+		emailTenantService,
+	)
 	domainClaimJob, err := domainclaimmodule.NewJob(
 		domainClaimRepository,
 		domainClaimService,
@@ -198,16 +226,26 @@ func (registry *Registry) newModules(startupCtx context.Context) (modules, error
 		return modules{}, fmt.Errorf("initialize domain claim reconciliation: %w", err)
 	}
 
+	smsProviders, senderIDProviders, err := newCommunicationProviders(cfg)
+	if err != nil {
+		return modules{}, err
+	}
+	routes, err := newCommunicationRoutes(smsProviders)
+	if err != nil {
+		return modules{}, fmt.Errorf("initialize communication routes: %w", err)
+	}
+	smsSender, err := platformsms.NewRelayService(routes, smsProviders...)
+	if err != nil {
+		return modules{}, fmt.Errorf("initialize SMS sender: %w", err)
+	}
+
 	senderIDRun := disabledSenderIDReconciliation
-	if cfg.Moolre.VASKey == "" {
-		sentrymonitoring.Warn("Moolre Sender ID reconciliation is disabled because MOOLRE_VAS_KEY is empty")
-	} else {
-		senderIDProvider := moolresender.NewProvider(moolre.NewClient(cfg.Moolre.VASKey))
+	if len(senderIDProviders) != 0 {
 		senderIDJob, jobErr := senderidmodule.NewJob(
 			senderidmodule.NewRepository(db),
 			senderidmodule.DefaultJobConfig(),
 			"sender-id-reconciliation-"+uuid.NewString(),
-			senderIDProvider,
+			senderIDProviders...,
 		)
 		if jobErr != nil {
 			return modules{}, fmt.Errorf("initialize Sender ID reconciliation: %w", jobErr)
@@ -216,20 +254,6 @@ func (registry *Registry) newModules(startupCtx context.Context) (modules, error
 		senderIDRun = senderIDJob.Run
 	}
 
-	smsRouter, err := platformsms.NewRoutingService(
-		platformsms.DefaultRoutingConfig(),
-		mnotifysms.NewProvider(mnotifyadapter.NewClient(cfg.MNotify.APIKey)),
-		moolresms.NewProvider(moolre.NewClient(cfg.Moolre.VASKey)),
-		leamoutsms.NewProvider(),
-		runnagesms.NewProvider(),
-	)
-	if err != nil {
-		return modules{}, fmt.Errorf("initialize SMS router: %w", err)
-	}
-	smsSender, err := platformsms.NewService(smsRouter)
-	if err != nil {
-		return modules{}, fmt.Errorf("initialize SMS sender: %w", err)
-	}
 	smsRepository := smsmodule.NewRepositoryWithWebhookEmitter(db, lifecycleEmitter)
 	smsCampaignSMSService := smsmodule.NewService(
 		smsRepository,
@@ -245,7 +269,12 @@ func (registry *Registry) newModules(startupCtx context.Context) (modules, error
 		messagingClient,
 		processedEvents,
 		smsdelivery.NewProcessor(smsdelivery.NewRepository(db, smsRepository), smsSender),
-		smsdelivery.ConsumerConfig{Concurrency: 10, AckWait: 2 * time.Minute, HandlerTimeout: 45 * time.Second, MaxDeliver: 6},
+		smsdelivery.ConsumerConfig{
+			Concurrency:    10,
+			AckWait:        2 * time.Minute,
+			HandlerTimeout: 45 * time.Second,
+			MaxDeliver:     6,
+		},
 	)
 	smsFeedbackRepository := smsfeedback.NewRepositoryWithMessageRepository(db, smsRepository)
 	smsFeedbackProcessor := smsfeedback.NewProcessor(smsFeedbackRepository)
@@ -253,14 +282,25 @@ func (registry *Registry) newModules(startupCtx context.Context) (modules, error
 		smsFeedbackRepository,
 		smsSender,
 		smsFeedbackProcessor,
-		smsfeedback.ReconcilerConfig{BatchSize: 100, Concurrency: 10, ProviderTimeout: 15 * time.Second},
+		smsfeedback.ReconcilerConfig{
+			BatchSize:       100,
+			Concurrency:     10,
+			ProviderTimeout: 15 * time.Second,
+		},
 	)
-	smsFeedbackConsumer := smsfeedback.NewConsumer(smsFeedbackReconciler, smsfeedback.ConsumerConfig{PollInterval: 30 * time.Second})
+	smsFeedbackConsumer := smsfeedback.NewConsumer(
+		smsFeedbackReconciler,
+		smsfeedback.ConsumerConfig{PollInterval: 30 * time.Second},
+	)
 
 	outboxRelay := outbox.NewRelay(
 		outboxRepository,
 		messagingClient,
-		outbox.Config{PollInterval: 500 * time.Millisecond, BatchSize: 100, LockTimeout: 30 * time.Second},
+		outbox.Config{
+			PollInterval: 500 * time.Millisecond,
+			BatchSize:    100,
+			LockTimeout:  30 * time.Second,
+		},
 	)
 	webhookWorkerID := "webhook-delivery-" + uuid.NewString()
 	webhookRepository := webhookdelivery.NewRepository(db, webhookdelivery.RepositoryConfig{AutoDisableAfter: 20})
@@ -273,7 +313,13 @@ func (registry *Registry) newModules(startupCtx context.Context) (modules, error
 	webhookConsumer := webhookdelivery.NewConsumer(
 		webhookRepository,
 		webhookProcessor,
-		webhookdelivery.ConsumerConfig{PollInterval: 500 * time.Millisecond, BatchSize: 50, Concurrency: 10, LockTimeout: 30 * time.Second, HandleTimeout: 15 * time.Second},
+		webhookdelivery.ConsumerConfig{
+			PollInterval:  500 * time.Millisecond,
+			BatchSize:     50,
+			Concurrency:   10,
+			LockTimeout:   30 * time.Second,
+			HandleTimeout: 15 * time.Second,
+		},
 		webhookWorkerID,
 	)
 
@@ -286,7 +332,12 @@ func (registry *Registry) newModules(startupCtx context.Context) (modules, error
 	renewalService.WithPlanChangeNotifier(notificationEmailService)
 	renewalConfig := subscriptionRenewal.DefaultConfig()
 	renewalConfig.OnFailure = func(ctx context.Context, failure subscriptionRenewal.Failure) {
-		sentrymonitoring.ErrorContext(ctx, "subscription renewal failed", "team_id", failure.TeamID, "error", failure.Err)
+		sentrymonitoring.ErrorContext(
+			ctx,
+			"subscription renewal failed",
+			"team_id", failure.TeamID,
+			"error", failure.Err,
+		)
 	}
 	renewalWorker, err := subscriptionRenewal.NewWorker(db, renewalService, renewalConfig)
 	if err != nil {
@@ -312,6 +363,45 @@ func (registry *Registry) newModules(startupCtx context.Context) (modules, error
 		broadcastExecution:        broadcastExecutionJob.Run,
 		senderIDReconciliation:    senderIDRun,
 	}, nil
+}
+
+func newCommunicationProviders(cfg *config.Config) ([]relaysms.Provider, []relaysenderid.Provider, error) {
+	smsProviders := make([]relaysms.Provider, 0, 2)
+	senderIDProviders := make([]relaysenderid.Provider, 0, 2)
+
+	if cfg.Moolre.VASKey != "" {
+		provider, err := moolreprovider.New(moolreprovider.Config{VASKey: cfg.Moolre.VASKey})
+		if err != nil {
+			return nil, nil, fmt.Errorf("initialize Moolre provider: %w", err)
+		}
+		smsProviders = append(smsProviders, provider)
+		senderIDProviders = append(senderIDProviders, provider)
+	}
+	if cfg.Sendexa.Token != "" {
+		provider, err := sendexaprovider.New(sendexaprovider.Config{Token: cfg.Sendexa.Token})
+		if err != nil {
+			return nil, nil, fmt.Errorf("initialize Sendexa provider: %w", err)
+		}
+		smsProviders = append(smsProviders, provider)
+		senderIDProviders = append(senderIDProviders, provider)
+	}
+	if len(smsProviders) == 0 {
+		return nil, nil, fmt.Errorf("initialize communication providers: configure MOOLRE_VAS_KEY or SENDEXA_TOKEN")
+	}
+	return smsProviders, senderIDProviders, nil
+}
+
+func newCommunicationRoutes(providers []relaysms.Provider) (*relaycore.RouteTable, error) {
+	routes := make([]relaycore.Route, 0, len(providers))
+	for _, provider := range providers {
+		routes = append(routes, relaycore.Route{
+			Provider:    provider.Name(),
+			CountryCode: "GH",
+			Priority:    len(routes) + 1,
+			Enabled:     true,
+		})
+	}
+	return relaycore.NewRouteTable(routes)
 }
 
 func disabledSenderIDReconciliation(ctx context.Context) error {

@@ -8,10 +8,9 @@ import (
 	"strings"
 
 	provider "github.com/dugble/dugble/server/internal/providers"
+	relaysenderid "github.com/dugble/dugble/server/internal/relay/senderid"
 )
 
-// CheckSMSStatus reconciles the delivery state of a Sendexa SMS using the
-// provider message ID returned by Send.
 func (p *Provider) CheckSMSStatus(ctx context.Context, request provider.SMSStatusRequest) (provider.SMSStatusResult, error) {
 	messageID := strings.TrimSpace(request.ProviderMessageID)
 	result := provider.SMSStatusResult{
@@ -33,7 +32,6 @@ func (p *Provider) CheckSMSStatus(ctx context.Context, request provider.SMSStatu
 	if response.statusCode < http.StatusOK || response.statusCode >= http.StatusMultipleChoices || !response.body.Success {
 		return result, apiError(response)
 	}
-
 	if returnedID := strings.TrimSpace(response.body.Data.MessageID); returnedID != "" {
 		result.ProviderMessageID = returnedID
 	}
@@ -42,14 +40,14 @@ func (p *Provider) CheckSMSStatus(ctx context.Context, request provider.SMSStatu
 	return result, nil
 }
 
-// CheckSenderIDStatus reconciles the current approval state of a Sendexa Sender ID.
-func (p *Provider) CheckSenderIDStatus(ctx context.Context, request provider.SenderIDStatusRequest) (provider.SenderIDStatusResult, error) {
-	senderID := strings.TrimSpace(request.SenderID)
+func (p *Provider) CheckSenderIDStatus(ctx context.Context, request relaysenderid.StatusRequest) (relaysenderid.StatusResult, error) {
+	senderID := strings.TrimSpace(request.Name)
 	providerReference := strings.TrimSpace(request.ProviderReference)
-	result := provider.SenderIDStatusResult{
-		SenderID:          senderID,
+	result := relaysenderid.StatusResult{
+		Provider:          p.Name(),
+		Name:              senderID,
 		ProviderReference: providerReference,
-		Status:            provider.SenderIDUnknown,
+		Status:            relaysenderid.StatusUnknown,
 	}
 	if p == nil || p.client == nil {
 		return result, ErrInvalidConfig
@@ -80,9 +78,8 @@ func (p *Provider) CheckSenderIDStatus(ctx context.Context, request provider.Sen
 		} else if !strings.EqualFold(name, senderID) {
 			continue
 		}
-
 		if name != "" {
-			result.SenderID = name
+			result.Name = name
 		}
 		if id != "" {
 			result.ProviderReference = id
@@ -91,7 +88,6 @@ func (p *Provider) CheckSenderIDStatus(ctx context.Context, request provider.Sen
 		result.Status = normalizeSenderIDStatus(record.Status)
 		return result, nil
 	}
-
 	return result, fmt.Errorf("Sendexa sender ID not found")
 }
 
@@ -108,15 +104,15 @@ func normalizeSMSStatus(status string) provider.SMSStatus {
 	}
 }
 
-func normalizeSenderIDStatus(status string) provider.SenderIDStatus {
+func normalizeSenderIDStatus(status string) relaysenderid.Status {
 	switch strings.ToLower(strings.TrimSpace(status)) {
 	case "approved", "active":
-		return provider.SenderIDActive
+		return relaysenderid.StatusApproved
 	case "pending":
-		return provider.SenderIDPending
+		return relaysenderid.StatusPending
 	case "rejected":
-		return provider.SenderIDRejected
+		return relaysenderid.StatusRejected
 	default:
-		return provider.SenderIDUnknown
+		return relaysenderid.StatusUnknown
 	}
 }

@@ -9,7 +9,7 @@ import (
 	"time"
 
 	sentrymonitoring "github.com/dugble/dugble/server/internal/adapters/monitoring/sentry"
-	platformsenderid "github.com/dugble/dugble/server/internal/platform/senderid"
+	relaysenderid "github.com/dugble/dugble/server/internal/relay/senderid"
 )
 
 type JobConfig struct {
@@ -37,9 +37,14 @@ func DefaultJobConfig() JobConfig {
 }
 
 func (config JobConfig) validate() error {
-	if config.PollInterval <= 0 || config.BatchSize <= 0 || config.Concurrency <= 0 ||
-		config.LockTimeout <= 0 || config.ProviderTimeout <= 0 || config.PendingCheckInterval <= 0 ||
-		config.RetryBaseInterval <= 0 || config.MaxRetryInterval < config.RetryBaseInterval {
+	if config.PollInterval <= 0 ||
+		config.BatchSize <= 0 ||
+		config.Concurrency <= 0 ||
+		config.LockTimeout <= 0 ||
+		config.ProviderTimeout <= 0 ||
+		config.PendingCheckInterval <= 0 ||
+		config.RetryBaseInterval <= 0 ||
+		config.MaxRetryInterval < config.RetryBaseInterval {
 		return ErrInvalidJobConfig
 	}
 	return nil
@@ -48,13 +53,13 @@ func (config JobConfig) validate() error {
 type Job struct {
 	repository *Repository
 	service    *ReconciliationService
-	providers  map[string]platformsenderid.Provider
+	providers  map[string]relaysenderid.Provider
 	config     JobConfig
 	workerID   string
 	now        func() time.Time
 }
 
-func NewJob(repository *Repository, config JobConfig, workerID string, providers ...platformsenderid.Provider) (*Job, error) {
+func NewJob(repository *Repository, config JobConfig, workerID string, providers ...relaysenderid.Provider) (*Job, error) {
 	if err := config.validate(); err != nil {
 		return nil, err
 	}
@@ -62,14 +67,15 @@ func NewJob(repository *Repository, config JobConfig, workerID string, providers
 	if workerID == "" {
 		return nil, ErrWorkerIDRequired
 	}
-	registry := make(map[string]platformsenderid.Provider, len(providers))
+
+	registry := make(map[string]relaysenderid.Provider, len(providers))
 	for _, provider := range providers {
 		if provider == nil {
 			return nil, errors.New("sender ID provider is required")
 		}
-		providerID := strings.ToLower(strings.TrimSpace(provider.ID()))
+		providerID := strings.ToLower(strings.TrimSpace(provider.Name()))
 		if providerID == "" {
-			return nil, errors.New("sender ID provider ID is required")
+			return nil, errors.New("sender ID provider name is required")
 		}
 		if _, exists := registry[providerID]; exists {
 			return nil, fmt.Errorf("duplicate Sender ID provider %q", providerID)
@@ -79,6 +85,7 @@ func NewJob(repository *Repository, config JobConfig, workerID string, providers
 	if len(registry) == 0 {
 		return nil, errors.New("at least one Sender ID provider is required")
 	}
+
 	return &Job{
 		repository: repository,
 		service:    NewReconciliationService(repository, config, workerID),
@@ -90,6 +97,9 @@ func NewJob(repository *Repository, config JobConfig, workerID string, providers
 }
 
 func (job *Job) WithNotifier(notifier reconciliationNotifier) *Job {
+	if job == nil {
+		return nil
+	}
 	job.service.WithNotifier(notifier)
 	return job
 }
@@ -98,8 +108,10 @@ func (job *Job) Run(ctx context.Context) error {
 	if job == nil || job.repository == nil || job.service == nil || len(job.providers) == 0 {
 		return ErrJobNotConfigured
 	}
+
 	ticker := time.NewTicker(job.config.PollInterval)
 	defer ticker.Stop()
+
 	for {
 		if err := job.poll(ctx); err != nil && !errors.Is(err, context.Canceled) {
 			sentrymonitoring.Error("Sender ID reconciliation poll failed", "error", err)
@@ -113,7 +125,7 @@ func (job *Job) Run(ctx context.Context) error {
 }
 
 type workItem struct {
-	provider platformsenderid.Provider
+	provider relaysenderid.Provider
 	claim    RegistrationClaim
 }
 
@@ -121,8 +133,15 @@ func (job *Job) poll(ctx context.Context) error {
 	now := job.now()
 	items := make([]workItem, 0, int(job.config.BatchSize)*len(job.providers))
 	var joined error
+
 	for providerID, provider := range job.providers {
-		claims, err := job.repository.ClaimPendingRegistrations(ctx, job.workerID, providerID, job.config.BatchSize, now.Add(-job.config.LockTimeout))
+		claims, err := job.repository.ClaimPendingRegistrations(
+			ctx,
+			job.workerID,
+			providerID,
+			job.config.BatchSize,
+			now.Add(-job.config.LockTimeout),
+		)
 		if err != nil {
 			joined = errors.Join(joined, fmt.Errorf("claim %s Sender ID registrations: %w", providerID, err))
 			continue
@@ -135,6 +154,7 @@ func (job *Job) poll(ctx context.Context) error {
 	semaphore := make(chan struct{}, job.config.Concurrency)
 	var wait sync.WaitGroup
 	var mutex sync.Mutex
+
 	for _, item := range items {
 		item := item
 		wait.Add(1)
@@ -146,14 +166,22 @@ func (job *Job) poll(ctx context.Context) error {
 			case <-ctx.Done():
 				return
 			}
+
 			if err := job.service.Process(ctx, item.provider, item.claim); err != nil && !errors.Is(err, context.Canceled) {
-				sentrymonitoring.Error("Sender ID reconciliation failed", "sender_id", item.claim.ID, "provider", item.claim.Provider, "attempt", item.claim.Attempt, "error", err)
+				sentrymonitoring.Error(
+					"Sender ID reconciliation failed",
+					"sender_id", item.claim.ID,
+					"provider", item.claim.Provider,
+					"attempt", item.claim.Attempt,
+					"error", err,
+				)
 				mutex.Lock()
 				joined = errors.Join(joined, err)
 				mutex.Unlock()
 			}
 		}()
 	}
+
 	wait.Wait()
 	return joined
 }
