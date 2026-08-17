@@ -115,12 +115,13 @@ func (p *Provider) Send(ctx context.Context, message sms.Message) (sms.SendResul
 // The canonical Dugble purpose maps directly to Sendexa's useCase field.
 func (p *Provider) CreateSenderID(ctx context.Context, request provider.CreateSenderIDRequest) (provider.CreateSenderIDResult, error) {
 	senderID := strings.TrimSpace(request.Name)
+	countryCode := strings.ToUpper(strings.TrimSpace(request.CountryCode))
 	purpose := strings.TrimSpace(request.Purpose)
 	result := provider.CreateSenderIDResult{SenderID: senderID, Status: provider.SenderIDUnknown}
 	if p == nil || p.client == nil {
 		return result, ErrInvalidConfig
 	}
-	if senderID == "" || len(senderID) > p.Capabilities().MaxSenderIDLength || purpose == "" || !p.Capabilities().SupportsCountry(request.CountryCode) {
+	if senderID == "" || len(senderID) > p.Capabilities().MaxSenderIDLength || len(countryCode) != 2 || purpose == "" || !p.Capabilities().SupportsCountry(countryCode) {
 		return result, ErrInvalidRequest
 	}
 
