@@ -8,19 +8,18 @@ import (
 	"strings"
 
 	provider "github.com/dugble/dugble/server/internal/providers"
+	relaysenderid "github.com/dugble/dugble/server/internal/relay/senderid"
 	"github.com/dugble/dugble/server/internal/relay/sms"
 )
 
 var ErrInvalidConfig = errors.New("invalid Moolre configuration")
 var ErrInvalidRequest = errors.New("invalid Moolre request")
 
-// Config configures the Moolre provider.
 type Config struct {
 	VASKey     string
 	HTTPClient *http.Client
 }
 
-// Provider owns communication with Moolre.
 type Provider struct {
 	client *client
 }
@@ -47,7 +46,6 @@ func (p *Provider) Capabilities() sms.Capabilities {
 	}
 }
 
-// APIError records a non-success response returned by Moolre.
 type APIError struct {
 	StatusCode int
 	Code       string
@@ -65,8 +63,6 @@ func (e *APIError) Error() string {
 	return fmt.Sprintf("Moolre returned HTTP %d: %s", e.StatusCode, message)
 }
 
-// Send submits an SMS to Moolre. Submission classification remains a Relay
-// concern: accepted stops, rejected may fall back, and unknown never falls back.
 func (p *Provider) Send(ctx context.Context, message sms.Message) (sms.SendResult, error) {
 	if p == nil || p.client == nil {
 		return sms.SendResult{State: sms.SubmissionRejected}, ErrInvalidConfig
@@ -84,45 +80,46 @@ func (p *Provider) Send(ctx context.Context, message sms.Message) (sms.SendResul
 			Ref:       strings.TrimSpace(message.Reference),
 		}},
 	})
-
 	if response.statusCode == http.StatusOK && response.body.Status == 1 && strings.EqualFold(strings.TrimSpace(response.body.Code), "SMS01") {
-		return sms.SendResult{State: sms.SubmissionAccepted}, nil
+		return sms.SendResult{
+			State:             sms.SubmissionAccepted,
+			ProviderMessageID: strings.TrimSpace(message.Reference),
+		}, nil
 	}
-
 	if isSafeToFallbackStatus(response.statusCode) {
 		return sms.SendResult{State: sms.SubmissionRejected}, apiError(response)
 	}
-
 	if requestErr != nil {
 		return sms.SendResult{State: sms.SubmissionUnknown}, requestErr
 	}
-
 	return sms.SendResult{State: sms.SubmissionUnknown}, apiError(response)
 }
 
-// CreateSenderID submits a Sender ID registration request to Moolre.
-// Moolre only consumes the canonical name; country and purpose remain Dugble routing metadata.
-func (p *Provider) CreateSenderID(ctx context.Context, request provider.CreateSenderIDRequest) (provider.CreateSenderIDResult, error) {
-	senderID := strings.TrimSpace(request.Name)
-	countryCode := strings.ToUpper(strings.TrimSpace(request.CountryCode))
-	result := provider.CreateSenderIDResult{SenderID: senderID, Status: provider.SenderIDUnknown}
+func (p *Provider) CreateSenderID(ctx context.Context, request relaysenderid.CreateRequest) (relaysenderid.CreateResult, error) {
+	request = request.Normalize()
+	result := relaysenderid.CreateResult{
+		Provider: p.Name(),
+		Name:     request.Name,
+		Status:   relaysenderid.StatusUnknown,
+	}
 	if p == nil || p.client == nil {
 		return result, ErrInvalidConfig
 	}
-	if senderID == "" || len(senderID) > 11 || len(countryCode) != 2 || !p.Capabilities().SupportsCountry(countryCode) {
+	if err := request.Validate(); err != nil || !p.Capabilities().SupportsCountry(request.CountryCode) {
 		return result, ErrInvalidRequest
 	}
 
 	response, err := p.client.query(ctx, createSenderIDPayload{
 		Type:      3,
-		SenderIDs: []senderIDPayload{{SenderID: senderID}},
+		SenderIDs: []senderIDPayload{{SenderID: request.Name}},
 	})
 	if err != nil {
 		return result, err
 	}
 	result.ProviderCode = response.body.Code
 	if response.statusCode == http.StatusOK && response.body.Status == 1 && strings.EqualFold(strings.TrimSpace(response.body.Code), "ASMQ12") {
-		result.Status = provider.SenderIDPending
+		result.Status = relaysenderid.StatusPending
+		result.ProviderStatus = "pending"
 		return result, nil
 	}
 	return result, apiError(response)
@@ -146,6 +143,5 @@ func apiError(response rawResponse) error {
 }
 
 var _ provider.Sender = (*Provider)(nil)
-var _ provider.SenderIDCreator = (*Provider)(nil)
 var _ provider.SMSStatusChecker = (*Provider)(nil)
-var _ provider.SenderIDStatusChecker = (*Provider)(nil)
+var _ relaysenderid.Provider = (*Provider)(nil)

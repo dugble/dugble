@@ -7,12 +7,12 @@ import (
 	"github.com/joho/godotenv"
 )
 
-type ProviderConfig struct {
-	APIKey string `env:"API_KEY"`
-}
-
 type MoolreConfig struct {
 	VASKey string `env:"VAS_KEY"`
+}
+
+type SendexaConfig struct {
+	Token string `env:"TOKEN"`
 }
 
 type HubtelConfig struct {
@@ -62,8 +62,8 @@ type Config struct {
 	Backoffice     BackofficeConfig `envPrefix:"BACKOFFICE_"`
 	AWS            AWSConfig        `envPrefix:"AWS_"`
 	NATSURL        string           `env:"NATS_URL" envDefault:"nats://localhost:4222"`
-	MNotify        ProviderConfig   `envPrefix:"MNOTIFY_"`
 	Moolre         MoolreConfig     `envPrefix:"MOOLRE_"`
+	Sendexa        SendexaConfig    `envPrefix:"SENDEXA_"`
 	Hubtel         HubtelConfig     `envPrefix:"HUBTEL_"`
 	NewRelic       NewRelicConfig   `envPrefix:"NEW_RELIC_"`
 	Sentry         SentryConfig     `envPrefix:"SENTRY_"`
@@ -99,8 +99,8 @@ func (c *Config) normalize() {
 	c.AWS.SecretKey = strings.TrimSpace(c.AWS.SecretKey)
 	c.AWS.SNSTopicARNs = normalizeStrings(c.AWS.SNSTopicARNs)
 	c.NATSURL = strings.TrimSpace(c.NATSURL)
-	c.MNotify.APIKey = strings.TrimSpace(c.MNotify.APIKey)
 	c.Moolre.VASKey = strings.TrimSpace(c.Moolre.VASKey)
+	c.Sendexa.Token = strings.TrimSpace(c.Sendexa.Token)
 	c.Hubtel.ClientID = strings.TrimSpace(c.Hubtel.ClientID)
 	c.Hubtel.ClientSecret = strings.TrimSpace(c.Hubtel.ClientSecret)
 	c.Hubtel.MerchantAccountNumber = strings.TrimSpace(c.Hubtel.MerchantAccountNumber)

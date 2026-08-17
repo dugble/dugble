@@ -16,16 +16,10 @@ import (
 	awsses "github.com/dugble/dugble/server/internal/adapters/amazon/ses"
 	awssns "github.com/dugble/dugble/server/internal/adapters/amazon/sns"
 	"github.com/dugble/dugble/server/internal/adapters/hubtel"
-	leamoutsms "github.com/dugble/dugble/server/internal/adapters/leamout/sms"
-	mnotifyadapter "github.com/dugble/dugble/server/internal/adapters/mnotify"
-	mnotifysms "github.com/dugble/dugble/server/internal/adapters/mnotify/sms"
 	newrelicmonitoring "github.com/dugble/dugble/server/internal/adapters/monitoring/newrelic"
 	sentrymonitoring "github.com/dugble/dugble/server/internal/adapters/monitoring/sentry"
-	"github.com/dugble/dugble/server/internal/adapters/moolre"
-	moolresms "github.com/dugble/dugble/server/internal/adapters/moolre/sms"
 	"github.com/dugble/dugble/server/internal/adapters/postgres"
 	redisadapter "github.com/dugble/dugble/server/internal/adapters/redis"
-	runnagesms "github.com/dugble/dugble/server/internal/adapters/runnage/sms"
 	arcjetadapter "github.com/dugble/dugble/server/internal/adapters/security/arcjet"
 	paymentmodule "github.com/dugble/dugble/server/internal/billing/payment"
 	"github.com/dugble/dugble/server/internal/config"
@@ -35,19 +29,22 @@ import (
 	"github.com/dugble/dugble/server/internal/platform/idempotency"
 	"github.com/dugble/dugble/server/internal/platform/outbox"
 	platformsms "github.com/dugble/dugble/server/internal/platform/sms"
+	moolreprovider "github.com/dugble/dugble/server/internal/providers/moolre"
+	sendexaprovider "github.com/dugble/dugble/server/internal/providers/sendexa"
+	relaycore "github.com/dugble/dugble/server/internal/relay"
+	relaysms "github.com/dugble/dugble/server/internal/relay/sms"
 	httptransport "github.com/dugble/dugble/server/internal/transport"
 	httpmiddleware "github.com/dugble/dugble/server/internal/transport/middleware"
 	providersns "github.com/dugble/dugble/server/internal/transport/provider/aws/sns"
 )
 
-// Registry owns the server's long-lived infrastructure and HTTP lifecycle.
 type Registry struct {
 	config         *config.Config
 	postgres       *pgxpool.Pool
 	redis          *redis.Client
 	arcjet         *arcjet.Client
 	emailClient    *awsses.Client
-	smsSender      *platformsms.Service
+	smsSender      *platformsms.RelayService
 	outbox         *outbox.Repository
 	providerSNS    *providersns.Handler
 	hubtelProvider *hubtel.Provider
@@ -56,7 +53,6 @@ type Registry struct {
 	cleanups       cleanupStack
 }
 
-// Start wires and runs the server until an interrupt or termination signal.
 func Start() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -69,12 +65,10 @@ func Start() error {
 	return registry.Run(ctx)
 }
 
-// New constructs the server registry and all long-lived infrastructure.
 func New(ctx context.Context) (*Registry, error) {
 	if ctx == nil {
 		return nil, errors.New("server registry context is required")
 	}
-
 	registry := &Registry{}
 	fail := func(err error) (*Registry, error) {
 		registry.Close()
@@ -121,13 +115,16 @@ func New(ctx context.Context) (*Registry, error) {
 	if err != nil {
 		return fail(fmt.Errorf("initialize Arcjet client: %w", err))
 	}
+
 	registry.emailClient, err = newEmailClient(cfg)
 	if err != nil {
 		return fail(fmt.Errorf("initialize email client: %w", err))
 	}
+
 	registry.outbox = outbox.NewRepository(registry.postgres)
 	registry.providerSNS = newProviderSNSHandler(cfg, registry.postgres, registry.outbox)
 	registry.hubtelProvider, registry.hubtelPayments = newHubtelServices(cfg, registry.postgres)
+
 	registry.smsSender, err = newSMSSender(cfg)
 	if err != nil {
 		return fail(err)
@@ -163,13 +160,21 @@ func (registry *Registry) routerConfig() httptransport.RouterConfig {
 		CORSOrigins: registry.config.CORSOrigins,
 		Arcjet:      registry.arcjet,
 		BodyLimit:   platformemail.MaxHTTPRequestBytes,
-		Idempotency: httpmiddleware.IdempotencyConfig{Repository: idempotency.NewRepository(registry.postgres)},
-		Middleware:  defaultHTTPMiddleware(),
+		Idempotency: httpmiddleware.IdempotencyConfig{
+			Repository: idempotency.NewRepository(registry.postgres),
+		},
+		Middleware: defaultHTTPMiddleware(),
 	}
 }
 
 func newEmailClient(cfg *config.Config) (*awsses.Client, error) {
-	return awsses.NewClient(cfg.AWS.Region, cfg.AWS.FromEmail, cfg.AWS.AccessKey, cfg.AWS.SecretKey, platformemail.TransactionalConfigurationSet)
+	return awsses.NewClient(
+		cfg.AWS.Region,
+		cfg.AWS.FromEmail,
+		cfg.AWS.AccessKey,
+		cfg.AWS.SecretKey,
+		platformemail.TransactionalConfigurationSet,
+	)
 }
 
 func newHubtelServices(cfg *config.Config, db *pgxpool.Pool) (*hubtel.Provider, *paymentmodule.Service) {
@@ -181,7 +186,13 @@ func newHubtelServices(cfg *config.Config, db *pgxpool.Pool) (*hubtel.Provider, 
 }
 
 func newSystemEmailQueue(cfg *config.Config, repository *outbox.Repository) *systememail.Queue {
-	return systememail.NewQueue(repository, platformemail.Message{Provider: awsses.ProviderSES, Region: cfg.AWS.Region, Stream: "transactional", ConfigurationSet: platformemail.TransactionalConfigurationSet, SESTenantName: platformemail.SystemSESTenantName})
+	return systememail.NewQueue(repository, platformemail.Message{
+		Provider:         awsses.ProviderSES,
+		Region:           cfg.AWS.Region,
+		Stream:           "transactional",
+		ConfigurationSet: platformemail.TransactionalConfigurationSet,
+		SESTenantName:    platformemail.SystemSESTenantName,
+	})
 }
 
 func newProviderSNSHandler(cfg *config.Config, db *pgxpool.Pool, repository *outbox.Repository) *providersns.Handler {
@@ -193,19 +204,60 @@ func newProviderSNSHandler(cfg *config.Config, db *pgxpool.Pool, repository *out
 	return providersns.NewHandler(verifier, confirmer, feedback.NewRepository(db, repository))
 }
 
-func newSMSSender(cfg *config.Config) (*platformsms.Service, error) {
-	router, err := platformsms.NewRoutingService(platformsms.DefaultRoutingConfig(), mnotifysms.NewProvider(mnotifyadapter.NewClient(cfg.MNotify.APIKey)), moolresms.NewProvider(moolre.NewClient(cfg.Moolre.VASKey)), leamoutsms.NewProvider(), runnagesms.NewProvider())
-	if err != nil {
-		return nil, fmt.Errorf("initialize SMS router: %w", err)
+func newSMSProviders(cfg *config.Config) ([]relaysms.Provider, error) {
+	providers := make([]relaysms.Provider, 0, 2)
+	if cfg.Moolre.VASKey != "" {
+		provider, err := moolreprovider.New(moolreprovider.Config{VASKey: cfg.Moolre.VASKey})
+		if err != nil {
+			return nil, fmt.Errorf("initialize Moolre provider: %w", err)
+		}
+		providers = append(providers, provider)
 	}
-	sender, err := platformsms.NewService(router)
+	if cfg.Sendexa.Token != "" {
+		provider, err := sendexaprovider.New(sendexaprovider.Config{Token: cfg.Sendexa.Token})
+		if err != nil {
+			return nil, fmt.Errorf("initialize Sendexa provider: %w", err)
+		}
+		providers = append(providers, provider)
+	}
+	if len(providers) == 0 {
+		return nil, fmt.Errorf("initialize SMS providers: configure MOOLRE_VAS_KEY or SENDEXA_TOKEN")
+	}
+	return providers, nil
+}
+
+func newSMSRouteTable(providers []relaysms.Provider) (*relaycore.RouteTable, error) {
+	routes := make([]relaycore.Route, 0, len(providers))
+	for _, provider := range providers {
+		routes = append(routes, relaycore.Route{
+			Provider:    provider.Name(),
+			CountryCode: "GH",
+			Priority:    len(routes) + 1,
+			Enabled:     true,
+		})
+	}
+	return relaycore.NewRouteTable(routes)
+}
+
+func newSMSSender(cfg *config.Config) (*platformsms.RelayService, error) {
+	providers, err := newSMSProviders(cfg)
+	if err != nil {
+		return nil, err
+	}
+	routes, err := newSMSRouteTable(providers)
+	if err != nil {
+		return nil, fmt.Errorf("initialize SMS routes: %w", err)
+	}
+	sender, err := platformsms.NewRelayService(routes, providers...)
 	if err != nil {
 		return nil, fmt.Errorf("initialize SMS sender: %w", err)
 	}
 	return sender, nil
 }
 
-type cleanupStack struct{ functions []func() }
+type cleanupStack struct {
+	functions []func()
+}
 
 func (stack *cleanupStack) Add(cleanup func()) {
 	if stack != nil && cleanup != nil {

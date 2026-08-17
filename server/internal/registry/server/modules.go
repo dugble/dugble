@@ -58,7 +58,12 @@ func (registry *Registry) registerModules(router *echo.Echo) error {
 	if err != nil {
 		return fmt.Errorf("initialize system email renderer: %w", err)
 	}
-	notificationEmailService := systemmail.NewEmailService(newSystemEmailQueue(cfg, registry.outbox), renderer, cfg.FrontendURL, cfg.AWS.FromEmail)
+	notificationEmailService := systemmail.NewEmailService(
+		newSystemEmailQueue(cfg, registry.outbox),
+		renderer,
+		cfg.FrontendURL,
+		cfg.AWS.FromEmail,
+	)
 	if registry.hubtelPayments != nil {
 		registry.hubtelPayments.WithNotifier(notificationEmailService)
 	}
@@ -87,25 +92,40 @@ func (registry *Registry) registerModules(router *echo.Echo) error {
 	messageTemplateRepository := messagetemplatemodule.NewRepository(db)
 	broadcastRepository := broadcastmodule.NewRepository(db)
 	domainRepository := domainmodule.NewRepository(db)
-	emailTenantService := emailtenant.NewService(db, emailtenant.NewRepository(db), emailtenant.NewProvisioningQueue(registry.outbox))
+	emailTenantService := emailtenant.NewService(
+		db,
+		emailtenant.NewRepository(db),
+		emailtenant.NewProvisioningQueue(registry.outbox),
+	)
 	senderIDRepository := senderidmodule.NewRepository(db)
 	webhookRepository := webhooksmodule.NewRepository(db)
 	webhookEmitter := platformwebhook.NewEmitter(webhookRepository)
 	smsRepository := smsmodule.NewRepositoryWithWebhookEmitter(db, webhookEmitter)
 	smsCampaignRepository := smscampaignmodule.NewRepository(db)
 	billingService := platformbilling.NewService(platformbilling.NewRepository(db)).WithBalanceNotifier(notificationEmailService)
-	smsService := smsmodule.NewService(smsRepository, registry.smsSender, smsdelivery.NewQueue(registry.outbox), billingService)
+	smsService := smsmodule.NewService(
+		smsRepository,
+		registry.smsSender,
+		smsdelivery.NewQueue(registry.outbox),
+		billingService,
+	)
 	emailAPIService := emailmodule.NewService(
 		emailmodule.NewRepository(db),
 		emaildelivery.NewQueue(registry.outbox),
-		emailmodule.ServiceConfig{DefaultFromEmail: cfg.AWS.FromEmail, DefaultProvider: domainmodule.DefaultProvider, DefaultRegion: cfg.AWS.Region},
+		emailmodule.ServiceConfig{
+			DefaultFromEmail: cfg.AWS.FromEmail,
+			DefaultProvider:  domainmodule.DefaultProvider,
+			DefaultRegion:    cfg.AWS.Region,
+		},
 		billingService,
 	).WithDatabase(db)
 	messageTemplateService := messagetemplatemodule.NewService(messageTemplateRepository, emailAPIService)
 	broadcastService := broadcastmodule.NewService(broadcastRepository, messageTemplateService)
 	webhookService := webhooksmodule.NewService(db, webhookRepository, webhookEmitter)
 	dnsVerifier := netdns.New()
-	domainService := domainmodule.NewService(domainRepository, registry.emailClient, dnsVerifier, emailTenantService).WithDatabase(db).WithNotifier(notificationEmailService)
+	domainService := domainmodule.NewService(domainRepository, registry.emailClient, dnsVerifier, emailTenantService).
+		WithDatabase(db).
+		WithNotifier(notificationEmailService)
 	domainClaimRepository := domainclaimmodule.NewRepository(db)
 	domainClaimService := domainclaimmodule.NewService(db, domainClaimRepository, registry.emailClient, dnsVerifier, emailTenantService)
 	walletService := walletmodule.NewService(
@@ -115,7 +135,14 @@ func (registry *Registry) registerModules(router *echo.Echo) error {
 		registry.hubtelPayments,
 	)
 
-	middleware := newServerMiddleware(cfg.IsDevelopment(), cfg.CORSOrigins, sessionRepository, authRepository, teamRepository, teamTokenRepository)
+	middleware := newServerMiddleware(
+		cfg.IsDevelopment(),
+		cfg.CORSOrigins,
+		sessionRepository,
+		authRepository,
+		teamRepository,
+		teamTokenRepository,
+	)
 
 	authmodule.RegisterRoutes(router, authmodule.NewHandler(authService, cfg.IsDevelopment(), cfg.CookieDomain), middleware.auth, middleware.csrf)
 	mfamodule.RegisterRoutes(router, mfamodule.NewHandler(mfaService), middleware.auth, middleware.csrf)
@@ -133,7 +160,11 @@ func (registry *Registry) registerModules(router *echo.Echo) error {
 	suppressionmodule.RegisterRoutes(router, suppressionmodule.NewHandler(suppressionmodule.NewService(suppressionRepository)), middleware.tenantAccess)
 	messagetemplatemodule.RegisterRoutes(router, messagetemplatemodule.NewHandler(messageTemplateService), middleware.tenantAccess)
 	broadcastmodule.RegisterRoutes(router, broadcastmodule.NewHandler(broadcastService), middleware.tenantAccess)
-	senderidmodule.RegisterRoutes(router, senderidmodule.NewHandler(senderidmodule.NewService(senderIDRepository)), middleware.tenantAccess)
+	senderidmodule.RegisterRoutes(
+		router,
+		senderidmodule.NewHandler(senderidmodule.NewService(senderIDRepository).WithProviders(registry.smsSender.ProviderIDs()...)),
+		middleware.tenantAccess,
+	)
 	domainmodule.RegisterRoutes(router, domainmodule.NewHandler(domainService), middleware.tenantAccess)
 	domainclaimmodule.RegisterRoutes(router, domainclaimmodule.NewHandler(domainClaimService), middleware.tenantAccess)
 	smsmodule.RegisterRoutes(router, smsmodule.NewHandler(smsService), middleware.tenantAccess)
@@ -152,18 +183,39 @@ func newServerMiddleware(
 	teamRepository *teammodule.Repository,
 	teamTokenRepository *teamtokenmodule.Repository,
 ) serverMiddleware {
-	authMiddleware := httpmiddleware.SessionAuth(httpmiddleware.SessionAuthConfig{Sessions: sessionRepository, Users: authRepository})
-	csrfMiddleware := httpmiddleware.CSRF(httpmiddleware.CSRFConfig{Development: development, TrustedOrigins: corsOrigins})
-	resolver := httpmiddleware.CredentialResolver{Sessions: sessionRepository, Users: authRepository, Tokens: teamTokenRepository}
-	authenticate := httpmiddleware.Authenticate(httpmiddleware.AuthenticateConfig{Resolver: resolver, CSRF: csrfMiddleware})
+	authMiddleware := httpmiddleware.SessionAuth(httpmiddleware.SessionAuthConfig{
+		Sessions: sessionRepository,
+		Users:    authRepository,
+	})
+	csrfMiddleware := httpmiddleware.CSRF(httpmiddleware.CSRFConfig{
+		Development:    development,
+		TrustedOrigins: corsOrigins,
+	})
+	resolver := httpmiddleware.CredentialResolver{
+		Sessions: sessionRepository,
+		Users:    authRepository,
+		Tokens:   teamTokenRepository,
+	}
+	authenticate := httpmiddleware.Authenticate(httpmiddleware.AuthenticateConfig{
+		Resolver: resolver,
+		CSRF:     csrfMiddleware,
+	})
 	selectTeam := httpmiddleware.SelectTeam(httpmiddleware.SelectTeamConfig{Memberships: teamRepository})
 	tenantMiddleware := func(permission authz.Permission) echo.MiddlewareFunc {
-		return httpmiddleware.Tenant(httpmiddleware.TenantConfig{Memberships: teamRepository, Required: permission})
+		return httpmiddleware.Tenant(httpmiddleware.TenantConfig{
+			Memberships: teamRepository,
+			Required:    permission,
+		})
 	}
 	tenantAccess := func(permission authz.Permission) echo.MiddlewareFunc {
 		return httpmiddleware.Chain(authenticate, selectTeam, httpmiddleware.Authorize(permission))
 	}
-	return serverMiddleware{auth: authMiddleware, csrf: csrfMiddleware, tenant: tenantMiddleware, tenantAccess: tenantAccess}
+	return serverMiddleware{
+		auth:         authMiddleware,
+		csrf:         csrfMiddleware,
+		tenant:       tenantMiddleware,
+		tenantAccess: tenantAccess,
+	}
 }
 
 func defaultHTTPMiddleware() []echo.MiddlewareFunc {
