@@ -14,6 +14,7 @@ import (
 	platformbilling "github.com/dugble/dugble/server/internal/billing/charge/usage"
 	subscriptionLifecycle "github.com/dugble/dugble/server/internal/billing/subscription/lifecycle"
 	subscriptionRenewal "github.com/dugble/dugble/server/internal/billing/subscription/renewal"
+	"github.com/dugble/dugble/server/internal/config"
 	broadcastexecution "github.com/dugble/dugble/server/internal/delivery/broadcast"
 	emailfeedback "github.com/dugble/dugble/server/internal/delivery/email/feedback"
 	emaildelivery "github.com/dugble/dugble/server/internal/delivery/email/outbound"
@@ -148,8 +149,23 @@ func (registry *Registry) newModules(startupCtx context.Context) (modules, error
 	return modules{subscriptionRenewal: renewalWorker.Run, outboxRelay: outboxRelay.Run, transactionalEmail: transactionalEmailConsumer.Run, marketingEmail: marketingEmailConsumer.Run, systemEmail: systemEmailConsumer.Run, emailTenantProvisioning: emailTenantConsumer.Run, emailFeedback: emailFeedbackConsumer.Run, emailFeedbackReconciler: emailFeedbackReconciler.Run, emailFeedbackMetrics: emailFeedbackMetricsCollector.Run, smsDelivery: smsConsumer.Run, smsFeedback: smsFeedbackConsumer.Run, smsCampaign: smsCampaignJob.Run, webhookDelivery: webhookConsumer.Run, domainReconciliation: domainJob.Run, domainClaimReconciliation: domainClaimJob.Run, broadcastExecution: broadcastExecutionJob.Run, senderIDReconciliation: senderIDRun}, nil
 }
 
-func newCommunicationProviders(cfg interface{ }) ([]relaysms.Provider, []relaysenderid.Provider, error) {
-	return nil, nil, fmt.Errorf("communication provider configuration is not initialized")
+func newCommunicationProviders(cfg *config.Config) ([]relaysms.Provider, []relaysenderid.Provider, error) {
+	smsProviders := make([]relaysms.Provider, 0, 2)
+	senderIDProviders := make([]relaysenderid.Provider, 0, 2)
+	if cfg.Moolre.VASKey != "" {
+		provider, err := moolreprovider.New(moolreprovider.Config{VASKey: cfg.Moolre.VASKey})
+		if err != nil { return nil, nil, fmt.Errorf("initialize Moolre provider: %w", err) }
+		smsProviders = append(smsProviders, provider)
+		senderIDProviders = append(senderIDProviders, provider)
+	}
+	if cfg.Sendexa.Token != "" {
+		provider, err := sendexaprovider.New(sendexaprovider.Config{Token: cfg.Sendexa.Token})
+		if err != nil { return nil, nil, fmt.Errorf("initialize Sendexa provider: %w", err) }
+		smsProviders = append(smsProviders, provider)
+		senderIDProviders = append(senderIDProviders, provider)
+	}
+	if len(smsProviders) == 0 { return nil, nil, fmt.Errorf("initialize communication providers: configure MOOLRE_VAS_KEY or SENDEXA_TOKEN") }
+	return smsProviders, senderIDProviders, nil
 }
 
 func newCommunicationRoutes(providers []relaysms.Provider) (*relaycore.RouteTable, error) {
@@ -159,6 +175,3 @@ func newCommunicationRoutes(providers []relaysms.Provider) (*relaycore.RouteTabl
 }
 
 func disabledSenderIDReconciliation(ctx context.Context) error { <-ctx.Done(); return ctx.Err() }
-
-var _ = moolreprovider.Config{}
-var _ = sendexaprovider.Config{}
