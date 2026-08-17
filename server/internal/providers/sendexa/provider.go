@@ -2,6 +2,7 @@ package sendexa
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -13,6 +14,7 @@ import (
 )
 
 const defaultBaseURL = "https://api.sendexa.co"
+const alphanumericSenderIDType = "ALPHANUMERIC"
 
 var ErrInvalidConfig = errors.New("invalid Sendexa configuration")
 var ErrInvalidRequest = errors.New("invalid Sendexa request")
@@ -108,6 +110,42 @@ func (p *Provider) Send(ctx context.Context, message sms.Message) (sms.SendResul
 	return result, apiError(response)
 }
 
+// CreateSenderID submits an alphanumeric Sender ID registration request to Sendexa.
+func (p *Provider) CreateSenderID(ctx context.Context, request provider.CreateSenderIDRequest) (provider.CreateSenderIDResult, error) {
+	senderID := strings.TrimSpace(request.SenderID)
+	useCase := strings.TrimSpace(request.UseCase)
+	result := provider.CreateSenderIDResult{SenderID: senderID, Status: provider.SenderIDUnknown}
+	if p == nil || p.client == nil {
+		return result, ErrInvalidConfig
+	}
+	if senderID == "" || len(senderID) > p.Capabilities().MaxSenderIDLength || useCase == "" {
+		return result, ErrInvalidRequest
+	}
+
+	response, err := p.client.createSenderID(ctx, createSenderIDPayload{
+		Name:    senderID,
+		UseCase: useCase,
+		Type:    alphanumericSenderIDType,
+	})
+	if err != nil {
+		return result, err
+	}
+	if response.statusCode < http.StatusOK || response.statusCode >= http.StatusMultipleChoices || !response.body.Success {
+		return result, senderIDAPIError(response.statusCode, response.body.Message, "")
+	}
+
+	record, err := decodeSenderIDRecord(response.body.Data)
+	if err != nil {
+		return result, err
+	}
+	if strings.TrimSpace(record.Name) != "" {
+		result.SenderID = strings.TrimSpace(record.Name)
+	}
+	result.ProviderReference = strings.TrimSpace(record.ID)
+	result.Status = normalizeSenderIDStatus(record.Status)
+	return result, nil
+}
+
 func isAcceptedStatus(status string) bool {
 	switch status {
 	case "queued", "sent":
@@ -130,5 +168,34 @@ func apiError(response rawResponse) error {
 	}
 }
 
+func decodeSenderIDRecord(data json.RawMessage) (senderIDRecord, error) {
+	var record senderIDRecord
+	if len(data) == 0 || string(data) == "null" {
+		return record, fmt.Errorf("decode Sendexa sender ID: response data is empty")
+	}
+	if err := json.Unmarshal(data, &record); err == nil && (record.ID != "" || record.Name != "" || record.Status != "") {
+		return record, nil
+	}
+
+	var records []senderIDRecord
+	if err := json.Unmarshal(data, &records); err != nil {
+		return record, fmt.Errorf("decode Sendexa sender ID: %w", err)
+	}
+	if len(records) == 0 {
+		return record, fmt.Errorf("decode Sendexa sender ID: response data is empty")
+	}
+	return records[0], nil
+}
+
+func senderIDAPIError(statusCode int, message, status string) error {
+	return &APIError{
+		StatusCode: statusCode,
+		Status:     strings.TrimSpace(status),
+		Message:    strings.TrimSpace(message),
+	}
+}
+
 var _ provider.Sender = (*Provider)(nil)
+var _ provider.SenderIDCreator = (*Provider)(nil)
 var _ provider.SMSStatusChecker = (*Provider)(nil)
+var _ provider.SenderIDStatusChecker = (*Provider)(nil)
