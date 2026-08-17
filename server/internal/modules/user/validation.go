@@ -33,6 +33,22 @@ func validateEmail(value string) (string, error) {
 	return email, nil
 }
 
+func validateCurrentPassword(value string) (string, error) {
+	password := strings.TrimSpace(value)
+	if password == "" {
+		return "", apperrors.NewBadRequest("Current password is required")
+	}
+	return password, nil
+}
+
+func validateVerificationToken(value string) (string, error) {
+	token := strings.TrimSpace(value)
+	if token == "" {
+		return "", apperrors.NewBadRequest("Verification token is required")
+	}
+	return token, nil
+}
+
 func validatePassword(value string) (string, error) {
 	password := strings.TrimSpace(value)
 	if len(password) < minimumPasswordLength {
@@ -48,6 +64,10 @@ func normalizeEmail(email string) string {
 		return value
 	}
 	return strings.TrimSpace(strings.ToLower(address.Address))
+}
+
+func emailChangeIdentifier(userID string) string {
+	return "email.change:" + strings.TrimSpace(userID)
 }
 
 func uniqueEmails(values ...string) []string {

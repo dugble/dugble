@@ -236,6 +236,8 @@ Errors use the standard envelope in [README.md](README.md). Expected statuses de
 
 ### `PATCH /users/email`
 
+Starts or replaces a pending email change. The current verified email remains the account email until the new address is verified.
+
 - Session: required.
 - CSRF: required for browser requests.
 
@@ -243,13 +245,48 @@ Errors use the standard envelope in [README.md](README.md). Expected statuses de
 
 ```json
 {
-  "email": "string"
+  "email": "new@example.com",
+  "current_password": "current-password"
 }
 ```
 
-#### Email verification flow
+The current password must be valid, the new email must differ from the current email, and the new email must not already belong to another user. A verification link valid for 24 hours is sent to the pending address.
 
-The current implementation applies the new email immediately, sets `email_verified` to `false`, and sends email-change notifications to the old and new addresses. It does not create a pending email address or require confirmation before changing `email`.
+#### Response — `202 Accepted`
+
+```json
+{
+  "success": true,
+  "data": {
+    "email": "old@example.com",
+    "pending_email": "new@example.com",
+    "verification_expires_at": "2026-08-17T20:00:00Z"
+  }
+}
+```
+
+Calling this endpoint again replaces the pending email and invalidates the previous email-change verification token.
+
+#### Errors
+
+Invalid email or password input returns `400 Bad Request`. An incorrect current password returns `401 Unauthorized`. An email already in use returns `409 Conflict`.
+
+### `POST /users/email/verify`
+
+Verifies the pending email and commits the change. The token is single-use and must match the authenticated user's current pending email-change request.
+
+- Session: required.
+- CSRF: required for browser requests.
+
+#### Payload
+
+```json
+{
+  "token": "verification-token"
+}
+```
+
+On success, the pending email becomes the account email, remains verified, the pending request is deleted, the token is consumed, the credential version is advanced, and all existing sessions are revoked. The old and new addresses receive an email-change security notification. The client should require a fresh sign-in after receiving the response.
 
 #### Response — `200 OK`
 
@@ -258,15 +295,71 @@ The current implementation applies the new email immediately, sets `email_verifi
   "success": true,
   "data": {
     "id": "string",
-    "email": "string",
-    "email_verified": false,
+    "email": "new@example.com",
+    "email_verified": true,
     "name": "string",
     "created_at": "2026-08-09T17:00:00Z",
-    "updated_at": "2026-08-09T17:00:00Z"
+    "updated_at": "2026-08-16T20:00:00Z"
   }
 }
 ```
 
 #### Errors
 
-Errors use the standard envelope in [README.md](README.md). Expected statuses depend on validation, authentication, permission, resource existence, conflict, rate limiting, and service availability.
+Missing, invalid, expired, used, or superseded verification tokens return `400 Bad Request`. If the pending address became unavailable before verification, the endpoint returns `409 Conflict`.
+
+### `POST /users/email/resend`
+
+Rotates the verification token for the authenticated user's pending email change and sends a new verification link. The pending address itself is not changed.
+
+- Session: required.
+- CSRF: required for browser requests.
+
+#### Payload
+
+No JSON request body.
+
+#### Response — `202 Accepted`
+
+```json
+{
+  "success": true,
+  "data": {
+    "email": "old@example.com",
+    "pending_email": "new@example.com",
+    "verification_expires_at": "2026-08-17T20:00:00Z"
+  }
+}
+```
+
+#### Errors
+
+If there is no unexpired pending email change, the endpoint returns `400 Bad Request`. If the pending address has become unavailable, it returns `409 Conflict`.
+
+### `DELETE /users/email/pending`
+
+Cancels the authenticated user's pending email change and invalidates any outstanding email-change verification token. The current verified email and active sessions are not changed.
+
+- Session: required.
+- CSRF: required for browser requests.
+
+#### Payload
+
+No JSON request body.
+
+#### Response — `200 OK`
+
+```json
+{
+  "success": true,
+  "data": {
+    "cancelled": true
+  }
+}
+```
+
+Cancellation is idempotent. Calling the endpoint when no pending email change exists still returns success.
+
+#### Errors
+
+Authentication and infrastructure failures use the standard error envelope in [README.md](README.md).

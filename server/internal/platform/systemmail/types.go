@@ -19,6 +19,12 @@ type SendEmailVerificationInput struct {
 	Token   string
 }
 
+type SendEmailChangeVerificationInput struct {
+	ToEmail string
+	Name    string
+	Token   string
+}
+
 type SendPasswordResetInput struct {
 	ToEmail string
 	Name    string

@@ -18,4 +18,7 @@ func RegisterRoutes(
 	users.DELETE("/me", handler.DeleteMe)
 	users.PATCH("/password", handler.UpdatePassword)
 	users.PATCH("/email", handler.UpdateEmail)
+	users.POST("/email/verify", handler.VerifyEmailChange)
+	users.POST("/email/resend", handler.ResendEmailChange)
+	users.DELETE("/email/pending", handler.CancelEmailChange)
 }

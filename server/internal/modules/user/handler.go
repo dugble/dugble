@@ -61,9 +61,36 @@ func (h *Handler) UpdateEmail(c *echo.Context) error {
 	if err := json.NewDecoder(c.Request().Body).Decode(&req); err != nil {
 		return httputil.Error(c, apperrors.NewBadRequest("Invalid JSON request body"))
 	}
-	updated, err := h.service.UpdateEmail(c.Request().Context(), req)
+	pending, err := h.service.UpdateEmail(c.Request().Context(), req)
+	if err != nil {
+		return httputil.Error(c, err)
+	}
+	return httputil.Accepted(c, pending)
+}
+
+func (h *Handler) VerifyEmailChange(c *echo.Context) error {
+	var req VerifyEmailChangeRequest
+	if err := json.NewDecoder(c.Request().Body).Decode(&req); err != nil {
+		return httputil.Error(c, apperrors.NewBadRequest("Invalid JSON request body"))
+	}
+	updated, err := h.service.VerifyEmailChange(c.Request().Context(), req)
 	if err != nil {
 		return httputil.Error(c, err)
 	}
 	return httputil.OK(c, updated)
+}
+
+func (h *Handler) ResendEmailChange(c *echo.Context) error {
+	pending, err := h.service.ResendEmailChange(c.Request().Context())
+	if err != nil {
+		return httputil.Error(c, err)
+	}
+	return httputil.Accepted(c, pending)
+}
+
+func (h *Handler) CancelEmailChange(c *echo.Context) error {
+	if err := h.service.CancelEmailChange(c.Request().Context()); err != nil {
+		return httputil.Error(c, err)
+	}
+	return httputil.OK(c, map[string]bool{"cancelled": true})
 }
