@@ -100,8 +100,9 @@ func (p *Provider) Send(ctx context.Context, message sms.Message) (sms.SendResul
 }
 
 // CreateSenderID submits a Sender ID registration request to Moolre.
+// Moolre only consumes the canonical name; country and purpose remain Dugble routing metadata.
 func (p *Provider) CreateSenderID(ctx context.Context, request provider.CreateSenderIDRequest) (provider.CreateSenderIDResult, error) {
-	senderID := strings.TrimSpace(request.SenderID)
+	senderID := strings.TrimSpace(request.Name)
 	result := provider.CreateSenderIDResult{SenderID: senderID, Status: provider.SenderIDUnknown}
 	if p == nil || p.client == nil {
 		return result, ErrInvalidConfig
