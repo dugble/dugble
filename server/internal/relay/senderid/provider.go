@@ -13,3 +13,9 @@ type StatusChecker interface {
 	Name() string
 	CheckSenderIDStatus(context.Context, StatusRequest) (StatusResult, error)
 }
+
+// Provider supports the complete Sender ID lifecycle required by Relay.
+type Provider interface {
+	Creator
+	StatusChecker
+}
