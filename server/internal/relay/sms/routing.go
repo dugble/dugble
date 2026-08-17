@@ -2,12 +2,14 @@ package sms
 
 import (
 	"context"
+	"strings"
 
 	relaycore "github.com/dugble/dugble/server/internal/relay"
 )
 
 type routeResult struct {
 	providers []Provider
+	routed    bool
 	capable   bool
 	available bool
 }
@@ -18,10 +20,22 @@ func (r *Relay) route(ctx context.Context, message Message) routeResult {
 		return result
 	}
 
-	healthy := make([]Provider, 0, len(r.providers))
-	degraded := make([]Provider, 0, len(r.providers))
+	candidates := r.providers
+	if r.routes != nil {
+		names := r.routes.ProviderNames(message.CountryCode)
+		if len(names) == 0 {
+			return result
+		}
+		result.routed = true
+		candidates = providersByName(r.providers, names)
+	} else {
+		result.routed = true
+	}
 
-	for _, provider := range r.providers {
+	healthy := make([]Provider, 0, len(candidates))
+	degraded := make([]Provider, 0, len(candidates))
+
+	for _, provider := range candidates {
 		if providerWithCapabilities, ok := provider.(CapabilityProvider); ok {
 			if !providerWithCapabilities.Capabilities().Supports(message) {
 				r.observe(ctx, relaycore.Event{
@@ -66,4 +80,17 @@ func (r *Relay) route(ctx context.Context, message Message) routeResult {
 
 	result.providers = append(healthy, degraded...)
 	return result
+}
+
+func providersByName(providers []Provider, names []string) []Provider {
+	ordered := make([]Provider, 0, len(names))
+	for _, name := range names {
+		for _, provider := range providers {
+			if strings.EqualFold(strings.TrimSpace(provider.Name()), strings.TrimSpace(name)) {
+				ordered = append(ordered, provider)
+				break
+			}
+		}
+	}
+	return ordered
 }
