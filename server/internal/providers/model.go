@@ -1,3 +1,5 @@
+package providers
+
 type SenderIDStatus string
 
 const (
@@ -18,6 +20,7 @@ const (
 
 type CreateSenderIDRequest struct {
 	SenderID string
+	UseCase  string
 }
 
 type CreateSenderIDResult struct {
