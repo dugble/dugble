@@ -18,9 +18,13 @@ const (
 	SMSUnknown   SMSStatus = "unknown"
 )
 
+// CreateSenderIDRequest is the provider-neutral Sender ID registration request.
+// CountryCode is routing context for Dugble; providers only consume fields
+// supported by their upstream API.
 type CreateSenderIDRequest struct {
-	SenderID string
-	UseCase  string
+	Name        string
+	CountryCode string
+	Purpose     string
 }
 
 type CreateSenderIDResult struct {
