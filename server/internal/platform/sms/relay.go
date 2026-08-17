@@ -26,6 +26,7 @@ func NewRelayService(routes *relaycore.RouteTable, providers ...relaysms.Provide
 	if routes != nil {
 		relay = relay.WithRoutes(routes)
 	}
+
 	registry := make(map[string]relaysms.Provider, len(providers))
 	for _, upstream := range providers {
 		if upstream == nil {
@@ -44,10 +45,14 @@ func NewRelayService(routes *relaycore.RouteTable, providers ...relaysms.Provide
 }
 
 func (service *RelayService) Send(ctx context.Context, request SendRequest) (*SendResponse, error) {
+	if service == nil || service.relay == nil {
+		return nil, ErrRouterRequired
+	}
 	request = request.Normalize()
 	if err := request.Validate(); err != nil {
 		return nil, err
 	}
+
 	result, err := service.relay.Send(ctx, relayMessage(request))
 	if err != nil {
 		return nil, err
@@ -65,11 +70,13 @@ func (service *RelayService) SendWithProvider(ctx context.Context, providerID st
 	if err := request.Validate(); err != nil {
 		return nil, err
 	}
+
 	providerID = strings.ToLower(strings.TrimSpace(providerID))
 	upstream := service.providers[providerID]
 	if upstream == nil {
 		return nil, fmt.Errorf("%w: %s", ErrProviderNotFound, providerID)
 	}
+
 	result, err := upstream.Send(ctx, relayMessage(request))
 	result.Provider = upstream.Name()
 	result.State = result.State.Normalize()
@@ -79,7 +86,11 @@ func (service *RelayService) SendWithProvider(ctx context.Context, providerID st
 	if err == nil {
 		err = fmt.Errorf("provider %s returned submission state %s", upstream.Name(), result.State)
 	}
-	return nil, &SubmissionError{Provider: upstream.Name(), State: result.State, Err: err}
+	return nil, &SubmissionError{
+		Provider: upstream.Name(),
+		State:    result.State,
+		Err:      err,
+	}
 }
 
 func (service *RelayService) ProviderIDs() []string {
@@ -104,21 +115,22 @@ func (service *RelayService) CheckStatus(ctx context.Context, providerID, provid
 	if upstream == nil {
 		return nil, fmt.Errorf("%w: %s", ErrProviderNotFound, providerID)
 	}
+
 	checker, ok := upstream.(provider.SMSStatusChecker)
 	if !ok {
 		return nil, fmt.Errorf("provider %s does not support SMS status checks", providerID)
 	}
 	result, err := checker.CheckSMSStatus(ctx, provider.SMSStatusRequest{
-		Reference: providerMessageID,
+		Reference:         providerMessageID,
 		ProviderMessageID: providerMessageID,
 	})
 	if err != nil {
 		return nil, err
 	}
 	return &StatusResponse{
-		ProviderID: providerID,
-		ProviderMsgID: result.ProviderMessageID,
-		Status: platformStatus(result.Status),
+		ProviderID:     providerID,
+		ProviderMsgID:  result.ProviderMessageID,
+		Status:         platformStatus(result.Status),
 		ProviderStatus: result.ProviderStatus,
 	}, nil
 }
@@ -154,20 +166,20 @@ func (err *SubmissionError) SafeToFallback() bool {
 
 func relayMessage(request SendRequest) relaysms.Message {
 	return relaysms.Message{
-		Reference: request.Reference,
-		To: request.To,
-		From: request.From,
-		Text: request.Message,
+		Reference:   request.Reference,
+		To:          request.To,
+		From:        request.From,
+		Text:        request.Message,
 		CountryCode: request.DestinationCountry,
-		Purpose: relaysms.PurposeTransactional,
+		Purpose:     relaysms.PurposeTransactional,
 	}
 }
 
 func sendResponse(result relaysms.SendResult) *SendResponse {
 	return &SendResponse{
-		ProviderID: strings.ToLower(strings.TrimSpace(result.Provider)),
+		ProviderID:    strings.ToLower(strings.TrimSpace(result.Provider)),
 		ProviderMsgID: strings.TrimSpace(result.ProviderMessageID),
-		Status: StatusSubmitted,
+		Status:        StatusSubmitted,
 	}
 }
 
