@@ -1,7 +1,5 @@
 package senderid
 
-import "context"
-
 // Status is Dugble's provider-neutral Sender ID approval state.
 type Status string
 
@@ -24,7 +22,7 @@ type CreateRequest struct {
 	Purpose     string
 }
 
-// CreateResult describes a provider registration attempt.
+// CreateResult describes one provider registration attempt.
 type CreateResult struct {
 	Provider          string
 	Name              string
@@ -48,16 +46,4 @@ type StatusResult struct {
 	Status            Status
 	ProviderStatus    string
 	ProviderCode      string
-}
-
-// Creator submits Sender IDs for provider approval.
-type Creator interface {
-	Name() string
-	CreateSenderID(context.Context, CreateRequest) (CreateResult, error)
-}
-
-// StatusChecker reconciles Sender ID approval state with a provider.
-type StatusChecker interface {
-	Name() string
-	CheckSenderIDStatus(context.Context, StatusRequest) (StatusResult, error)
 }
