@@ -33,7 +33,9 @@ type CreateResult struct {
 }
 
 // StatusRequest identifies a previously submitted provider registration.
+// Provider pins reconciliation to the provider that owns the registration.
 type StatusRequest struct {
+	Provider          string
 	Name              string
 	ProviderReference string
 }
