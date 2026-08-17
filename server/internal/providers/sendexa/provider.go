@@ -111,20 +111,21 @@ func (p *Provider) Send(ctx context.Context, message sms.Message) (sms.SendResul
 }
 
 // CreateSenderID submits an alphanumeric Sender ID registration request to Sendexa.
+// The canonical Dugble purpose maps directly to Sendexa's useCase field.
 func (p *Provider) CreateSenderID(ctx context.Context, request provider.CreateSenderIDRequest) (provider.CreateSenderIDResult, error) {
-	senderID := strings.TrimSpace(request.SenderID)
-	useCase := strings.TrimSpace(request.UseCase)
+	senderID := strings.TrimSpace(request.Name)
+	purpose := strings.TrimSpace(request.Purpose)
 	result := provider.CreateSenderIDResult{SenderID: senderID, Status: provider.SenderIDUnknown}
 	if p == nil || p.client == nil {
 		return result, ErrInvalidConfig
 	}
-	if senderID == "" || len(senderID) > p.Capabilities().MaxSenderIDLength || useCase == "" {
+	if senderID == "" || len(senderID) > p.Capabilities().MaxSenderIDLength || purpose == "" {
 		return result, ErrInvalidRequest
 	}
 
 	response, err := p.client.createSenderID(ctx, createSenderIDPayload{
 		Name:    senderID,
-		UseCase: useCase,
+		UseCase: purpose,
 		Type:    alphanumericSenderIDType,
 	})
 	if err != nil {
