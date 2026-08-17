@@ -5,6 +5,7 @@ import "errors"
 var (
 	ErrInvalidMessage       = errors.New("invalid message")
 	ErrNoProviders          = errors.New("no providers configured")
+	ErrNoRoute              = errors.New("no route configured for message")
 	ErrNoCapableProviders   = errors.New("no providers support the message")
 	ErrNoAvailableProviders = errors.New("no providers are currently available")
 	ErrAllRejected          = errors.New("all providers rejected the message")
