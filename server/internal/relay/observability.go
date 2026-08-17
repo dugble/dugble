@@ -39,6 +39,7 @@ const (
 type EventReason string
 
 const (
+	ReasonNoRoute               EventReason = "no_route"
 	ReasonUnsupportedCapability EventReason = "unsupported_capability"
 	ReasonProviderUnavailable   EventReason = "provider_unavailable"
 	ReasonNoCapableProviders    EventReason = "no_capable_providers"
