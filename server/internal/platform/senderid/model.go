@@ -1,6 +1,10 @@
 package senderid
 
-import "context"
+import (
+	"context"
+
+	relaysenderid "github.com/dugble/dugble/server/internal/relay/senderid"
+)
 
 const (
 	ProviderLeamout = "leamout"
@@ -8,13 +12,16 @@ const (
 	ProviderMoolre  = "moolre"
 	ProviderRunnage = "runnage"
 
-	StatusPending   = "pending"
-	StatusApproved  = "approved"
-	StatusRejected  = "rejected"
-	StatusSuspended = "suspended"
-	StatusUnknown   = "unknown"
+	// Deprecated: use relay/senderid status constants.
+	StatusPending   = string(relaysenderid.StatusPending)
+	StatusApproved  = string(relaysenderid.StatusApproved)
+	StatusRejected  = string(relaysenderid.StatusRejected)
+	StatusSuspended = string(relaysenderid.StatusSuspended)
+	StatusUnknown   = string(relaysenderid.StatusUnknown)
 )
 
+// CreateRequest is retained for legacy adapter compatibility. New code should
+// use relay/senderid.CreateRequest.
 type CreateRequest struct {
 	SenderID string
 	Purpose  string
@@ -34,6 +41,8 @@ type StatusResponse struct {
 	Whitelisted    bool
 }
 
+// Provider is retained for legacy adapter compatibility while adapters migrate
+// to relay/senderid contracts.
 type Provider interface {
 	ID() string
 	Create(context.Context, CreateRequest) (*CreateResponse, error)
