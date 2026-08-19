@@ -121,6 +121,7 @@ Do not infer fields from database tables. Payloads and responses must come from 
 - [Plans](plans.md)
 - [Subscriptions](subscriptions.md)
 - [Wallet](wallet.md)
+- [Permissions and Roles](permissions.md)
 
 ## Documentation status
 
