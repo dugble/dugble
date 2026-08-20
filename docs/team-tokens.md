@@ -45,55 +45,18 @@ Errors use the standard envelope in [README.md](README.md). Expected statuses de
 
 #### Payload
 
-`permissions` must contain one or more of the following values:
+`permissions` must contain one or more valid permission strings. Example request body:
 
 ```json
 {
-  "name": "string",
-  "permissions": {
-    "type": "array",
-    "items": {
-      "type": "string",
-      "enum": [
-        "team:read",
-        "team:update",
-        "team_members:read",
-        "team_members:invite",
-        "sender_ids:read",
-        "sender_ids:create",
-        "sender_ids:delete",
-        "sender_domains:read",
-        "sender_domains:create",
-        "sender_domains:delete",
-        "sms:read",
-        "sms:send",
-        "email:read",
-        "email:send",
-        "verify:read",
-        "verify:send",
-        "verify:check",
-        "verify:manage",
-        "contacts:read",
-        "contacts:write",
-        "contact_properties:read",
-        "contact_properties:write",
-        "topics:read",
-        "topics:write",
-        "segments:read",
-        "segments:write",
-        "suppressions:read",
-        "suppressions:write",
-        "broadcasts:read",
-        "broadcasts:write",
-        "broadcasts:send",
-        "templates:read",
-        "templates:write",
-        "wallet:read",
-        "wallet_ledger:read"
-      ]
-    }
-  },
-  "expires_at": "2026-08-09T17:00:00Z"
+  "name": "testing...",
+  "permissions": [
+    "sms:read",
+    "sms:send",
+    "email:read",
+    "email:send"
+  ],
+  "expires_at": "2026-09-19T15:56:09.326Z"
 }
 ```
 
