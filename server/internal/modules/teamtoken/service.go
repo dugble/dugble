@@ -22,10 +22,6 @@ const (
 )
 
 var allowedPermissions = map[authz.Permission]struct{}{
-	authz.PermissionTeamRead:               {},
-	authz.PermissionTeamUpdate:             {},
-	authz.PermissionTeamMembersRead:        {},
-	authz.PermissionTeamMemberInvite:       {},
 	authz.PermissionSenderIDsRead:          {},
 	authz.PermissionSenderIDsCreate:        {},
 	authz.PermissionSenderIDsDelete:        {},
@@ -55,8 +51,6 @@ var allowedPermissions = map[authz.Permission]struct{}{
 	authz.PermissionBroadcastsSend:         {},
 	authz.PermissionTemplatesRead:          {},
 	authz.PermissionTemplatesWrite:         {},
-	authz.PermissionWalletRead:             {},
-	authz.PermissionWalletLedgerRead:       {},
 }
 
 type Service struct {
