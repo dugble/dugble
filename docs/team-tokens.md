@@ -58,7 +58,7 @@ Errors use the standard envelope in [README.md](README.md). Expected statuses de
         "team:read",
         "team:update",
         "team_members:read",
-        "team_member:invite",
+        "team_members:invite",
         "sender_ids:read",
         "sender_ids:create",
         "sender_ids:delete",
