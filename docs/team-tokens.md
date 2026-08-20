@@ -45,7 +45,7 @@ Errors use the standard envelope in [README.md](README.md). Expected statuses de
 
 #### Payload
 
-`permissions` must contain one or more valid permission strings. Example request body:
+`permissions` must contain one or more supported team token permission strings. Example request body:
 
 ```json
 {
@@ -60,6 +60,38 @@ Errors use the standard envelope in [README.md](README.md). Expected statuses de
 }
 ```
 
+Supported team token permissions:
+
+- `sender_ids:read`
+- `sender_ids:create`
+- `sender_ids:delete`
+- `sender_domains:read`
+- `sender_domains:create`
+- `sender_domains:delete`
+- `sms:read`
+- `sms:send`
+- `email:read`
+- `email:send`
+- `verify:read`
+- `verify:send`
+- `verify:check`
+- `verify:manage`
+- `contacts:read`
+- `contacts:write`
+- `contact_properties:read`
+- `contact_properties:write`
+- `topics:read`
+- `topics:write`
+- `segments:read`
+- `segments:write`
+- `suppressions:read`
+- `suppressions:write`
+- `broadcasts:read`
+- `broadcasts:write`
+- `broadcasts:send`
+- `templates:read`
+- `templates:write`
+
 #### Response — `201 Created`
 
 ```json
@@ -71,7 +103,7 @@ Errors use the standard envelope in [README.md](README.md). Expected statuses de
     "name": "string",
     "token_prefix": "dgb_team_xxxxxxxx",
     "permissions": [
-      "team:read"
+      "sms:read"
     ],
     "created_by": "string",
     "expires_at": "2026-11-07T17:00:00Z",
@@ -93,11 +125,13 @@ Errors use the standard envelope in [README.md](README.md). Expected statuses de
 
 #### Payload
 
+`permissions` must contain one or more supported team token permission strings from the list above.
+
 ```json
 {
   "name": "string",
   "permissions": [
-    "string"
+    "sms:read"
   ],
   "expires_at": "2026-08-09T17:00:00Z"
 }
