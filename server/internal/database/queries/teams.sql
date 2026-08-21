@@ -98,11 +98,33 @@ WHERE id = sqlc.arg(id)
 RETURNING *;
 
 -- name: DisableTeam :one
-UPDATE teams
-SET status = 'disabled',
-    updated_at = now()
-WHERE id = sqlc.arg(id)
-RETURNING *;
+WITH current_team AS (
+    SELECT status
+    FROM teams
+    WHERE id = sqlc.arg(id)
+),
+disabled_team AS (
+    UPDATE teams
+    SET status = 'disabled',
+        updated_at = now()
+    WHERE id = sqlc.arg(id)
+      AND status = 'active'
+    RETURNING *
+),
+cleared_members AS (
+    DELETE FROM team_members
+    WHERE team_id = sqlc.arg(id)
+      AND (SELECT status FROM current_team) = 'disabled'
+    RETURNING team_id
+)
+SELECT *
+FROM disabled_team
+UNION ALL
+SELECT teams.*
+FROM teams
+WHERE teams.id = sqlc.arg(id)
+  AND teams.status = 'disabled'
+  AND NOT EXISTS (SELECT 1 FROM disabled_team);
 
 -- name: CreateTeamMember :one
 INSERT INTO team_members (
@@ -115,7 +137,6 @@ INSERT INTO team_members (
     sqlc.arg(user_id),
     sqlc.arg(role),
     sqlc.arg(status)
-)
 RETURNING *;
 
 -- name: GetTeamMember :one
