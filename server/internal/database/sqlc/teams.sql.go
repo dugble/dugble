@@ -23,7 +23,6 @@ INSERT INTO team_members (
     $2,
     $3,
     $4
-)
 RETURNING team_id, user_id, role, status, created_at, updated_at
 `
 
@@ -180,11 +179,33 @@ func (q *Queries) CreateTeamWithOwner(ctx context.Context, arg CreateTeamWithOwn
 }
 
 const disableTeam = `-- name: DisableTeam :one
-UPDATE teams
-SET status = 'disabled',
-    updated_at = now()
-WHERE id = $1
-RETURNING id, name, market_code, phone, address, website, status, created_by, created_at, updated_at
+WITH current_team AS (
+    SELECT status
+    FROM teams
+    WHERE id = $1
+),
+disabled_team AS (
+    UPDATE teams
+    SET status = 'disabled',
+        updated_at = now()
+    WHERE id = $1
+      AND status = 'active'
+    RETURNING id, name, market_code, phone, address, website, status, created_by, created_at, updated_at
+),
+cleared_members AS (
+    DELETE FROM team_members
+    WHERE team_id = $1
+      AND (SELECT status FROM current_team) = 'disabled'
+    RETURNING team_id
+)
+SELECT *
+FROM disabled_team
+UNION ALL
+SELECT teams.id, teams.name, teams.market_code, teams.phone, teams.address, teams.website, teams.status, teams.created_by, teams.created_at, teams.updated_at
+FROM teams
+WHERE teams.id = $1
+  AND teams.status = 'disabled'
+  AND NOT EXISTS (SELECT 1 FROM disabled_team)
 `
 
 type DisableTeamParams struct {
