@@ -1,0 +1,70 @@
+name: Generate SQL Artifacts
+
+on:
+  push:
+    branches:
+      - main
+      - 'fix/**'
+  pull_request:
+    paths:
+      - 'server/**/*.sql'
+      - 'server/**/*.sql.go'
+      - 'server/sqlc.yaml'
+      - 'server/atlas.hcl'
+      - '.github/workflows/generate.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: server
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: server/go.mod
+          cache: true
+
+      - name: Install sqlc
+        run: go install github.com/sqlc-dev/sqlc/cmd/sqlc@latest
+
+      - name: Install Atlas
+        run: curl -sSf https://atlasgo.sh | ATLAS_VERSION=latest sh
+
+      - name: Generate sqlc
+        run: sqlc generate
+
+      - name: Generate Atlas migration hash
+        run: atlas migrate hash --dir file://migrations
+
+      - name: Check generated changes
+        working-directory: .
+        run: |
+          git diff --check
+          git diff --exit-code -- server/internal/dbgen server/migrations/atlas.sum
+
+      - name: Commit generated artifacts
+        if: github.event_name == 'push' && github.ref == 'refs/heads/fix/disabled-team-deletion'
+        working-directory: .
+        run: |
+          if git diff --quiet -- server/internal/dbgen server/migrations/atlas.sum; then
+            echo "No generated changes."
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- server/internal/dbgen server/migrations/atlas.sum
+          git commit -m 'chore: regenerate sqlc and atlas hash'
+          git push
