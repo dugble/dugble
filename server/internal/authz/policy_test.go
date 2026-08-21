@@ -82,6 +82,28 @@ func TestRoleAuthorizer(t *testing.T) {
 	}
 }
 
+func TestRoleAuthorizerAllowsDisabledOwnerDeleteOnly(t *testing.T) {
+	t.Parallel()
+
+	teamID := uuid.New()
+	owner := Access{
+		Actor: Actor{Type: ActorTypeUser, UserID: uuid.New()},
+		Scope: TeamScope{TeamID: teamID, Role: string(RoleOwner), Status: StatusDisabled, Scopes: FirstPartyUserSessionScopes()},
+	}
+	if decision := Authorize(owner, PermissionTeamDelete); !decision.Allowed {
+		t.Fatalf("Authorize() denied disabled-team owner delete: %s", decision.Reason)
+	}
+	if decision := Authorize(owner, PermissionTeamUpdate); decision.Allowed {
+		t.Fatal("Authorize() allowed disabled-team owner update")
+	}
+
+	admin := owner
+	admin.Scope.Role = string(RoleAdmin)
+	if decision := Authorize(admin, PermissionTeamDelete); decision.Allowed {
+		t.Fatal("Authorize() allowed disabled-team admin delete")
+	}
+}
+
 func TestAuthorizationRejectsEmptyPolicy(t *testing.T) {
 	t.Parallel()
 	if !errors.Is(AuthorizeUser(FirstPartyUserSessionScopes(), RoleOwner), ErrInvalidPolicy) {
