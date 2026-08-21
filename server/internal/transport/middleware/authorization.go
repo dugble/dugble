@@ -62,12 +62,28 @@ func selectTeamAccess(c *echo.Context, memberships authz.MembershipRepository, p
 			return authz.Access{}, apperrors.NewBadRequest("Team id is required")
 		}
 		membership, err := memberships.GetTenantMembership(c.Request().Context(), teamID, principal.UserID)
-		if err != nil || !membership.Active() {
+		if err != nil {
 			return authz.Access{}, apperrors.NewForbidden("Active team membership is required")
+		}
+		if !membership.Active() {
+			// A disabled team is otherwise inaccessible, but its owner needs one
+			// final authenticated DELETE so the disabled team's membership can be
+			// removed and the account can subsequently be deleted.
+			if c.Request().Method != "DELETE" || membership.Status != authz.StatusActive || membership.Role != string(authz.RoleOwner) || membership.TeamStatus != authz.StatusDisabled {
+				return authz.Access{}, apperrors.NewForbidden("Active team membership is required")
+			}
+		}
+
+		// Membership.Active treats an empty TeamStatus as active for backward
+		// compatibility. Normalize that legacy value before building the
+		// authorization scope so policy evaluation sees the same state.
+		teamStatus := membership.TeamStatus
+		if teamStatus == "" {
+			teamStatus = authz.StatusActive
 		}
 		return authz.Access{
 			Actor: authz.Actor{Type: authz.ActorTypeUser, UserID: membership.UserID, SessionID: principal.SessionID},
-			Scope: authz.TeamScope{TeamID: membership.TeamID, Role: membership.Role, Status: membership.Status, Scopes: principal.Scopes},
+			Scope: authz.TeamScope{TeamID: membership.TeamID, Role: membership.Role, Status: teamStatus, Scopes: principal.Scopes},
 		}, nil
 	case authn.PrincipalTeamToken:
 		if principal.TeamID == nil || *principal.TeamID == uuid.Nil || principal.TokenID == nil || *principal.TokenID == uuid.Nil {
