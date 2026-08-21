@@ -38,11 +38,11 @@ func validateMutation(name string, permissions []string, expiresAt *time.Time) (
 }
 
 func normalizeExpiresAt(expiresAt *time.Time) (*time.Time, error) {
-	now := time.Now().UTC()
 	if expiresAt == nil {
-		value := now.Add(defaultTokenTTL)
-		return &value, nil
+		return nil, nil
 	}
+
+	now := time.Now().UTC()
 	value := expiresAt.UTC()
 	if !value.After(now) {
 		return nil, apperrors.NewBadRequest("Token expiration must be in the future")
