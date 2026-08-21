@@ -49,13 +49,11 @@ jobs:
       - name: Generate Atlas migration hash
         run: atlas migrate hash --dir file://migrations
 
-      - name: Check generated changes
+      - name: Check generated files
         working-directory: .
-        run: |
-          git diff --check
-          git diff --exit-code -- server/internal/dbgen server/migrations/atlas.sum
+        run: git diff --check
 
-      - name: Commit generated artifacts
+      - name: Commit generated artifacts on push
         if: github.event_name == 'push' && github.ref == 'refs/heads/fix/disabled-team-deletion'
         working-directory: .
         run: |
@@ -68,3 +66,14 @@ jobs:
           git add -- server/internal/dbgen server/migrations/atlas.sum
           git commit -m 'chore: regenerate sqlc and atlas hash'
           git push
+
+      - name: Verify generated files on pull request
+        if: github.event_name == 'pull_request'
+        working-directory: .
+        run: |
+          if ! git diff --quiet -- server/internal/dbgen server/migrations/atlas.sum; then
+            echo 'Generated artifacts are out of date.'
+            echo 'Run sqlc generate and atlas migrate hash --dir file://migrations, then commit the results.'
+            git diff -- server/internal/dbgen server/migrations/atlas.sum
+            exit 1
+          fi
