@@ -16,9 +16,8 @@ import (
 )
 
 const (
-	defaultTokenTTL = 90 * 24 * time.Hour
-	maxTokenTTL     = 365 * 24 * time.Hour
-	maxNameLength   = 120
+	maxTokenTTL   = 365 * 24 * time.Hour
+	maxNameLength = 120
 )
 
 var allowedPermissions = map[authz.Permission]struct{}{
