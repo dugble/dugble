@@ -2,6 +2,48 @@
 
 Customer dashboard HTTP contracts. Payloads and responses are generated from the public Go request and response types.
 
+## Available Events
+
+The following events can be subscribed to via webhooks:
+
+### SMS Events
+- `sms.submitted` — SMS message submitted for delivery
+- `sms.sent` — SMS message sent
+- `sms.delivered` — SMS message delivered successfully
+- `sms.undelivered` — SMS message could not be delivered
+- `sms.failed` — SMS message failed
+
+### Email Events
+- `email.submitted` — Email submitted for delivery
+- `email.delivered` — Email delivered successfully
+- `email.delayed` — Email delivery delayed
+- `email.bounced` — Email bounced
+- `email.complained` — Recipient marked email as spam/complaint
+- `email.rejected` — Email rejected by provider
+- `email.failed` — Email delivery failed
+- `email.opened` — Email opened by recipient
+- `email.clicked` — Link in email clicked by recipient
+- `email.subscription_changed` — Email subscription status changed
+
+### Contact Events
+- `contact.created` — New contact created
+- `contact.updated` — Contact updated
+- `contact.deleted` — Contact deleted
+
+### Suppression Events
+- `suppression.created` — New suppression added
+- `suppression.deleted` — Suppression removed
+
+### Broadcast Events
+- `broadcast.scheduled` — Broadcast scheduled
+- `broadcast.queued` — Broadcast queued for sending
+- `broadcast.sent` — Broadcast sent
+- `broadcast.failed` — Broadcast failed
+- `broadcast.canceled` — Broadcast canceled
+
+### Test Event
+- `webhook.test` — Test event (used for testing webhook endpoints)
+
 ## Webhooks
 
 ### `POST /webhook-endpoints`
