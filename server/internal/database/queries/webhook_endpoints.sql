@@ -56,12 +56,8 @@ WHERE endpoint.id = sqlc.arg(id)
 RETURNING endpoint.*;
 
 -- name: DisableWebhookEndpoint :one
-UPDATE webhook_endpoints AS endpoint
-SET enabled = false,
-    disabled_at = COALESCE(endpoint.disabled_at, now()),
-    disabled_reason = 'manual',
-    updated_at = now()
-FROM teams AS team
+DELETE FROM webhook_endpoints AS endpoint
+USING teams AS team
 WHERE endpoint.id = sqlc.arg(id)
   AND endpoint.team_id = sqlc.arg(team_id)
   AND team.id = endpoint.team_id
