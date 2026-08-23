@@ -45,6 +45,7 @@ SET url = sqlc.arg(url),
         ELSE COALESCE(endpoint.disabled_at, now())
     END,
     consecutive_failures = CASE WHEN sqlc.arg(enabled)::boolean THEN 0 ELSE endpoint.consecutive_failures END,
+    last_failure_at = CASE WHEN sqlc.arg(enabled)::boolean THEN 0 ELSE endpoint.consecutive_failures END,
     last_failure_at = CASE WHEN sqlc.arg(enabled)::boolean THEN NULL ELSE endpoint.last_failure_at END,
     disabled_reason = CASE WHEN sqlc.arg(enabled)::boolean THEN NULL ELSE COALESCE(endpoint.disabled_reason, 'manual') END,
     updated_at = now()
@@ -56,13 +57,25 @@ WHERE endpoint.id = sqlc.arg(id)
 RETURNING endpoint.*;
 
 -- name: DisableWebhookEndpoint :one
-DELETE FROM webhook_endpoints AS endpoint
-USING teams AS team
+UPDATE webhook_endpoints AS endpoint
+SET enabled = false,
+    disabled_at = COALESCE(endpoint.disabled_at, now()),
+    disabled_reason = 'manual',
+    updated_at = now()
+FROM teams AS team
 WHERE endpoint.id = sqlc.arg(id)
   AND endpoint.team_id = sqlc.arg(team_id)
   AND team.id = endpoint.team_id
   AND team.status = 'active'
 RETURNING endpoint.*;
+
+-- name: DeleteWebhookEndpoint :execrows
+DELETE FROM webhook_endpoints AS endpoint
+USING teams AS team
+WHERE endpoint.id = sqlc.arg(id)
+  AND endpoint.team_id = sqlc.arg(team_id)
+  AND team.id = endpoint.team_id
+  AND team.status = 'active';
 
 -- name: RotateWebhookEndpointSecret :one
 UPDATE webhook_endpoints AS endpoint
