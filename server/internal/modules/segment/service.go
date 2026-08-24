@@ -146,8 +146,11 @@ func parseID(value string) (uuid.UUID, error) {
 }
 
 func normalizeListRequest(req *ListRequest) {
-	if req.Limit <= 0 || req.Limit > 100 {
+	if req.Limit <= 0 {
 		req.Limit = 50
+	}
+	if req.Limit > 100 {
+		req.Limit = 100
 	}
 	if req.Offset < 0 {
 		req.Offset = 0
