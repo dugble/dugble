@@ -307,16 +307,6 @@ func (s *Service) updateEndpoint(ctx context.Context, id, teamID uuid.UUID, endp
 	return updated, err
 }
 
-func (s *Service) disableEndpoint(ctx context.Context, id, teamID uuid.UUID) (Endpoint, error) {
-	var disabled Endpoint
-	err := s.inTransaction(ctx, "webhook endpoint disable", func(tx pgx.Tx) error {
-		var disableErr error
-		disabled, disableErr = s.repository.WithTx(tx).DisableEndpoint(ctx, id, teamID)
-		return disableErr
-	})
-	return disabled, err
-}
-
 func (s *Service) deleteEndpoint(ctx context.Context, id, teamID uuid.UUID) (Endpoint, error) {
 	var deleted Endpoint
 	err := s.inTransaction(ctx, "webhook endpoint delete", func(tx pgx.Tx) error {
