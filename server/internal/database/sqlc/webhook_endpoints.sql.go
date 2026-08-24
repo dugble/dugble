@@ -102,6 +102,41 @@ func (q *Queries) DisableWebhookEndpoint(ctx context.Context, arg DisableWebhook
 	return i, err
 }
 
+const deleteWebhookEndpoint = `-- name: DeleteWebhookEndpoint :one
+DELETE FROM webhook_endpoints AS endpoint
+USING teams AS team
+WHERE endpoint.id = $1
+  AND endpoint.team_id = $2
+  AND team.id = endpoint.team_id
+  AND team.status = 'active'
+RETURNING endpoint.id, endpoint.team_id, endpoint.url, endpoint.signing_secret, endpoint.enabled, endpoint.subscribed_events, endpoint.created_at, endpoint.updated_at, endpoint.disabled_at, endpoint.consecutive_failures, endpoint.last_failure_at, endpoint.disabled_reason
+`
+
+type DeleteWebhookEndpointParams struct {
+	ID     uuid.UUID `db:"id" json:"id"`
+	TeamID uuid.UUID `db:"team_id" json:"team_id"`
+}
+
+func (q *Queries) DeleteWebhookEndpoint(ctx context.Context, arg DeleteWebhookEndpointParams) (WebhookEndpoint, error) {
+	row := q.db.QueryRow(ctx, deleteWebhookEndpoint, arg.ID, arg.TeamID)
+	var i WebhookEndpoint
+	err := row.Scan(
+		&i.ID,
+		&i.TeamID,
+		&i.Url,
+		&i.SigningSecret,
+		&i.Enabled,
+		&i.SubscribedEvents,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DisabledAt,
+		&i.ConsecutiveFailures,
+		&i.LastFailureAt,
+		&i.DisabledReason,
+	)
+	return i, err
+}
+
 const getWebhookEndpoint = `-- name: GetWebhookEndpoint :one
 SELECT endpoint.id, endpoint.team_id, endpoint.url, endpoint.signing_secret, endpoint.enabled, endpoint.subscribed_events, endpoint.created_at, endpoint.updated_at, endpoint.disabled_at, endpoint.consecutive_failures, endpoint.last_failure_at, endpoint.disabled_reason
 FROM webhook_endpoints AS endpoint
