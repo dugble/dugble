@@ -11,6 +11,7 @@ type AccessMiddleware func(permission authz.Permission) echo.MiddlewareFunc
 func RegisterRoutes(router *echo.Echo, handler *Handler, accessMiddleware AccessMiddleware) {
 	messages := router.Group("/sms")
 	messages.GET("", handler.List, accessMiddleware(authz.PermissionSMSRead))
+	messages.GET("/analytics", handler.GetAnalytics, accessMiddleware(authz.PermissionSMSRead))
 	messages.POST("", handler.Send, accessMiddleware(authz.PermissionSMSSend))
 	messages.POST("/batch", handler.BatchSend, accessMiddleware(authz.PermissionSMSSend))
 	messages.POST("/:message_id/cancel", handler.Cancel, accessMiddleware(authz.PermissionSMSSend))

@@ -11,6 +11,7 @@ type TenantMiddleware func(authz.Permission) echo.MiddlewareFunc
 func RegisterRoutes(router *echo.Echo, handler *Handler, tenantAccess TenantMiddleware) {
 	emails := router.Group("/emails")
 	emails.GET("", handler.List, tenantAccess(authz.PermissionEmailRead))
+	emails.GET("/analytics", handler.GetAnalytics, tenantAccess(authz.PermissionEmailRead))
 	emails.POST("", handler.Send, tenantAccess(authz.PermissionEmailSend))
 	emails.POST("/batch", handler.BatchSend, tenantAccess(authz.PermissionEmailSend))
 	emails.POST("/:message_id/cancel", handler.Cancel, tenantAccess(authz.PermissionEmailSend))

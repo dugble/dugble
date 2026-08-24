@@ -865,6 +865,42 @@ Errors use the standard envelope in [README.md](README.md). Expected statuses de
 
 ## Sms
 
+### `GET /sms/analytics`
+
+- Session: required.
+- CSRF: not required.
+
+#### Payload
+
+No JSON request body.
+
+#### Response — `200 OK`
+
+Returns 7-day, 30-day, and 90-day team-wide SMS delivery/failure rate windows with daily sparkline points, plus a 90-day delivery breakdown by destination country.
+
+```json
+{
+  "success": true,
+  "data": {
+    "object": "sms.analytics",
+    "windows": [
+      {
+        "days": 7,
+        "rates": [{ "name": "delivery_rate", "value": 0.98 }],
+        "series": [{ "date": "2026-08-24", "total": 10, "delivered": 9, "failed": 1 }]
+      }
+    ],
+    "delivery_by_country": [
+      { "country": "GH", "total": 10, "delivered": 9, "failed": 1 }
+    ]
+  }
+}
+```
+
+#### Errors
+
+Errors use the standard envelope in [README.md](README.md). Expected statuses depend on validation, authentication, permission, resource existence, conflict, rate limiting, and service availability.
+
 ### `GET /sms`
 
 - Session: required.
@@ -1183,6 +1219,39 @@ No JSON request body.
 Errors use the standard envelope in [README.md](README.md). Expected statuses depend on validation, authentication, permission, resource existence, conflict, rate limiting, and service availability.
 
 ## Email
+
+### `GET /emails/analytics`
+
+- Session: required.
+- CSRF: not required.
+
+#### Payload
+
+No JSON request body.
+
+#### Response — `200 OK`
+
+Returns 7-day, 30-day, and 90-day team-wide email delivery/open/click/bounce rate windows with daily sparkline points.
+
+```json
+{
+  "success": true,
+  "data": {
+    "object": "email.analytics",
+    "windows": [
+      {
+        "days": 7,
+        "rates": [{ "name": "delivery_rate", "value": 0.98 }],
+        "series": [{ "date": "2026-08-24", "total": 10, "delivered": 9, "opened": 5, "clicked": 2, "bounced": 1 }]
+      }
+    ]
+  }
+}
+```
+
+#### Errors
+
+Errors use the standard envelope in [README.md](README.md). Expected statuses depend on validation, authentication, permission, resource existence, conflict, rate limiting, and service availability.
 
 ### `GET /emails`
 

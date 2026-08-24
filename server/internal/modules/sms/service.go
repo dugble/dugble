@@ -46,6 +46,18 @@ func NewService(repository *Repository, sender Sender, delivery DeliveryQueue, b
 	return &Service{repository: repository, sender: sender, delivery: delivery, billing: billing}
 }
 
+func (s *Service) GetAnalytics(ctx context.Context) (AnalyticsResponse, error) {
+	tenantContext, err := requireTenant(ctx, authz.PermissionSMSRead)
+	if err != nil {
+		return AnalyticsResponse{}, err
+	}
+	analytics, err := s.repository.GetAnalytics(ctx, tenantContext.Scope.TeamID)
+	if err != nil {
+		return AnalyticsResponse{}, apperrors.NewInternal("Unable to get SMS analytics", err)
+	}
+	return analytics, nil
+}
+
 func (s *Service) List(ctx context.Context, req ListRequest) ([]Message, error) {
 	tenantContext, err := requireTenant(ctx, authz.PermissionSMSRead)
 	if err != nil {

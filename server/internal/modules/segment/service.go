@@ -66,6 +66,27 @@ func (s *Service) Get(ctx context.Context, value string) (Segment, error) {
 	return segment, nil
 }
 
+func (s *Service) GetAudienceSize(ctx context.Context, value string) (AudienceSize, error) {
+	access, err := requireTenant(ctx, authz.PermissionSegmentsRead)
+	if err != nil {
+		return AudienceSize{}, err
+	}
+	id, err := parseID(value)
+	if err != nil {
+		return AudienceSize{}, err
+	}
+	if _, err := s.repository.Get(ctx, id, access.Scope.TeamID); errors.Is(err, pgx.ErrNoRows) {
+		return AudienceSize{}, apperrors.NewNotFound("Segment not found")
+	} else if err != nil {
+		return AudienceSize{}, apperrors.NewInternal("Unable to get segment", err)
+	}
+	count, err := s.repository.CountContacts(ctx, id, access.Scope.TeamID)
+	if err != nil {
+		return AudienceSize{}, apperrors.NewInternal("Unable to count segment contacts", err)
+	}
+	return AudienceSize{SegmentID: id.String(), Count: count}, nil
+}
+
 func (s *Service) ListContacts(ctx context.Context, value string, req ListRequest) ([]Contact, error) {
 	access, err := requireTenant(ctx, authz.PermissionSegmentsRead)
 	if err != nil {
@@ -125,8 +146,11 @@ func parseID(value string) (uuid.UUID, error) {
 }
 
 func normalizeListRequest(req *ListRequest) {
-	if req.Limit <= 0 || req.Limit > 100 {
+	if req.Limit <= 0 {
 		req.Limit = 50
+	}
+	if req.Limit > 100 {
+		req.Limit = 100
 	}
 	if req.Offset < 0 {
 		req.Offset = 0

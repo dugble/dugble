@@ -91,12 +91,39 @@ No JSON request body.
 
 Errors use the standard envelope in [README.md](README.md). Expected statuses depend on validation, authentication, permission, resource existence, conflict, rate limiting, and service availability.
 
+### `GET /segments/:segment_id/audience-size`
+
+- Session: required.
+- CSRF: not required.
+
+#### Payload
+
+No JSON request body.
+
+#### Response — `200 OK`
+
+```json
+{
+  "success": true,
+  "data": {
+    "segment_id": "string",
+    "count": 0
+  }
+}
+```
+
+#### Errors
+
+Errors use the standard envelope in [README.md](README.md). Expected statuses depend on validation, authentication, permission, resource existence, conflict, rate limiting, and service availability.
+
 ### `GET /segments/:segment_id/contacts`
 
 - Session: required.
 - CSRF: not required.
 
 #### Payload
+
+Query parameters: `limit`, `offset`. `limit` defaults to `50` and is capped at `100`; negative `offset` values are treated as `0`.
 
 No JSON request body.
 

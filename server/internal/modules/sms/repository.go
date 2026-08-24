@@ -475,3 +475,98 @@ func ensureMetadata(metadata json.RawMessage) json.RawMessage {
 	}
 	return metadata
 }
+
+func (r *Repository) GetAnalytics(ctx context.Context, teamID uuid.UUID) (AnalyticsResponse, error) {
+	windows := make([]AnalyticsWindow, 0, 3)
+	for _, days := range []int32{7, 30, 90} {
+		points, err := r.smsAnalyticsSeries(ctx, teamID, days)
+		if err != nil {
+			return AnalyticsResponse{}, err
+		}
+		windows = append(windows, AnalyticsWindow{Days: days, Rates: smsRates(points), Series: points})
+	}
+	countries, err := r.smsDeliveryByCountry(ctx, teamID)
+	if err != nil {
+		return AnalyticsResponse{}, err
+	}
+	return AnalyticsResponse{Object: "sms.analytics", Windows: windows, DeliveryByCountry: countries}, nil
+}
+
+func (r *Repository) smsAnalyticsSeries(ctx context.Context, teamID uuid.UUID, days int32) ([]AnalyticsPoint, error) {
+	rows, err := r.db.Query(ctx, `
+		WITH dates AS (
+			SELECT generate_series(date_trunc('day', now()) - (($2::int - 1) * interval '1 day'), date_trunc('day', now()), interval '1 day') AS bucket
+		), counts AS (
+			SELECT date_trunc('day', created_at) AS bucket,
+			       count(*)::bigint AS total,
+			       count(*) FILTER (WHERE status = 'delivered')::bigint AS delivered,
+			       count(*) FILTER (WHERE status IN ('undelivered', 'rejected', 'failed', 'expired'))::bigint AS failed
+			FROM sms_messages
+			WHERE team_id = $1 AND created_at >= date_trunc('day', now()) - (($2::int - 1) * interval '1 day')
+			GROUP BY 1
+		)
+		SELECT to_char(dates.bucket, 'YYYY-MM-DD'), COALESCE(counts.total, 0), COALESCE(counts.delivered, 0), COALESCE(counts.failed, 0)
+		FROM dates LEFT JOIN counts ON counts.bucket = dates.bucket ORDER BY dates.bucket
+	`, teamID, days)
+	if err != nil {
+		return nil, fmt.Errorf("get SMS analytics series: %w", err)
+	}
+	defer rows.Close()
+	points := make([]AnalyticsPoint, 0, days)
+	for rows.Next() {
+		var p AnalyticsPoint
+		if err := rows.Scan(&p.Date, &p.Total, &p.Delivered, &p.Failed); err != nil {
+			return nil, fmt.Errorf("scan SMS analytics series: %w", err)
+		}
+		points = append(points, p)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate SMS analytics series: %w", err)
+	}
+	return points, nil
+}
+
+func (r *Repository) smsDeliveryByCountry(ctx context.Context, teamID uuid.UUID) ([]CountryAnalytics, error) {
+	rows, err := r.db.Query(ctx, `
+		SELECT destination_country::text,
+		       count(*)::bigint,
+		       count(*) FILTER (WHERE status = 'delivered')::bigint,
+		       count(*) FILTER (WHERE status IN ('undelivered', 'rejected', 'failed', 'expired'))::bigint
+		FROM sms_messages
+		WHERE team_id = $1 AND created_at >= now() - interval '90 days'
+		GROUP BY destination_country ORDER BY count(*) DESC, destination_country LIMIT 25
+	`, teamID)
+	if err != nil {
+		return nil, fmt.Errorf("get SMS delivery by country: %w", err)
+	}
+	defer rows.Close()
+	countries := []CountryAnalytics{}
+	for rows.Next() {
+		var c CountryAnalytics
+		if err := rows.Scan(&c.Country, &c.Total, &c.Delivered, &c.Failed); err != nil {
+			return nil, fmt.Errorf("scan SMS delivery by country: %w", err)
+		}
+		countries = append(countries, c)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate SMS delivery by country: %w", err)
+	}
+	return countries, nil
+}
+
+func smsRates(points []AnalyticsPoint) []AnalyticsRate {
+	var total, delivered, failed int64
+	for _, point := range points {
+		total += point.Total
+		delivered += point.Delivered
+		failed += point.Failed
+	}
+	return []AnalyticsRate{{Name: "delivery_rate", Value: percentage(delivered, total)}, {Name: "failure_rate", Value: percentage(failed, total)}}
+}
+
+func percentage(part, total int64) float64 {
+	if total == 0 {
+		return 0
+	}
+	return float64(part) / float64(total)
+}

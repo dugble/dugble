@@ -12,6 +12,14 @@ type Handler struct{ service *Service }
 
 func NewHandler(service *Service) *Handler { return &Handler{service: service} }
 
+func (h *Handler) GetAnalytics(c *echo.Context) error {
+	response, err := h.service.GetAnalytics(c.Request().Context())
+	if err != nil {
+		return httputil.Error(c, err)
+	}
+	return httputil.OK(c, response)
+}
+
 func (h *Handler) List(c *echo.Context) error {
 	limit, offset, err := httputil.Pagination(c)
 	if err != nil {
