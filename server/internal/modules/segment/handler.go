@@ -42,6 +42,14 @@ func (h *Handler) Get(c *echo.Context) error {
 	return httputil.OK(c, value)
 }
 
+func (h *Handler) GetAudienceSize(c *echo.Context) error {
+	value, err := h.service.GetAudienceSize(c.Request().Context(), c.Param("segment_id"))
+	if err != nil {
+		return httputil.Error(c, err)
+	}
+	return httputil.OK(c, value)
+}
+
 func (h *Handler) ListContacts(c *echo.Context) error {
 	values, err := h.service.ListContacts(c.Request().Context(), c.Param("segment_id"), listRequest(c))
 	if err != nil {

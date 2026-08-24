@@ -13,6 +13,7 @@ func RegisterRoutes(router *echo.Echo, handler *Handler, accessMiddleware Access
 	segments.POST("", handler.Create, accessMiddleware(authz.PermissionSegmentsWrite))
 	segments.GET("", handler.List, accessMiddleware(authz.PermissionSegmentsRead))
 	segments.GET("/:segment_id", handler.Get, accessMiddleware(authz.PermissionSegmentsRead))
+	segments.GET("/:segment_id/audience-size", handler.GetAudienceSize, accessMiddleware(authz.PermissionSegmentsRead))
 	segments.GET("/:segment_id/contacts", handler.ListContacts, accessMiddleware(authz.PermissionSegmentsRead))
 	segments.DELETE("/:segment_id", handler.Delete, accessMiddleware(authz.PermissionSegmentsWrite))
 }

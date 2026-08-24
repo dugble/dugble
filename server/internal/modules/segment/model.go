@@ -9,6 +9,11 @@ type Segment struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
+type AudienceSize struct {
+	SegmentID string `json:"segment_id"`
+	Count     int64  `json:"count"`
+}
+
 type Contact struct {
 	ID           string    `json:"id"`
 	TeamID       string    `json:"team_id"`

@@ -11,11 +11,12 @@ import (
 )
 
 type Repository struct {
+	db      *pgxpool.Pool
 	queries *dbsqlc.Queries
 }
 
 func NewRepository(db *pgxpool.Pool) *Repository {
-	return &Repository{queries: dbsqlc.New(db)}
+	return &Repository{db: db, queries: dbsqlc.New(db)}
 }
 
 func (r *Repository) Create(ctx context.Context, teamID uuid.UUID, name string) (Segment, error) {
@@ -46,6 +47,20 @@ func (r *Repository) Get(ctx context.Context, id, teamID uuid.UUID) (Segment, er
 		return Segment{}, err
 	}
 	return segmentFromSQLC(row), nil
+}
+
+func (r *Repository) CountContacts(ctx context.Context, segmentID, teamID uuid.UUID) (int64, error) {
+	var count int64
+	err := r.db.QueryRow(ctx, `
+		SELECT count(*)::bigint
+		FROM contact_segments AS membership
+		WHERE membership.team_id = $1
+		  AND membership.segment_id = $2
+	`, teamID, segmentID).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("count segment contacts: %w", err)
+	}
+	return count, nil
 }
 
 func (r *Repository) ListContacts(ctx context.Context, segmentID, teamID uuid.UUID, limit, offset int32) ([]Contact, error) {
