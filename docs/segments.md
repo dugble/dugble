@@ -98,6 +98,8 @@ Errors use the standard envelope in [README.md](README.md). Expected statuses de
 
 #### Payload
 
+Query parameters: `limit`, `offset`. `limit` defaults to `50` and is capped at `100`; negative `offset` values are treated as `0`.
+
 No JSON request body.
 
 #### Response — `200 OK`
