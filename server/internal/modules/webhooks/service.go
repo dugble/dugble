@@ -140,14 +140,14 @@ func (s *Service) DeleteEndpoint(ctx context.Context, value string) error {
 	if err != nil {
 		return err
 	}
-	endpoint, err := s.disableEndpoint(ctx, id, tenantContext.Scope.TeamID)
+	endpoint, err := s.deleteEndpoint(ctx, id, tenantContext.Scope.TeamID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return apperrors.NewNotFound("Webhook endpoint not found")
 	}
 	if err != nil {
-		return apperrors.NewInternal("Unable to disable webhook endpoint", err)
+		return apperrors.NewInternal("Unable to delete webhook endpoint", err)
 	}
-	audit.Record(ctx, tenantContext, audit.Event{Action: "webhook_endpoint.disabled", ResourceType: "webhook_endpoint", ResourceID: endpoint.ID})
+	audit.Record(ctx, tenantContext, audit.Event{Action: "webhook_endpoint.deleted", ResourceType: "webhook_endpoint", ResourceID: endpoint.ID})
 	return nil
 }
 
@@ -307,14 +307,14 @@ func (s *Service) updateEndpoint(ctx context.Context, id, teamID uuid.UUID, endp
 	return updated, err
 }
 
-func (s *Service) disableEndpoint(ctx context.Context, id, teamID uuid.UUID) (Endpoint, error) {
-	var disabled Endpoint
-	err := s.inTransaction(ctx, "webhook endpoint disable", func(tx pgx.Tx) error {
-		var disableErr error
-		disabled, disableErr = s.repository.WithTx(tx).DisableEndpoint(ctx, id, teamID)
-		return disableErr
+func (s *Service) deleteEndpoint(ctx context.Context, id, teamID uuid.UUID) (Endpoint, error) {
+	var deleted Endpoint
+	err := s.inTransaction(ctx, "webhook endpoint delete", func(tx pgx.Tx) error {
+		var deleteErr error
+		deleted, deleteErr = s.repository.WithTx(tx).DeleteEndpoint(ctx, id, teamID)
+		return deleteErr
 	})
-	return disabled, err
+	return deleted, err
 }
 
 func requireTenant(ctx context.Context, permission authz.Permission) (authz.Access, error) {

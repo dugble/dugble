@@ -85,6 +85,18 @@ func (r *Repository) DisableEndpoint(ctx context.Context, id, teamID uuid.UUID) 
 	return endpointFromSQLC(row), nil
 }
 
+func (r *Repository) DeleteEndpoint(ctx context.Context, id, teamID uuid.UUID) (Endpoint, error) {
+	row, err := r.queries.DeleteWebhookEndpoint(ctx, dbsqlc.DeleteWebhookEndpointParams{ID: id, TeamID: teamID})
+	if err != nil {
+		return Endpoint{}, fmt.Errorf("delete webhook endpoint: %w", err)
+	}
+	// Cancel pending/retrying deliveries BEFORE returning
+	if _, err := r.queries.CancelWebhookDeliveriesForEndpoint(ctx, dbsqlc.CancelWebhookDeliveriesForEndpointParams{EndpointID: id}); err != nil {
+		return Endpoint{}, fmt.Errorf("cancel webhook endpoint deliveries: %w", err)
+	}
+	return endpointFromSQLC(row), nil
+}
+
 func (r *Repository) RotateSecret(ctx context.Context, id, teamID uuid.UUID, secret []byte) (Endpoint, error) {
 	row, err := r.queries.RotateWebhookEndpointSecret(ctx, dbsqlc.RotateWebhookEndpointSecretParams{
 		ID: id, TeamID: teamID, SigningSecret: secret,

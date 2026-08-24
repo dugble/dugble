@@ -68,6 +68,15 @@ WHERE endpoint.id = sqlc.arg(id)
   AND team.status = 'active'
 RETURNING endpoint.*;
 
+-- name: DeleteWebhookEndpoint :one
+DELETE FROM webhook_endpoints AS endpoint
+USING teams AS team
+WHERE endpoint.id = sqlc.arg(id)
+  AND endpoint.team_id = sqlc.arg(team_id)
+  AND team.id = endpoint.team_id
+  AND team.status = 'active'
+RETURNING endpoint.*;
+
 -- name: RotateWebhookEndpointSecret :one
 UPDATE webhook_endpoints AS endpoint
 SET signing_secret = sqlc.arg(signing_secret),
