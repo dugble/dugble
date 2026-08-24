@@ -277,6 +277,18 @@ func (s *Service) ListEvents(ctx context.Context, value string, limit int32) (Ev
 	return EventListResponse{Object: "list", Data: events}, nil
 }
 
+func (s *Service) GetAnalytics(ctx context.Context) (AnalyticsResponse, error) {
+	tc, err := requireTenant(ctx, authz.PermissionEmailRead)
+	if err != nil {
+		return AnalyticsResponse{}, err
+	}
+	analytics, err := s.repository.GetAnalytics(ctx, tc.Scope.TeamID)
+	if err != nil {
+		return AnalyticsResponse{}, apperrors.NewInternal("Unable to get email analytics", err)
+	}
+	return analytics, nil
+}
+
 func (s *Service) List(ctx context.Context, req ListRequest) ([]MessageSummary, error) {
 	tc, err := requireTenant(ctx, authz.PermissionEmailRead)
 	if err != nil {

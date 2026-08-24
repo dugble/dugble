@@ -117,6 +117,37 @@ func publicFailure(status string) *SMSFailure {
 	}
 }
 
+type AnalyticsRate struct {
+	Name  string  `json:"name"`
+	Value float64 `json:"value"`
+}
+
+type AnalyticsPoint struct {
+	Date      string `json:"date"`
+	Total     int64  `json:"total"`
+	Delivered int64  `json:"delivered"`
+	Failed    int64  `json:"failed"`
+}
+
+type AnalyticsWindow struct {
+	Days   int32            `json:"days"`
+	Rates  []AnalyticsRate  `json:"rates"`
+	Series []AnalyticsPoint `json:"series"`
+}
+
+type CountryAnalytics struct {
+	Country   string `json:"country"`
+	Total     int64  `json:"total"`
+	Delivered int64  `json:"delivered"`
+	Failed    int64  `json:"failed"`
+}
+
+type AnalyticsResponse struct {
+	Object            string             `json:"object"`
+	Windows           []AnalyticsWindow  `json:"windows"`
+	DeliveryByCountry []CountryAnalytics `json:"delivery_by_country"`
+}
+
 type SendRequest struct {
 	To                 string          `json:"to"`
 	From               string          `json:"from"`

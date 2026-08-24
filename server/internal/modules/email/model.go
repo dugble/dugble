@@ -63,6 +63,31 @@ type Message struct {
 	UpdatedAt         time.Time         `json:"updated_at"`
 }
 
+type AnalyticsRate struct {
+	Name  string  `json:"name"`
+	Value float64 `json:"value"`
+}
+
+type AnalyticsPoint struct {
+	Date      string `json:"date"`
+	Total     int64  `json:"total"`
+	Delivered int64  `json:"delivered"`
+	Opened    int64  `json:"opened"`
+	Clicked   int64  `json:"clicked"`
+	Bounced   int64  `json:"bounced"`
+}
+
+type AnalyticsWindow struct {
+	Days   int32            `json:"days"`
+	Rates  []AnalyticsRate  `json:"rates"`
+	Series []AnalyticsPoint `json:"series"`
+}
+
+type AnalyticsResponse struct {
+	Object  string            `json:"object"`
+	Windows []AnalyticsWindow `json:"windows"`
+}
+
 type SendRequest struct {
 	From        *EmailAddress     `json:"from,omitempty"`
 	ReplyTo     EmailAddressList  `json:"reply_to,omitempty"`
