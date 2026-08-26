@@ -12,11 +12,15 @@ The routes and payloads in this document are based on `server/internal/modules/s
 - Collection pagination uses `limit` and `offset`.
 - `POST /sms` and `POST /sms/batch` return `202 Accepted`.
 
+---
+
 ## List SMS messages
 
 ### `GET /sms`
 
 Returns SMS message summaries.
+
+#### Query parameters
 
 | Parameter | Type | Description |
 | --- | --- | --- |
@@ -25,6 +29,8 @@ Returns SMS message summaries.
 
 > **Current limitation:** the server currently implements only `limit` and `offset` for this endpoint. `status`, sender, date-range, and search filters are not yet supported server-side.
 
+---
+
 ## Send an SMS
 
 ### `POST /sms`
@@ -32,6 +38,8 @@ Returns SMS message summaries.
 Queues one SMS for delivery.
 
 **Required header:** `Idempotency-Key`
+
+#### Request body
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
@@ -42,10 +50,19 @@ Queues one SMS for delivery.
 | `scheduled_at` | string | No | Scheduled delivery time. |
 
 ```json
-{"to":"+233200000000","from":"+233500000000","body":"Hello from Dugble","metadata":{"contact_id":"string"}}
+{
+  "to": "+233200000000",
+  "from": "+233500000000",
+  "body": "Hello from Dugble",
+  "metadata": {
+    "contact_id": "string"
+  }
+}
 ```
 
 Returns `202 Accepted` with a `Location` header pointing to `/sms/:message_id`.
+
+---
 
 ## Send SMS in bulk
 
@@ -56,16 +73,28 @@ Queues multiple SMS messages. The request accepts either a top-level array or an
 **Required header:** `Idempotency-Key`
 
 ```json
-{"messages":[{"to":"+233200000000","from":"+233500000000","body":"Hello from Dugble"}]}
+{
+  "messages": [
+    {
+      "to": "+233200000000",
+      "from": "+233500000000",
+      "body": "Hello from Dugble"
+    }
+  ]
+}
 ```
 
 Returns `202 Accepted`.
+
+---
 
 ## Get an SMS
 
 ### `GET /sms/:message_id`
 
 Returns the complete public representation of an SMS message, including provider message ID, destination, segments, metadata, scheduling, failure information, and timestamps.
+
+---
 
 ## Update an SMS
 
@@ -74,8 +103,12 @@ Returns the complete public representation of an SMS message, including provider
 Updates an eligible SMS. The current request model supports scheduling.
 
 ```json
-{"scheduled_at":"2026-08-25T09:00:00Z"}
+{
+  "scheduled_at": "2026-08-25T09:00:00Z"
+}
 ```
+
+---
 
 ## Cancel an SMS
 
@@ -83,11 +116,15 @@ Updates an eligible SMS. The current request model supports scheduling.
 
 Cancels an eligible SMS. No request body.
 
+---
+
 ## Sync SMS status
 
 ### `POST /sms/:message_id/sync-status`
 
 Requests status synchronization with the provider. No request body.
+
+---
 
 ## List SMS events
 
@@ -95,15 +132,21 @@ Requests status synchronization with the provider. No request body.
 
 Returns delivery events recorded for an SMS.
 
+#### Query parameters
+
 | Parameter | Type | Description |
 | --- | --- | --- |
 | `limit` | integer | Maximum number of events to return. |
+
+---
 
 ## SMS analytics
 
 ### `GET /sms/analytics`
 
 Returns SMS delivery analytics, including delivery windows and delivery-by-country data.
+
+---
 
 ## SMS statuses
 
