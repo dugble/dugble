@@ -157,7 +157,8 @@ FROM (
     WHERE provider_event.email_message_id = sqlc.arg(message_id) AND message.team_id = sqlc.arg(team_id)
 ) AS event
 ORDER BY event.occurred_at ASC, event.id ASC
-LIMIT sqlc.arg(limit_count);
+LIMIT sqlc.arg(limit_count)
+OFFSET sqlc.arg(offset_count);
 
 -- name: GetEmailMessageScheduleForUpdate :one
 SELECT status, scheduled_at

@@ -241,19 +241,42 @@ const listSMSMessages = `-- name: ListSMSMessages :many
 SELECT id, team_id, sender_id, to_number, from_name, body, status, provider_id, provider_message_id, segments, error_message, metadata, scheduled_at, submitted_at, delivered_at, created_at, updated_at, destination_country
 FROM sms_messages
 WHERE team_id = $1
+  AND ($2::text = '' OR status = $2)
+  AND ($3::text = '' OR from_name = $3)
+  AND ($4::timestamptz IS NULL OR created_at >= $4)
+  AND ($5::timestamptz IS NULL OR created_at <= $5)
+  AND ($6::text = ''
+       OR to_number ILIKE '%' || $6::text || '%'
+       OR from_name ILIKE '%' || $6::text || '%'
+       OR body ILIKE '%' || $6::text || '%'
+       OR COALESCE(provider_message_id, '') ILIKE '%' || $6::text || '%')
 ORDER BY created_at DESC
-LIMIT $3
-OFFSET $2
+LIMIT $8
+OFFSET $7
 `
 
 type ListSMSMessagesParams struct {
-	TeamID      uuid.UUID `db:"team_id" json:"team_id"`
-	OffsetCount int32     `db:"offset_count" json:"offset_count"`
-	LimitCount  int32     `db:"limit_count" json:"limit_count"`
+	TeamID       uuid.UUID          `db:"team_id" json:"team_id"`
+	StatusFilter string             `db:"status_filter" json:"status_filter"`
+	SenderFilter string             `db:"sender_filter" json:"sender_filter"`
+	StartDate    pgtype.Timestamptz `db:"start_date" json:"start_date"`
+	EndDate      pgtype.Timestamptz `db:"end_date" json:"end_date"`
+	SearchFilter string             `db:"search_filter" json:"search_filter"`
+	OffsetCount  int32              `db:"offset_count" json:"offset_count"`
+	LimitCount   int32              `db:"limit_count" json:"limit_count"`
 }
 
 func (q *Queries) ListSMSMessages(ctx context.Context, arg ListSMSMessagesParams) ([]SmsMessage, error) {
-	rows, err := q.db.Query(ctx, listSMSMessages, arg.TeamID, arg.OffsetCount, arg.LimitCount)
+	rows, err := q.db.Query(ctx, listSMSMessages,
+		arg.TeamID,
+		arg.StatusFilter,
+		arg.SenderFilter,
+		arg.StartDate,
+		arg.EndDate,
+		arg.SearchFilter,
+		arg.OffsetCount,
+		arg.LimitCount,
+	)
 	if err != nil {
 		return nil, err
 	}

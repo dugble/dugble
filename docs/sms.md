@@ -40,8 +40,13 @@ Returns SMS messages for the current team. Each item is the public `SMSResponse`
 | --- | --- | --- |
 | `limit` | integer | Maximum number of results. Values `<= 0` or `> 100` use the default of 50. |
 | `offset` | integer | Number of results to skip. Negative values are treated as 0. |
+| `status` | string | Exact SMS status. Must be one of the [documented SMS statuses](#sms-statuses). |
+| `sender` | string | Exact sender identity, matching the response's `from` value. |
+| `start_date` | RFC 3339 timestamp | Include messages created at or after this timestamp. |
+| `end_date` | RFC 3339 timestamp | Include messages created at or before this timestamp. Must not precede `start_date`. |
+| `search` | string | Case-insensitive partial match against recipient, sender, message body, or provider message ID. |
 
-The server currently implements only `limit` and `offset` for this endpoint. Status, sender, date-range, and search filters are not supported server-side.
+All supplied filters are combined with AND. Pagination is applied after filtering.
 
 #### Request body
 

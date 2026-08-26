@@ -70,7 +70,10 @@ func (s *Service) List(ctx context.Context, req ListRequest) ([]Message, error) 
 	if req.Offset < 0 {
 		req.Offset = 0
 	}
-	messages, err := s.repository.List(ctx, tenantContext.Scope.TeamID, limit, req.Offset)
+	messages, err := s.repository.List(ctx, tenantContext.Scope.TeamID, ListRequest{
+		Limit: limit, Offset: req.Offset, Status: req.Status, Sender: req.Sender,
+		StartDate: req.StartDate, EndDate: req.EndDate, Search: req.Search,
+	})
 	if err != nil {
 		return nil, apperrors.NewInternal("Unable to list SMS messages", err)
 	}
