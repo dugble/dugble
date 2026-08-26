@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/labstack/echo/v5"
 
@@ -89,6 +90,48 @@ func TestListRejectsMalformedPagination(t *testing.T) {
 	}
 	if recorder.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusBadRequest)
+	}
+}
+
+func TestListRequestParsesFilters(t *testing.T) {
+	t.Parallel()
+
+	router := echo.New()
+	request := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/sms?limit=25&offset=50&status=DELIVERED&sender=%20Dugble%20&start_date=2026-08-01T00:00:00Z&end_date=2026-08-31T23:59:59Z&search=%20receipt%20", nil)
+	recorder := httptest.NewRecorder()
+
+	req, err := listRequest(router.NewContext(request, recorder))
+	if err != nil {
+		t.Fatalf("listRequest() error = %v", err)
+	}
+	if req.Limit != 25 || req.Offset != 50 || req.Status != StatusDelivered || req.Sender != "Dugble" || req.Search != "receipt" {
+		t.Fatalf("listRequest() = %+v, want parsed filters", req)
+	}
+	if req.StartDate == nil || req.StartDate.Format(time.RFC3339) != "2026-08-01T00:00:00Z" {
+		t.Fatalf("start date = %v, want 2026-08-01T00:00:00Z", req.StartDate)
+	}
+	if req.EndDate == nil || req.EndDate.Format(time.RFC3339) != "2026-08-31T23:59:59Z" {
+		t.Fatalf("end date = %v, want 2026-08-31T23:59:59Z", req.EndDate)
+	}
+}
+
+func TestListRequestRejectsInvalidFilters(t *testing.T) {
+	t.Parallel()
+
+	tests := []string{
+		"/sms?status=invalid",
+		"/sms?start_date=not-a-date",
+		"/sms?start_date=2026-08-02T00:00:00Z&end_date=2026-08-01T00:00:00Z",
+	}
+	for _, path := range tests {
+		t.Run(path, func(t *testing.T) {
+			router := echo.New()
+			request := httptest.NewRequestWithContext(context.Background(), http.MethodGet, path, nil)
+			recorder := httptest.NewRecorder()
+			if _, err := listRequest(router.NewContext(request, recorder)); !apperrors.IsCode(err, apperrors.CodeBadRequest) {
+				t.Fatalf("listRequest() error = %v, want bad request", err)
+			}
+		})
 	}
 }
 

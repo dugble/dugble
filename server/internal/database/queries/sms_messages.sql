@@ -28,6 +28,15 @@ RETURNING *;
 SELECT *
 FROM sms_messages
 WHERE team_id = sqlc.arg(team_id)
+  AND (sqlc.arg(status_filter)::text = '' OR status = sqlc.arg(status_filter))
+  AND (sqlc.arg(sender_filter)::text = '' OR from_name = sqlc.arg(sender_filter))
+  AND (sqlc.narg(start_date)::timestamptz IS NULL OR created_at >= sqlc.narg(start_date))
+  AND (sqlc.narg(end_date)::timestamptz IS NULL OR created_at <= sqlc.narg(end_date))
+  AND (sqlc.arg(search_filter)::text = ''
+       OR to_number ILIKE '%' || sqlc.arg(search_filter)::text || '%'
+       OR from_name ILIKE '%' || sqlc.arg(search_filter)::text || '%'
+       OR body ILIKE '%' || sqlc.arg(search_filter)::text || '%'
+       OR COALESCE(provider_message_id, '') ILIKE '%' || sqlc.arg(search_filter)::text || '%')
 ORDER BY created_at DESC
 LIMIT sqlc.arg(limit_count)
 OFFSET sqlc.arg(offset_count);

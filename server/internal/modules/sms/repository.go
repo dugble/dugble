@@ -87,8 +87,12 @@ func (r *Repository) Create(ctx context.Context, params createMessageParams) (Me
 	return messageFromSQLC(row), nil
 }
 
-func (r *Repository) List(ctx context.Context, teamID uuid.UUID, limit, offset int32) ([]Message, error) {
-	rows, err := r.queries.ListSMSMessages(ctx, dbsqlc.ListSMSMessagesParams{TeamID: teamID, LimitCount: limit, OffsetCount: offset})
+func (r *Repository) List(ctx context.Context, teamID uuid.UUID, req ListRequest) ([]Message, error) {
+	rows, err := r.queries.ListSMSMessages(ctx, dbsqlc.ListSMSMessagesParams{
+		TeamID: teamID, LimitCount: req.Limit, OffsetCount: req.Offset,
+		StatusFilter: req.Status, SenderFilter: req.Sender, SearchFilter: req.Search,
+		StartDate: pgconv.NullableTimestamptz(req.StartDate), EndDate: pgconv.NullableTimestamptz(req.EndDate),
+	})
 	if err != nil {
 		return nil, fmt.Errorf("list sms messages: %w", err)
 	}
