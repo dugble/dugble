@@ -4,7 +4,7 @@ Dashboard-facing HTTP contract for the Email API.
 
 ## Conventions
 
-- Mutating requests (`POST`, `PATCH`) require an `Idempotency-Key` header.
+- `POST /emails` and `POST /emails/batch` require an `Idempotency-Key` header.
 - Successful responses use the repository's standard JSON envelope.
 - Collection endpoints use `limit` and `offset` for pagination.
 - Email addresses may be supplied as an object or a string.
@@ -113,8 +113,6 @@ Returns the complete representation of an email message, including recipients, c
 
 Updates an eligible email. The documented update is scheduling.
 
-**Required header:** `Idempotency-Key`
-
 ```json
 {
   "scheduled_at": "2026-08-25T09:00:00Z"
@@ -128,8 +126,6 @@ Updates an eligible email. The documented update is scheduling.
 ### `POST /emails/:message_id/cancel`
 
 Cancels an eligible email. No request body.
-
-**Required header:** `Idempotency-Key`
 
 ---
 
