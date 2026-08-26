@@ -9,16 +9,38 @@ Dashboard-facing HTTP contract for the Email API.
 - Collection endpoints use `limit` and `offset` for pagination.
 - Email addresses may be supplied as an object or a string.
 
+### Email address formats
+
+Object form:
+
+```json
+{
+  "email": "user@example.com",
+  "name": "User"
+}
+```
+
+String forms include:
+
+- `user@example.com`
+- `User <user@example.com>`
+
+---
+
 ## List emails
 
 ### `GET /emails`
 
 Returns email message summaries.
 
+#### Query parameters
+
 | Parameter | Type | Description |
 | --- | --- | --- |
 | `limit` | integer | Maximum number of results. |
 | `offset` | integer | Number of results to skip. |
+
+---
 
 ## Send an email
 
@@ -28,19 +50,30 @@ Creates and queues a single email for delivery.
 
 **Required header:** `Idempotency-Key`
 
+#### Request body
+
 ```json
 {
-  "from": {"email": "sender@example.com", "name": "Sender"},
-  "to": ["Recipient <recipient@example.com>"],
+  "from": {
+    "email": "sender@example.com",
+    "name": "Sender"
+  },
+  "to": [
+    "Recipient <recipient@example.com>"
+  ],
   "subject": "Welcome",
   "html": "<p>Hello</p>",
   "text": "Hello",
   "scheduled_at": "2026-08-25T09:00:00Z",
-  "metadata": {"contact_id": "string"}
+  "metadata": {
+    "contact_id": "string"
+  }
 }
 ```
 
-Returns `202 Accepted` and a `Location` header pointing to `/emails/:id`.
+Returns `202 Accepted` and a `Location` header pointing to `/emails/:message_id`.
+
+---
 
 ## Send emails in bulk
 
@@ -51,16 +84,28 @@ Queues multiple emails for delivery. The request accepts either a top-level arra
 **Required header:** `Idempotency-Key`
 
 ```json
-{"messages": [{"to": "recipient@example.com", "subject": "Hello", "html": "<p>Hello</p>"}]}
+{
+  "messages": [
+    {
+      "to": "recipient@example.com",
+      "subject": "Hello",
+      "html": "<p>Hello</p>"
+    }
+  ]
+}
 ```
 
 Returns `202 Accepted`.
+
+---
 
 ## Get an email
 
 ### `GET /emails/:message_id`
 
 Returns the complete representation of an email message, including recipients, content, provider message ID, status, timestamps, scheduled time, and tags.
+
+---
 
 ## Update an email
 
@@ -71,8 +116,12 @@ Updates an eligible email. The documented update is scheduling.
 **Required header:** `Idempotency-Key`
 
 ```json
-{"scheduled_at": "2026-08-25T09:00:00Z"}
+{
+  "scheduled_at": "2026-08-25T09:00:00Z"
+}
 ```
+
+---
 
 ## Cancel an email
 
@@ -82,15 +131,21 @@ Cancels an eligible email. No request body.
 
 **Required header:** `Idempotency-Key`
 
+---
+
 ## List email events
 
 ### `GET /emails/:message_id/events`
 
 Returns delivery events recorded for an email.
 
+#### Query parameters
+
 | Parameter | Type | Description |
 | --- | --- | --- |
 | `limit` | integer | Maximum number of events to return. |
+
+---
 
 ## Email statuses
 
