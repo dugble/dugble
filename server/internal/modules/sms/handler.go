@@ -1,6 +1,9 @@
 package sms
 
 import (
+	"strings"
+	"time"
+
 	"github.com/labstack/echo/v5"
 
 	"github.com/dugble/dugble/server/internal/platform/idempotency"
@@ -21,15 +24,65 @@ func (h *Handler) GetAnalytics(c *echo.Context) error {
 }
 
 func (h *Handler) List(c *echo.Context) error {
-	limit, offset, err := httputil.Pagination(c)
+	req, err := listRequest(c)
 	if err != nil {
 		return httputil.Error(c, err)
 	}
-	messages, err := h.service.List(c.Request().Context(), ListRequest{Limit: limit, Offset: offset})
+	messages, err := h.service.List(c.Request().Context(), req)
 	if err != nil {
 		return httputil.Error(c, err)
 	}
 	return httputil.OK(c, Responses(messages))
+}
+
+func listRequest(c *echo.Context) (ListRequest, error) {
+	limit, offset, err := httputil.Pagination(c)
+	if err != nil {
+		return ListRequest{}, err
+	}
+	status := strings.ToLower(strings.TrimSpace(c.QueryParam("status")))
+	if status != "" && !isValidStatus(status) {
+		return ListRequest{}, apperrors.NewBadRequest("status must be a valid SMS status")
+	}
+	startDate, err := queryDate(c, "start_date")
+	if err != nil {
+		return ListRequest{}, err
+	}
+	endDate, err := queryDate(c, "end_date")
+	if err != nil {
+		return ListRequest{}, err
+	}
+	if startDate != nil && endDate != nil && startDate.After(*endDate) {
+		return ListRequest{}, apperrors.NewBadRequest("start_date must be before or equal to end_date")
+	}
+	return ListRequest{
+		Limit: limit, Offset: offset, Status: status,
+		Sender:    strings.TrimSpace(c.QueryParam("sender")),
+		StartDate: startDate, EndDate: endDate,
+		Search: strings.TrimSpace(c.QueryParam("search")),
+	}, nil
+}
+
+func queryDate(c *echo.Context, name string) (*time.Time, error) {
+	value := strings.TrimSpace(c.QueryParam(name))
+	if value == "" {
+		return nil, nil
+	}
+	parsed, err := time.Parse(time.RFC3339Nano, value)
+	if err != nil {
+		return nil, apperrors.NewBadRequest(name + " must be a valid RFC 3339 timestamp")
+	}
+	return &parsed, nil
+}
+
+func isValidStatus(status string) bool {
+	switch status {
+	case StatusQueued, StatusProcessing, StatusSubmitted, StatusSent, StatusDelivered,
+		StatusUndelivered, StatusRejected, StatusFailed, StatusExpired, StatusUnknown, StatusCanceled:
+		return true
+	default:
+		return false
+	}
 }
 
 func (h *Handler) Get(c *echo.Context) error {

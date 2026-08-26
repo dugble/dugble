@@ -217,6 +217,11 @@ func SendResponses(messages []Message) []SendResponse {
 }
 
 type ListRequest struct {
-	Limit  int32
-	Offset int32
+	Limit     int32
+	Offset    int32
+	Status    string
+	Sender    string
+	StartDate *time.Time
+	EndDate   *time.Time
+	Search    string
 }

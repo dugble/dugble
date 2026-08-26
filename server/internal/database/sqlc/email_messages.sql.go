@@ -299,13 +299,15 @@ FROM (
     WHERE provider_event.email_message_id = $1 AND message.team_id = $2
 ) AS event
 ORDER BY event.occurred_at ASC, event.id ASC
-LIMIT $3
+LIMIT $4
+OFFSET $3
 `
 
 type ListEmailMessageEventsParams struct {
-	MessageID  uuid.UUID `db:"message_id" json:"message_id"`
-	TeamID     uuid.UUID `db:"team_id" json:"team_id"`
-	LimitCount int32     `db:"limit_count" json:"limit_count"`
+	MessageID   uuid.UUID `db:"message_id" json:"message_id"`
+	TeamID      uuid.UUID `db:"team_id" json:"team_id"`
+	OffsetCount int32     `db:"offset_count" json:"offset_count"`
+	LimitCount  int32     `db:"limit_count" json:"limit_count"`
 }
 
 type ListEmailMessageEventsRow struct {
@@ -318,7 +320,12 @@ type ListEmailMessageEventsRow struct {
 }
 
 func (q *Queries) ListEmailMessageEvents(ctx context.Context, arg ListEmailMessageEventsParams) ([]ListEmailMessageEventsRow, error) {
-	rows, err := q.db.Query(ctx, listEmailMessageEvents, arg.MessageID, arg.TeamID, arg.LimitCount)
+	rows, err := q.db.Query(ctx, listEmailMessageEvents,
+		arg.MessageID,
+		arg.TeamID,
+		arg.OffsetCount,
+		arg.LimitCount,
+	)
 	if err != nil {
 		return nil, err
 	}

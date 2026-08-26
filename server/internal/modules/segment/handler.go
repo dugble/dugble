@@ -2,7 +2,6 @@ package segment
 
 import (
 	"encoding/json"
-	"strconv"
 
 	"github.com/labstack/echo/v5"
 
@@ -27,7 +26,11 @@ func (h *Handler) Create(c *echo.Context) error {
 }
 
 func (h *Handler) List(c *echo.Context) error {
-	values, err := h.service.List(c.Request().Context(), listRequest(c))
+	req, err := listRequest(c)
+	if err != nil {
+		return httputil.Error(c, err)
+	}
+	values, err := h.service.List(c.Request().Context(), req)
 	if err != nil {
 		return httputil.Error(c, err)
 	}
@@ -51,7 +54,11 @@ func (h *Handler) GetAudienceSize(c *echo.Context) error {
 }
 
 func (h *Handler) ListContacts(c *echo.Context) error {
-	values, err := h.service.ListContacts(c.Request().Context(), c.Param("segment_id"), listRequest(c))
+	req, err := listRequest(c)
+	if err != nil {
+		return httputil.Error(c, err)
+	}
+	values, err := h.service.ListContacts(c.Request().Context(), c.Param("segment_id"), req)
 	if err != nil {
 		return httputil.Error(c, err)
 	}
@@ -73,14 +80,10 @@ func decodeJSON(c *echo.Context, dst any) error {
 	return nil
 }
 
-func listRequest(c *echo.Context) ListRequest {
-	return ListRequest{Limit: parseInt32(c.QueryParam("limit")), Offset: parseInt32(c.QueryParam("offset"))}
-}
-
-func parseInt32(value string) int32 {
-	parsed, err := strconv.ParseInt(value, 10, 32)
+func listRequest(c *echo.Context) (ListRequest, error) {
+	limit, offset, err := httputil.Pagination(c)
 	if err != nil {
-		return 0
+		return ListRequest{}, err
 	}
-	return int32(parsed)
+	return ListRequest{Limit: limit, Offset: offset}, nil
 }
