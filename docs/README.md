@@ -126,3 +126,21 @@ Do not infer fields from database tables. Payloads and responses must come from 
 ## Documentation status
 
 The directory structure and shared contracts are established. Endpoint payloads and responses are being extracted feature by feature from the backend source. An endpoint must not be marked complete until its request and response examples have been checked against the implementation.
+
+## Campaign builder scope
+
+The Campaigns section is part of the public customer-dashboard API contract. The
+current campaign contract supports creating, listing, retrieving, editing,
+duplicating, previewing, sending, scheduling, and deleting campaigns. The
+Campaigns API is therefore in scope for frontend campaign-builder work.
+
+Recurring campaigns are **not** part of the current documented contract. The
+existing scheduling contract describes a single `scheduled_at` timestamp for a
+campaign; it does not define a recurrence rule, recurrence state, next-run
+semantics, or endpoints for managing a recurring schedule. Frontend code should
+not assume recurring campaigns are available until that contract is added and
+verified against the backend implementation.
+
+The follow-up work tracked in PR #58 includes the campaign recurring schedule
+contract/implementation. Until that work lands, the supported builder scope is
+one-time campaigns with the existing campaign scheduling semantics.
