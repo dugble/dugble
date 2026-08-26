@@ -2,7 +2,7 @@
 
 Dashboard-facing HTTP contract for managing customer sender domains used by email delivery.
 
-The routes and schemas in this document are derived from `server/internal/modules/domain` and the provider verification types used by that module. Internal persistence fields that are not exposed by the HTTP handler are not documented as API fields.
+The routes and schemas in this document are derived from `server/internal/modules/domain` and the provider verification types used by that module. Internal persistence/provider fields that are not exposed by the HTTP handler are not documented as API fields.
 
 ## Conventions
 
@@ -26,8 +26,6 @@ The public `SenderDomain` response has this shape:
   "id": "550e8400-e29b-41d4-a716-446655440000",
   "team_id": "650e8400-e29b-41d4-a716-446655440000",
   "name": "example.com",
-  "provider": "aws_ses",
-  "provider_account": "default",
   "region": "us-east-1",
   "provider_external_id": "provider-resource-id",
   "status": "pending",
@@ -66,6 +64,8 @@ The public `SenderDomain` response has this shape:
 }
 ```
 
+`provider` and `provider_account` are internal implementation details and are **not returned by the public domain API**.
+
 ### Sender domain fields
 
 | Field | Type | Description |
@@ -73,8 +73,6 @@ The public `SenderDomain` response has this shape:
 | `id` | string (UUID) | Sender domain ID. |
 | `team_id` | string (UUID) | Owning team ID. |
 | `name` | string | Normalized sender domain name. |
-| `provider` | string | Provider backing the domain. Currently `aws_ses`. |
-| `provider_account` | string | Provider account identifier. Currently `default`. |
 | `region` | string | Provider region. |
 | `provider_external_id` | string, nullable | Provider-side resource identifier, when available. |
 | `status` | string | Verification/provisioning status. |
@@ -143,8 +141,6 @@ None.
       "id": "550e8400-e29b-41d4-a716-446655440000",
       "team_id": "650e8400-e29b-41d4-a716-446655440000",
       "name": "example.com",
-      "provider": "aws_ses",
-      "provider_account": "default",
       "region": "us-east-1",
       "status": "pending",
       "records": [],
@@ -195,8 +191,6 @@ The normalized domain must be a valid DNS domain name and no longer than 253 cha
     "id": "550e8400-e29b-41d4-a716-446655440000",
     "team_id": "650e8400-e29b-41d4-a716-446655440000",
     "name": "example.com",
-    "provider": "aws_ses",
-    "provider_account": "default",
     "region": "us-east-1",
     "status": "pending",
     "records": [],
@@ -255,8 +249,6 @@ None.
     "id": "550e8400-e29b-41d4-a716-446655440000",
     "team_id": "650e8400-e29b-41d4-a716-446655440000",
     "name": "example.com",
-    "provider": "aws_ses",
-    "provider_account": "default",
     "region": "us-east-1",
     "status": "pending",
     "records": [],
@@ -264,7 +256,7 @@ None.
     "health_status": "unknown",
     "consecutive_health_failures": 0,
     "created_at": "2026-08-25T08:59:58Z",
-    "updated_at": "2026-08-25T09:00:00Z"
+    "updated_at": "2026-08-25T08:59:58Z"
   }
 }
 ```
@@ -300,8 +292,6 @@ None.
     "id": "550e8400-e29b-41d4-a716-446655440000",
     "team_id": "650e8400-e29b-41d4-a716-446655440000",
     "name": "example.com",
-    "provider": "aws_ses",
-    "provider_account": "default",
     "region": "us-east-1",
     "status": "verified",
     "provider_status": "verified",
@@ -356,14 +346,11 @@ None.
     "id": "550e8400-e29b-41d4-a716-446655440000",
     "team_id": "650e8400-e29b-41d4-a716-446655440000",
     "name": "example.com",
-    "provider": "aws_ses",
-    "provider_account": "default",
     "region": "us-east-1",
     "status": "disabled",
     "records": [],
     "tls": "opportunistic",
     "health_status": "unknown",
-    "consecutive_health_failures": 0,
     "disabled_at": "2026-08-25T10:00:00Z",
     "created_at": "2026-08-25T08:59:58Z",
     "updated_at": "2026-08-25T10:00:00Z"
