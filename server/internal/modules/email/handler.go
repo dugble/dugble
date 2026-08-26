@@ -44,11 +44,11 @@ func (handler *Handler) Get(c *echo.Context) error {
 }
 
 func (handler *Handler) ListEvents(c *echo.Context) error {
-	limit, _, err := httputil.Pagination(c)
+	limit, offset, err := httputil.Pagination(c)
 	if err != nil {
 		return httputil.Error(c, err)
 	}
-	response, err := handler.service.ListEvents(c.Request().Context(), c.Param("message_id"), limit)
+	response, err := handler.service.ListEvents(c.Request().Context(), c.Param("message_id"), limit, offset)
 	if err != nil {
 		return httputil.Error(c, err)
 	}

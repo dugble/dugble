@@ -119,9 +119,9 @@ func (r *Repository) CreateTx(ctx context.Context, tx pgx.Tx, teamID uuid.UUID, 
 	return messageFromSQLC(row), nil
 }
 
-func (r *Repository) ListEvents(ctx context.Context, teamID, messageID uuid.UUID, limit int32) ([]Event, error) {
+func (r *Repository) ListEvents(ctx context.Context, teamID, messageID uuid.UUID, limit, offset int32) ([]Event, error) {
 	rows, err := r.queries.ListEmailMessageEvents(ctx, dbsqlc.ListEmailMessageEventsParams{
-		MessageID: messageID, TeamID: teamID, LimitCount: limit,
+		MessageID: messageID, TeamID: teamID, LimitCount: limit, OffsetCount: offset,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("list email events: %w", err)

@@ -253,7 +253,7 @@ func (s *Service) Get(ctx context.Context, value string) (Message, error) {
 	return m, nil
 }
 
-func (s *Service) ListEvents(ctx context.Context, value string, limit int32) (EventListResponse, error) {
+func (s *Service) ListEvents(ctx context.Context, value string, limit, offset int32) (EventListResponse, error) {
 	tc, err := requireTenant(ctx, authz.PermissionEmailRead)
 	if err != nil {
 		return EventListResponse{}, err
@@ -265,12 +265,15 @@ func (s *Service) ListEvents(ctx context.Context, value string, limit int32) (Ev
 	if limit <= 0 || limit > 100 {
 		limit = 100
 	}
+	if offset < 0 {
+		offset = 0
+	}
 	if _, err := s.repository.Get(ctx, id, tc.Scope.TeamID); errors.Is(err, ErrNotFound) {
 		return EventListResponse{}, apperrors.NewNotFound("Email message not found")
 	} else if err != nil {
 		return EventListResponse{}, apperrors.NewInternal("Unable to get email message", err)
 	}
-	events, err := s.repository.ListEvents(ctx, tc.Scope.TeamID, id, limit)
+	events, err := s.repository.ListEvents(ctx, tc.Scope.TeamID, id, limit, offset)
 	if err != nil {
 		return EventListResponse{}, apperrors.NewInternal("Unable to list email events", err)
 	}
