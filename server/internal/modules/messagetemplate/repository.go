@@ -39,10 +39,15 @@ func (r *Repository) Create(ctx context.Context, teamID uuid.UUID, req CreateReq
 	defer func() { _ = tx.Rollback(ctx) }()
 	queries := r.queries.WithTx(tx)
 
+	category := req.Category
+	if category == "" {
+		category = CategoryCustom
+	}
 	row, err := queries.CreateMessageTemplate(ctx, dbsqlc.CreateMessageTemplateParams{
-		TeamID: teamID,
-		Name:   req.Name,
-		Alias:  req.Alias,
+		TeamID:  teamID,
+		Name:    req.Name,
+		Alias:   req.Alias,
+		Category: category,
 	})
 	if err != nil {
 		return Template{}, Version{}, mapWriteError(err)
@@ -181,15 +186,21 @@ func (r *Repository) Update(ctx context.Context, teamID uuid.UUID, template Temp
 		return Template{}, Version{}, ErrVersionConflict
 	}
 
-	name, alias := template.Name, template.Alias
+	name, alias, category := template.Name, template.Alias, template.Category
 	if req.Name != nil {
 		name = *req.Name
 	}
 	if req.Alias != nil {
 		alias = *req.Alias
 	}
+	if req.Category != nil {
+		category = *req.Category
+	}
+	if category == "" {
+		category = CategoryCustom
+	}
 	if _, err = queries.UpdateMessageTemplateMetadata(ctx, dbsqlc.UpdateMessageTemplateMetadataParams{
-		Name: name, Alias: alias, ID: templateID, TeamID: teamID,
+		Name: name, Alias: alias, Category: category, ID: templateID, TeamID: teamID,
 	}); err != nil {
 		return Template{}, Version{}, mapWriteError(err)
 	}
@@ -329,7 +340,7 @@ func (r *Repository) ListPage(ctx context.Context, teamID uuid.UUID, limit int32
 func templateFromSQLC(row dbsqlc.MessageTemplate) Template {
 	value := Template{
 		ID: row.ID.String(), TeamID: row.TeamID.String(), Name: row.Name, Alias: row.Alias,
-		CreatedAt: row.CreatedAt.Time, UpdatedAt: row.UpdatedAt.Time,
+		Category: row.Category, CreatedAt: row.CreatedAt.Time, UpdatedAt: row.UpdatedAt.Time,
 	}
 	if row.CurrentVersionID != nil {
 		id := row.CurrentVersionID.String()
