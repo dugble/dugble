@@ -9,15 +9,17 @@ import (
 	"context"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const createMessageTemplate = `-- name: CreateMessageTemplate :one
-INSERT INTO message_templates (team_id, name, alias)
-VALUES ($1, $2, $3)
+INSERT INTO message_templates (team_id, name, alias, category)
+VALUES ($1, $2, $3, $4::message_template_category)
 RETURNING id,
           team_id,
           name,
           alias,
+          category::text AS category,
           current_version_id,
           published_version_id,
           next_version_number,
@@ -28,19 +30,41 @@ RETURNING id,
 `
 
 type CreateMessageTemplateParams struct {
-	TeamID uuid.UUID `db:"team_id" json:"team_id"`
-	Name   string    `db:"name" json:"name"`
-	Alias  *string   `db:"alias" json:"alias"`
+	TeamID   uuid.UUID               `db:"team_id" json:"team_id"`
+	Name     string                  `db:"name" json:"name"`
+	Alias    *string                 `db:"alias" json:"alias"`
+	Category MessageTemplateCategory `db:"category" json:"category"`
 }
 
-func (q *Queries) CreateMessageTemplate(ctx context.Context, arg CreateMessageTemplateParams) (MessageTemplate, error) {
-	row := q.db.QueryRow(ctx, createMessageTemplate, arg.TeamID, arg.Name, arg.Alias)
-	var i MessageTemplate
+type CreateMessageTemplateRow struct {
+	ID                 uuid.UUID          `db:"id" json:"id"`
+	TeamID             uuid.UUID          `db:"team_id" json:"team_id"`
+	Name               string             `db:"name" json:"name"`
+	Alias              *string            `db:"alias" json:"alias"`
+	Category           string             `db:"category" json:"category"`
+	CurrentVersionID   *uuid.UUID         `db:"current_version_id" json:"current_version_id"`
+	PublishedVersionID *uuid.UUID         `db:"published_version_id" json:"published_version_id"`
+	NextVersionNumber  int32              `db:"next_version_number" json:"next_version_number"`
+	PublishedAt        pgtype.Timestamptz `db:"published_at" json:"published_at"`
+	CreatedAt          pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt          pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	DeletedAt          pgtype.Timestamptz `db:"deleted_at" json:"deleted_at"`
+}
+
+func (q *Queries) CreateMessageTemplate(ctx context.Context, arg CreateMessageTemplateParams) (CreateMessageTemplateRow, error) {
+	row := q.db.QueryRow(ctx, createMessageTemplate,
+		arg.TeamID,
+		arg.Name,
+		arg.Alias,
+		arg.Category,
+	)
+	var i CreateMessageTemplateRow
 	err := row.Scan(
 		&i.ID,
 		&i.TeamID,
 		&i.Name,
 		&i.Alias,
+		&i.Category,
 		&i.CurrentVersionID,
 		&i.PublishedVersionID,
 		&i.NextVersionNumber,
@@ -82,6 +106,7 @@ SELECT mt.id,
        mt.team_id,
        mt.name,
        mt.alias,
+       mt.category::text AS category,
        mt.current_version_id,
        mt.published_version_id,
        mt.next_version_number,
@@ -100,14 +125,30 @@ type GetMessageTemplateByAliasParams struct {
 	Alias  string    `db:"alias" json:"alias"`
 }
 
-func (q *Queries) GetMessageTemplateByAlias(ctx context.Context, arg GetMessageTemplateByAliasParams) (MessageTemplate, error) {
+type GetMessageTemplateByAliasRow struct {
+	ID                 uuid.UUID          `db:"id" json:"id"`
+	TeamID             uuid.UUID          `db:"team_id" json:"team_id"`
+	Name               string             `db:"name" json:"name"`
+	Alias              *string            `db:"alias" json:"alias"`
+	Category           string             `db:"category" json:"category"`
+	CurrentVersionID   *uuid.UUID         `db:"current_version_id" json:"current_version_id"`
+	PublishedVersionID *uuid.UUID         `db:"published_version_id" json:"published_version_id"`
+	NextVersionNumber  int32              `db:"next_version_number" json:"next_version_number"`
+	PublishedAt        pgtype.Timestamptz `db:"published_at" json:"published_at"`
+	CreatedAt          pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt          pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	DeletedAt          pgtype.Timestamptz `db:"deleted_at" json:"deleted_at"`
+}
+
+func (q *Queries) GetMessageTemplateByAlias(ctx context.Context, arg GetMessageTemplateByAliasParams) (GetMessageTemplateByAliasRow, error) {
 	row := q.db.QueryRow(ctx, getMessageTemplateByAlias, arg.TeamID, arg.Alias)
-	var i MessageTemplate
+	var i GetMessageTemplateByAliasRow
 	err := row.Scan(
 		&i.ID,
 		&i.TeamID,
 		&i.Name,
 		&i.Alias,
+		&i.Category,
 		&i.CurrentVersionID,
 		&i.PublishedVersionID,
 		&i.NextVersionNumber,
@@ -124,6 +165,7 @@ SELECT mt.id,
        mt.team_id,
        mt.name,
        mt.alias,
+       mt.category::text AS category,
        mt.current_version_id,
        mt.published_version_id,
        mt.next_version_number,
@@ -142,14 +184,30 @@ type GetMessageTemplateByIDParams struct {
 	TeamID uuid.UUID `db:"team_id" json:"team_id"`
 }
 
-func (q *Queries) GetMessageTemplateByID(ctx context.Context, arg GetMessageTemplateByIDParams) (MessageTemplate, error) {
+type GetMessageTemplateByIDRow struct {
+	ID                 uuid.UUID          `db:"id" json:"id"`
+	TeamID             uuid.UUID          `db:"team_id" json:"team_id"`
+	Name               string             `db:"name" json:"name"`
+	Alias              *string            `db:"alias" json:"alias"`
+	Category           string             `db:"category" json:"category"`
+	CurrentVersionID   *uuid.UUID         `db:"current_version_id" json:"current_version_id"`
+	PublishedVersionID *uuid.UUID         `db:"published_version_id" json:"published_version_id"`
+	NextVersionNumber  int32              `db:"next_version_number" json:"next_version_number"`
+	PublishedAt        pgtype.Timestamptz `db:"published_at" json:"published_at"`
+	CreatedAt          pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt          pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	DeletedAt          pgtype.Timestamptz `db:"deleted_at" json:"deleted_at"`
+}
+
+func (q *Queries) GetMessageTemplateByID(ctx context.Context, arg GetMessageTemplateByIDParams) (GetMessageTemplateByIDRow, error) {
 	row := q.db.QueryRow(ctx, getMessageTemplateByID, arg.ID, arg.TeamID)
-	var i MessageTemplate
+	var i GetMessageTemplateByIDRow
 	err := row.Scan(
 		&i.ID,
 		&i.TeamID,
 		&i.Name,
 		&i.Alias,
+		&i.Category,
 		&i.CurrentVersionID,
 		&i.PublishedVersionID,
 		&i.NextVersionNumber,
@@ -166,6 +224,7 @@ SELECT mt.id,
        mt.team_id,
        mt.name,
        mt.alias,
+       mt.category::text AS category,
        mt.current_version_id,
        mt.published_version_id,
        mt.next_version_number,
@@ -187,20 +246,36 @@ type ListMessageTemplatesParams struct {
 	PageLimit  int32     `db:"page_limit" json:"page_limit"`
 }
 
-func (q *Queries) ListMessageTemplates(ctx context.Context, arg ListMessageTemplatesParams) ([]MessageTemplate, error) {
+type ListMessageTemplatesRow struct {
+	ID                 uuid.UUID          `db:"id" json:"id"`
+	TeamID             uuid.UUID          `db:"team_id" json:"team_id"`
+	Name               string             `db:"name" json:"name"`
+	Alias              *string            `db:"alias" json:"alias"`
+	Category           string             `db:"category" json:"category"`
+	CurrentVersionID   *uuid.UUID         `db:"current_version_id" json:"current_version_id"`
+	PublishedVersionID *uuid.UUID         `db:"published_version_id" json:"published_version_id"`
+	NextVersionNumber  int32              `db:"next_version_number" json:"next_version_number"`
+	PublishedAt        pgtype.Timestamptz `db:"published_at" json:"published_at"`
+	CreatedAt          pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt          pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	DeletedAt          pgtype.Timestamptz `db:"deleted_at" json:"deleted_at"`
+}
+
+func (q *Queries) ListMessageTemplates(ctx context.Context, arg ListMessageTemplatesParams) ([]ListMessageTemplatesRow, error) {
 	rows, err := q.db.Query(ctx, listMessageTemplates, arg.TeamID, arg.PageOffset, arg.PageLimit)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []MessageTemplate{}
+	items := []ListMessageTemplatesRow{}
 	for rows.Next() {
-		var i MessageTemplate
+		var i ListMessageTemplatesRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.TeamID,
 			&i.Name,
 			&i.Alias,
+			&i.Category,
 			&i.CurrentVersionID,
 			&i.PublishedVersionID,
 			&i.NextVersionNumber,
@@ -224,6 +299,7 @@ SELECT mt.id,
        mt.team_id,
        mt.name,
        mt.alias,
+       mt.category::text AS category,
        mt.current_version_id,
        mt.published_version_id,
        mt.next_version_number,
@@ -251,20 +327,36 @@ type ListMessageTemplatesAfterParams struct {
 	PageLimit   int32     `db:"page_limit" json:"page_limit"`
 }
 
-func (q *Queries) ListMessageTemplatesAfter(ctx context.Context, arg ListMessageTemplatesAfterParams) ([]MessageTemplate, error) {
+type ListMessageTemplatesAfterRow struct {
+	ID                 uuid.UUID          `db:"id" json:"id"`
+	TeamID             uuid.UUID          `db:"team_id" json:"team_id"`
+	Name               string             `db:"name" json:"name"`
+	Alias              *string            `db:"alias" json:"alias"`
+	Category           string             `db:"category" json:"category"`
+	CurrentVersionID   *uuid.UUID         `db:"current_version_id" json:"current_version_id"`
+	PublishedVersionID *uuid.UUID         `db:"published_version_id" json:"published_version_id"`
+	NextVersionNumber  int32              `db:"next_version_number" json:"next_version_number"`
+	PublishedAt        pgtype.Timestamptz `db:"published_at" json:"published_at"`
+	CreatedAt          pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt          pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	DeletedAt          pgtype.Timestamptz `db:"deleted_at" json:"deleted_at"`
+}
+
+func (q *Queries) ListMessageTemplatesAfter(ctx context.Context, arg ListMessageTemplatesAfterParams) ([]ListMessageTemplatesAfterRow, error) {
 	rows, err := q.db.Query(ctx, listMessageTemplatesAfter, arg.ScopeTeamID, arg.CursorID, arg.PageLimit)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []MessageTemplate{}
+	items := []ListMessageTemplatesAfterRow{}
 	for rows.Next() {
-		var i MessageTemplate
+		var i ListMessageTemplatesAfterRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.TeamID,
 			&i.Name,
 			&i.Alias,
+			&i.Category,
 			&i.CurrentVersionID,
 			&i.PublishedVersionID,
 			&i.NextVersionNumber,
@@ -288,6 +380,7 @@ SELECT mt.id,
        mt.team_id,
        mt.name,
        mt.alias,
+       mt.category::text AS category,
        mt.current_version_id,
        mt.published_version_id,
        mt.next_version_number,
@@ -315,20 +408,36 @@ type ListMessageTemplatesBeforeParams struct {
 	PageLimit   int32     `db:"page_limit" json:"page_limit"`
 }
 
-func (q *Queries) ListMessageTemplatesBefore(ctx context.Context, arg ListMessageTemplatesBeforeParams) ([]MessageTemplate, error) {
+type ListMessageTemplatesBeforeRow struct {
+	ID                 uuid.UUID          `db:"id" json:"id"`
+	TeamID             uuid.UUID          `db:"team_id" json:"team_id"`
+	Name               string             `db:"name" json:"name"`
+	Alias              *string            `db:"alias" json:"alias"`
+	Category           string             `db:"category" json:"category"`
+	CurrentVersionID   *uuid.UUID         `db:"current_version_id" json:"current_version_id"`
+	PublishedVersionID *uuid.UUID         `db:"published_version_id" json:"published_version_id"`
+	NextVersionNumber  int32              `db:"next_version_number" json:"next_version_number"`
+	PublishedAt        pgtype.Timestamptz `db:"published_at" json:"published_at"`
+	CreatedAt          pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt          pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	DeletedAt          pgtype.Timestamptz `db:"deleted_at" json:"deleted_at"`
+}
+
+func (q *Queries) ListMessageTemplatesBefore(ctx context.Context, arg ListMessageTemplatesBeforeParams) ([]ListMessageTemplatesBeforeRow, error) {
 	rows, err := q.db.Query(ctx, listMessageTemplatesBefore, arg.ScopeTeamID, arg.CursorID, arg.PageLimit)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []MessageTemplate{}
+	items := []ListMessageTemplatesBeforeRow{}
 	for rows.Next() {
-		var i MessageTemplate
+		var i ListMessageTemplatesBeforeRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.TeamID,
 			&i.Name,
 			&i.Alias,
+			&i.Category,
 			&i.CurrentVersionID,
 			&i.PublishedVersionID,
 			&i.NextVersionNumber,
@@ -352,6 +461,7 @@ SELECT mt.id,
        mt.team_id,
        mt.name,
        mt.alias,
+       mt.category::text AS category,
        mt.current_version_id,
        mt.published_version_id,
        mt.next_version_number,
@@ -371,14 +481,30 @@ type LockMessageTemplateParams struct {
 	TeamID uuid.UUID `db:"team_id" json:"team_id"`
 }
 
-func (q *Queries) LockMessageTemplate(ctx context.Context, arg LockMessageTemplateParams) (MessageTemplate, error) {
+type LockMessageTemplateRow struct {
+	ID                 uuid.UUID          `db:"id" json:"id"`
+	TeamID             uuid.UUID          `db:"team_id" json:"team_id"`
+	Name               string             `db:"name" json:"name"`
+	Alias              *string            `db:"alias" json:"alias"`
+	Category           string             `db:"category" json:"category"`
+	CurrentVersionID   *uuid.UUID         `db:"current_version_id" json:"current_version_id"`
+	PublishedVersionID *uuid.UUID         `db:"published_version_id" json:"published_version_id"`
+	NextVersionNumber  int32              `db:"next_version_number" json:"next_version_number"`
+	PublishedAt        pgtype.Timestamptz `db:"published_at" json:"published_at"`
+	CreatedAt          pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt          pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	DeletedAt          pgtype.Timestamptz `db:"deleted_at" json:"deleted_at"`
+}
+
+func (q *Queries) LockMessageTemplate(ctx context.Context, arg LockMessageTemplateParams) (LockMessageTemplateRow, error) {
 	row := q.db.QueryRow(ctx, lockMessageTemplate, arg.ID, arg.TeamID)
-	var i MessageTemplate
+	var i LockMessageTemplateRow
 	err := row.Scan(
 		&i.ID,
 		&i.TeamID,
 		&i.Name,
 		&i.Alias,
+		&i.Category,
 		&i.CurrentVersionID,
 		&i.PublishedVersionID,
 		&i.NextVersionNumber,
@@ -424,6 +550,7 @@ RETURNING id,
           team_id,
           name,
           alias,
+          category::text AS category,
           current_version_id,
           published_version_id,
           next_version_number,
@@ -439,14 +566,30 @@ type PublishMessageTemplateVersionParams struct {
 	TeamID    uuid.UUID  `db:"team_id" json:"team_id"`
 }
 
-func (q *Queries) PublishMessageTemplateVersion(ctx context.Context, arg PublishMessageTemplateVersionParams) (MessageTemplate, error) {
+type PublishMessageTemplateVersionRow struct {
+	ID                 uuid.UUID          `db:"id" json:"id"`
+	TeamID             uuid.UUID          `db:"team_id" json:"team_id"`
+	Name               string             `db:"name" json:"name"`
+	Alias              *string            `db:"alias" json:"alias"`
+	Category           string             `db:"category" json:"category"`
+	CurrentVersionID   *uuid.UUID         `db:"current_version_id" json:"current_version_id"`
+	PublishedVersionID *uuid.UUID         `db:"published_version_id" json:"published_version_id"`
+	NextVersionNumber  int32              `db:"next_version_number" json:"next_version_number"`
+	PublishedAt        pgtype.Timestamptz `db:"published_at" json:"published_at"`
+	CreatedAt          pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt          pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	DeletedAt          pgtype.Timestamptz `db:"deleted_at" json:"deleted_at"`
+}
+
+func (q *Queries) PublishMessageTemplateVersion(ctx context.Context, arg PublishMessageTemplateVersionParams) (PublishMessageTemplateVersionRow, error) {
 	row := q.db.QueryRow(ctx, publishMessageTemplateVersion, arg.VersionID, arg.ID, arg.TeamID)
-	var i MessageTemplate
+	var i PublishMessageTemplateVersionRow
 	err := row.Scan(
 		&i.ID,
 		&i.TeamID,
 		&i.Name,
 		&i.Alias,
+		&i.Category,
 		&i.CurrentVersionID,
 		&i.PublishedVersionID,
 		&i.NextVersionNumber,
@@ -470,6 +613,7 @@ RETURNING id,
           team_id,
           name,
           alias,
+          category::text AS category,
           current_version_id,
           published_version_id,
           next_version_number,
@@ -485,14 +629,30 @@ type SetMessageTemplateCurrentVersionParams struct {
 	TeamID    uuid.UUID  `db:"team_id" json:"team_id"`
 }
 
-func (q *Queries) SetMessageTemplateCurrentVersion(ctx context.Context, arg SetMessageTemplateCurrentVersionParams) (MessageTemplate, error) {
+type SetMessageTemplateCurrentVersionRow struct {
+	ID                 uuid.UUID          `db:"id" json:"id"`
+	TeamID             uuid.UUID          `db:"team_id" json:"team_id"`
+	Name               string             `db:"name" json:"name"`
+	Alias              *string            `db:"alias" json:"alias"`
+	Category           string             `db:"category" json:"category"`
+	CurrentVersionID   *uuid.UUID         `db:"current_version_id" json:"current_version_id"`
+	PublishedVersionID *uuid.UUID         `db:"published_version_id" json:"published_version_id"`
+	NextVersionNumber  int32              `db:"next_version_number" json:"next_version_number"`
+	PublishedAt        pgtype.Timestamptz `db:"published_at" json:"published_at"`
+	CreatedAt          pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt          pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	DeletedAt          pgtype.Timestamptz `db:"deleted_at" json:"deleted_at"`
+}
+
+func (q *Queries) SetMessageTemplateCurrentVersion(ctx context.Context, arg SetMessageTemplateCurrentVersionParams) (SetMessageTemplateCurrentVersionRow, error) {
 	row := q.db.QueryRow(ctx, setMessageTemplateCurrentVersion, arg.VersionID, arg.ID, arg.TeamID)
-	var i MessageTemplate
+	var i SetMessageTemplateCurrentVersionRow
 	err := row.Scan(
 		&i.ID,
 		&i.TeamID,
 		&i.Name,
 		&i.Alias,
+		&i.Category,
 		&i.CurrentVersionID,
 		&i.PublishedVersionID,
 		&i.NextVersionNumber,
@@ -515,6 +675,7 @@ RETURNING id,
           team_id,
           name,
           alias,
+          category::text AS category,
           current_version_id,
           published_version_id,
           next_version_number,
@@ -529,14 +690,30 @@ type SoftDeleteMessageTemplateParams struct {
 	TeamID uuid.UUID `db:"team_id" json:"team_id"`
 }
 
-func (q *Queries) SoftDeleteMessageTemplate(ctx context.Context, arg SoftDeleteMessageTemplateParams) (MessageTemplate, error) {
+type SoftDeleteMessageTemplateRow struct {
+	ID                 uuid.UUID          `db:"id" json:"id"`
+	TeamID             uuid.UUID          `db:"team_id" json:"team_id"`
+	Name               string             `db:"name" json:"name"`
+	Alias              *string            `db:"alias" json:"alias"`
+	Category           string             `db:"category" json:"category"`
+	CurrentVersionID   *uuid.UUID         `db:"current_version_id" json:"current_version_id"`
+	PublishedVersionID *uuid.UUID         `db:"published_version_id" json:"published_version_id"`
+	NextVersionNumber  int32              `db:"next_version_number" json:"next_version_number"`
+	PublishedAt        pgtype.Timestamptz `db:"published_at" json:"published_at"`
+	CreatedAt          pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt          pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	DeletedAt          pgtype.Timestamptz `db:"deleted_at" json:"deleted_at"`
+}
+
+func (q *Queries) SoftDeleteMessageTemplate(ctx context.Context, arg SoftDeleteMessageTemplateParams) (SoftDeleteMessageTemplateRow, error) {
 	row := q.db.QueryRow(ctx, softDeleteMessageTemplate, arg.ID, arg.TeamID)
-	var i MessageTemplate
+	var i SoftDeleteMessageTemplateRow
 	err := row.Scan(
 		&i.ID,
 		&i.TeamID,
 		&i.Name,
 		&i.Alias,
+		&i.Category,
 		&i.CurrentVersionID,
 		&i.PublishedVersionID,
 		&i.NextVersionNumber,
@@ -552,14 +729,16 @@ const updateMessageTemplateMetadata = `-- name: UpdateMessageTemplateMetadata :o
 UPDATE message_templates
 SET name = $1,
     alias = $2,
+    category = $3::message_template_category,
     updated_at = now()
-WHERE id = $3
-  AND team_id = $4
+WHERE id = $4
+  AND team_id = $5
   AND deleted_at IS NULL
 RETURNING id,
           team_id,
           name,
           alias,
+          category::text AS category,
           current_version_id,
           published_version_id,
           next_version_number,
@@ -570,25 +749,43 @@ RETURNING id,
 `
 
 type UpdateMessageTemplateMetadataParams struct {
-	Name   string    `db:"name" json:"name"`
-	Alias  *string   `db:"alias" json:"alias"`
-	ID     uuid.UUID `db:"id" json:"id"`
-	TeamID uuid.UUID `db:"team_id" json:"team_id"`
+	Name     string                  `db:"name" json:"name"`
+	Alias    *string                 `db:"alias" json:"alias"`
+	Category MessageTemplateCategory `db:"category" json:"category"`
+	ID       uuid.UUID               `db:"id" json:"id"`
+	TeamID   uuid.UUID               `db:"team_id" json:"team_id"`
 }
 
-func (q *Queries) UpdateMessageTemplateMetadata(ctx context.Context, arg UpdateMessageTemplateMetadataParams) (MessageTemplate, error) {
+type UpdateMessageTemplateMetadataRow struct {
+	ID                 uuid.UUID          `db:"id" json:"id"`
+	TeamID             uuid.UUID          `db:"team_id" json:"team_id"`
+	Name               string             `db:"name" json:"name"`
+	Alias              *string            `db:"alias" json:"alias"`
+	Category           string             `db:"category" json:"category"`
+	CurrentVersionID   *uuid.UUID         `db:"current_version_id" json:"current_version_id"`
+	PublishedVersionID *uuid.UUID         `db:"published_version_id" json:"published_version_id"`
+	NextVersionNumber  int32              `db:"next_version_number" json:"next_version_number"`
+	PublishedAt        pgtype.Timestamptz `db:"published_at" json:"published_at"`
+	CreatedAt          pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt          pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	DeletedAt          pgtype.Timestamptz `db:"deleted_at" json:"deleted_at"`
+}
+
+func (q *Queries) UpdateMessageTemplateMetadata(ctx context.Context, arg UpdateMessageTemplateMetadataParams) (UpdateMessageTemplateMetadataRow, error) {
 	row := q.db.QueryRow(ctx, updateMessageTemplateMetadata,
 		arg.Name,
 		arg.Alias,
+		arg.Category,
 		arg.ID,
 		arg.TeamID,
 	)
-	var i MessageTemplate
+	var i UpdateMessageTemplateMetadataRow
 	err := row.Scan(
 		&i.ID,
 		&i.TeamID,
 		&i.Name,
 		&i.Alias,
+		&i.Category,
 		&i.CurrentVersionID,
 		&i.PublishedVersionID,
 		&i.NextVersionNumber,

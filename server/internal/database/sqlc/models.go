@@ -5,9 +5,58 @@
 package sqlc
 
 import (
+	"database/sql/driver"
+	"fmt"
+
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 )
+
+type MessageTemplateCategory string
+
+const (
+	MessageTemplateCategoryOtp          MessageTemplateCategory = "otp"
+	MessageTemplateCategoryWelcome      MessageTemplateCategory = "welcome"
+	MessageTemplateCategoryReceipt      MessageTemplateCategory = "receipt"
+	MessageTemplateCategoryAlert        MessageTemplateCategory = "alert"
+	MessageTemplateCategoryNotification MessageTemplateCategory = "notification"
+	MessageTemplateCategoryCustom       MessageTemplateCategory = "custom"
+)
+
+func (e *MessageTemplateCategory) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = MessageTemplateCategory(s)
+	case string:
+		*e = MessageTemplateCategory(s)
+	default:
+		return fmt.Errorf("unsupported scan type for MessageTemplateCategory: %T", src)
+	}
+	return nil
+}
+
+type NullMessageTemplateCategory struct {
+	MessageTemplateCategory MessageTemplateCategory `json:"message_template_category"`
+	Valid                   bool                    `json:"valid"` // Valid is true if MessageTemplateCategory is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullMessageTemplateCategory) Scan(value interface{}) error {
+	if value == nil {
+		ns.MessageTemplateCategory, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.MessageTemplateCategory.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullMessageTemplateCategory) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.MessageTemplateCategory), nil
+}
 
 type AllowancePolicy struct {
 	ID               uuid.UUID          `db:"id" json:"id"`
@@ -296,6 +345,7 @@ type EmailMessage struct {
 	FailedAt                 pgtype.Timestamptz `db:"failed_at" json:"failed_at"`
 	CreatedAt                pgtype.Timestamptz `db:"created_at" json:"created_at"`
 	UpdatedAt                pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	TemplateID               *uuid.UUID         `db:"template_id" json:"template_id"`
 }
 
 type EmailProviderEvent struct {
@@ -412,17 +462,18 @@ type MessageDeliveryAttempt struct {
 }
 
 type MessageTemplate struct {
-	ID                 uuid.UUID          `db:"id" json:"id"`
-	TeamID             uuid.UUID          `db:"team_id" json:"team_id"`
-	Name               string             `db:"name" json:"name"`
-	Alias              *string            `db:"alias" json:"alias"`
-	CurrentVersionID   *uuid.UUID         `db:"current_version_id" json:"current_version_id"`
-	PublishedVersionID *uuid.UUID         `db:"published_version_id" json:"published_version_id"`
-	NextVersionNumber  int32              `db:"next_version_number" json:"next_version_number"`
-	PublishedAt        pgtype.Timestamptz `db:"published_at" json:"published_at"`
-	CreatedAt          pgtype.Timestamptz `db:"created_at" json:"created_at"`
-	UpdatedAt          pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
-	DeletedAt          pgtype.Timestamptz `db:"deleted_at" json:"deleted_at"`
+	ID                 uuid.UUID               `db:"id" json:"id"`
+	TeamID             uuid.UUID               `db:"team_id" json:"team_id"`
+	Name               string                  `db:"name" json:"name"`
+	Alias              *string                 `db:"alias" json:"alias"`
+	CurrentVersionID   *uuid.UUID              `db:"current_version_id" json:"current_version_id"`
+	PublishedVersionID *uuid.UUID              `db:"published_version_id" json:"published_version_id"`
+	NextVersionNumber  int32                   `db:"next_version_number" json:"next_version_number"`
+	PublishedAt        pgtype.Timestamptz      `db:"published_at" json:"published_at"`
+	CreatedAt          pgtype.Timestamptz      `db:"created_at" json:"created_at"`
+	UpdatedAt          pgtype.Timestamptz      `db:"updated_at" json:"updated_at"`
+	DeletedAt          pgtype.Timestamptz      `db:"deleted_at" json:"deleted_at"`
+	Category           MessageTemplateCategory `db:"category" json:"category"`
 }
 
 type MessageTemplatePublication struct {
