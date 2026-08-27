@@ -17,7 +17,7 @@ ALTER TABLE email_messages
     ADD CONSTRAINT fk_email_messages_template_team
         FOREIGN KEY (template_id, team_id)
         REFERENCES message_templates (id, team_id)
-        ON DELETE SET NULL;
+        ON DELETE SET NULL (template_id);
 
 CREATE INDEX IF NOT EXISTS idx_email_messages_template_created
     ON email_messages (team_id, template_id, created_at DESC)
