@@ -94,7 +94,7 @@ func (s *Service) ListAPI(ctx context.Context, request APIListRequest) (ListResp
 	data := make([]ListItem, 0, len(values))
 	for _, value := range values {
 		data = append(data, ListItem{
-			ID: value.ID, Name: value.Name, Status: templateStatus(value),
+			ID: value.ID, Name: value.Name, Category: value.Category, Status: templateStatus(value),
 			PublishedAt: value.PublishedAt, CreatedAt: value.CreatedAt,
 			UpdatedAt: value.UpdatedAt, Alias: value.Alias,
 		})
@@ -129,6 +129,9 @@ func (s *Service) UpdateAPI(ctx context.Context, identifier string, request APIU
 	mapped.Name = request.Name
 	if request.Alias != nil {
 		mapped.Alias = &request.Alias
+	}
+	if request.Category != nil {
+		mapped.Category = request.Category
 	}
 	mapped.Subject = request.Subject
 	mapped.HTML = request.HTML
@@ -205,7 +208,7 @@ func mapAPICreateRequest(request APICreateRequest) (CreateRequest, error) {
 		subject = *request.Subject
 	}
 	return CreateRequest{
-		Name: request.Name, Alias: request.Alias, FromEmail: email, FromName: name,
+		Name: request.Name, Alias: request.Alias, Category: request.Category, FromEmail: email, FromName: name,
 		ReplyTo: storedReplyTo, Subject: subject, HTML: request.HTML,
 		Text: request.Text, Variables: request.Variables,
 	}, nil
@@ -230,7 +233,7 @@ func resourceFromTemplate(template Template, version Version) (Resource, error) 
 	}
 	return Resource{
 		Object: ObjectTemplate, ID: template.ID, CurrentVersionID: version.ID,
-		Alias: template.Alias, Name: template.Name, CreatedAt: template.CreatedAt,
+		Alias: template.Alias, Name: template.Name, Category: template.Category, CreatedAt: template.CreatedAt,
 		UpdatedAt: template.UpdatedAt, Status: templateStatus(template),
 		PublishedAt: template.PublishedAt, From: formatSender(version),
 		Subject: optionalNonEmpty(version.Subject), ReplyTo: replyTo,
@@ -420,7 +423,7 @@ func (s *Service) Duplicate(ctx context.Context, identifier string, req Duplicat
 	if name == "" {
 		name = source.Name + " Copy"
 	}
-	create := CreateRequest{Name: name, Alias: req.Alias, FromEmail: version.FromEmail, FromName: version.FromName, ReplyTo: version.ReplyToEmail, Subject: version.Subject, HTML: version.HTML, Text: version.Text, Variables: version.Variables}
+	create := CreateRequest{Name: name, Alias: req.Alias, Category: source.Category, FromEmail: version.FromEmail, FromName: version.FromName, ReplyTo: version.ReplyToEmail, Subject: version.Subject, HTML: version.HTML, Text: version.Text, Variables: version.Variables}
 	create, err = validateCreate(create)
 	if err != nil {
 		return Template{}, err
@@ -722,7 +725,7 @@ func renderVariableValue(variable Variable, value any) (string, error) {
 		case float64:
 			return strconv.FormatFloat(number, 'f', -1, 64), nil
 		case float32:
-			return strconv.FormatFloat(float64(number), 'f', -1, 64), nil
+			return strconv.FormatFloat(float64(number), 'f', -1, 32), nil
 		case int:
 			return strconv.Itoa(number), nil
 		case int32:
