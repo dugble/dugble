@@ -27,6 +27,9 @@ var (
 		"FIRST_NAME": {}, "LAST_NAME": {}, "EMAIL": {}, "UNSUBSCRIBE_URL": {}, "RESEND_UNSUBSCRIBE_URL": {},
 		"CONTACT": {}, "THIS": {},
 	}
+	validTemplateCategories = map[string]struct{}{
+		"otp": {}, "welcome": {}, "receipt": {}, "alert": {}, "notification": {}, "custom": {},
+	}
 )
 
 func validateCreate(req CreateRequest) (CreateRequest, error) {
@@ -37,6 +40,9 @@ func validateCreate(req CreateRequest) (CreateRequest, error) {
 		return req, apperrors.NewBadRequest("Template name is required and must be at most 100 characters")
 	}
 	if err := validateAlias(req.Alias); err != nil {
+		return req, err
+	}
+	if err := validateTemplateCategory(req.Category); err != nil {
 		return req, err
 	}
 	if err := validateContent(req.Subject, req.HTML, req.FromEmail, req.ReplyTo, req.Variables); err != nil {
@@ -63,6 +69,11 @@ func validateUpdate(template Template, base Version, req *UpdateRequest) error {
 	if err := validateAlias(alias); err != nil {
 		return err
 	}
+	if req.Category != nil {
+		if err := validateTemplateCategory(*req.Category); err != nil {
+			return err
+		}
+	}
 	subject, htmlBody, variables := base.Subject, base.HTML, base.Variables
 	fromEmail, replyTo := base.FromEmail, base.ReplyToEmail
 	if req.Subject != nil {
@@ -82,6 +93,13 @@ func validateUpdate(template Template, base Version, req *UpdateRequest) error {
 		replyTo = *req.ReplyTo
 	}
 	return validateContent(subject, htmlBody, fromEmail, replyTo, variables)
+}
+
+func validateTemplateCategory(category string) error {
+	if _, ok := validTemplateCategories[category]; !ok {
+		return apperrors.NewBadRequest("Template category must be one of otp, welcome, receipt, alert, notification, custom")
+	}
+	return nil
 }
 
 func validateVersion(version Version) error {

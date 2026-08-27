@@ -11,11 +11,21 @@ const (
 	VariableTypeNumber = "number"
 )
 
+const (
+	CategoryOTP          = "otp"
+	CategoryWelcome      = "welcome"
+	CategoryReceipt      = "receipt"
+	CategoryAlert        = "alert"
+	CategoryNotification = "notification"
+	CategoryCustom       = "custom"
+)
+
 type Template struct {
 	ID                    string     `json:"id"`
 	TeamID                string     `json:"team_id"`
 	Name                  string     `json:"name"`
 	Alias                 *string    `json:"alias"`
+	Category              string     `json:"category"`
 	CurrentVersionID      *string    `json:"current_version_id,omitempty"`
 	PublishedVersionID    *string    `json:"published_version_id,omitempty"`
 	PublishedAt           *time.Time `json:"published_at,omitempty"`
@@ -50,6 +60,7 @@ type Variable struct {
 type CreateRequest struct {
 	Name      string     `json:"name"`
 	Alias     *string    `json:"alias,omitempty"`
+	Category  string     `json:"category"`
 	FromEmail *string    `json:"from_email,omitempty"`
 	FromName  *string    `json:"from_name,omitempty"`
 	ReplyTo   *string    `json:"reply_to,omitempty"`
@@ -63,6 +74,7 @@ type UpdateRequest struct {
 	BaseVersionID string      `json:"base_version_id"`
 	Name          *string     `json:"name,omitempty"`
 	Alias         **string    `json:"alias,omitempty"`
+	Category      *string     `json:"category,omitempty"`
 	FromEmail     **string    `json:"from_email,omitempty"`
 	FromName      **string    `json:"from_name,omitempty"`
 	ReplyTo       **string    `json:"reply_to,omitempty"`
@@ -142,6 +154,7 @@ type APICreateRequest struct {
 	Name      string     `json:"name"`
 	HTML      string     `json:"html"`
 	Alias     *string    `json:"alias,omitempty"`
+	Category  string     `json:"category"`
 	From      *string    `json:"from,omitempty"`
 	Subject   *string    `json:"subject,omitempty"`
 	ReplyTo   StringList `json:"reply_to,omitempty"`
@@ -153,6 +166,7 @@ type APIUpdateRequest struct {
 	Name      *string     `json:"name,omitempty"`
 	HTML      *string     `json:"html,omitempty"`
 	Alias     *string     `json:"alias,omitempty"`
+	Category  *string     `json:"category,omitempty"`
 	From      *string     `json:"from,omitempty"`
 	Subject   *string     `json:"subject,omitempty"`
 	ReplyTo   *StringList `json:"reply_to,omitempty"`
@@ -192,6 +206,7 @@ type Resource struct {
 	CurrentVersionID       string             `json:"current_version_id"`
 	Alias                  *string            `json:"alias"`
 	Name                   string             `json:"name"`
+	Category               string             `json:"category"`
 	CreatedAt              time.Time          `json:"created_at"`
 	UpdatedAt              time.Time          `json:"updated_at"`
 	Status                 string             `json:"status"`
@@ -208,6 +223,7 @@ type Resource struct {
 type ListItem struct {
 	ID          string     `json:"id"`
 	Name        string     `json:"name"`
+	Category    string     `json:"category"`
 	Status      string     `json:"status"`
 	PublishedAt *time.Time `json:"published_at"`
 	CreatedAt   time.Time  `json:"created_at"`

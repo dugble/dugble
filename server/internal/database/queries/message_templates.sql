@@ -1,30 +1,10 @@
 -- name: CreateMessageTemplate :one
-INSERT INTO message_templates (team_id, name, alias)
-VALUES (sqlc.arg(team_id), sqlc.arg(name), sqlc.narg(alias))
-RETURNING id,
-          team_id,
-          name,
-          alias,
-          current_version_id,
-          published_version_id,
-          next_version_number,
-          published_at,
-          created_at,
-          updated_at,
-          deleted_at;
+INSERT INTO message_templates (team_id, name, alias, category)
+VALUES (sqlc.arg(team_id), sqlc.arg(name), sqlc.narg(alias), sqlc.arg(category)::message_template_category)
+RETURNING *;
 
 -- name: ListMessageTemplates :many
-SELECT mt.id,
-       mt.team_id,
-       mt.name,
-       mt.alias,
-       mt.current_version_id,
-       mt.published_version_id,
-       mt.next_version_number,
-       mt.published_at,
-       mt.created_at,
-       mt.updated_at,
-       mt.deleted_at
+SELECT mt.*
 FROM message_templates AS mt
 WHERE mt.team_id = sqlc.arg(team_id)
   AND mt.deleted_at IS NULL
@@ -33,17 +13,7 @@ LIMIT sqlc.arg(page_limit)
 OFFSET sqlc.arg(page_offset);
 
 -- name: ListMessageTemplatesAfter :many
-SELECT mt.id,
-       mt.team_id,
-       mt.name,
-       mt.alias,
-       mt.current_version_id,
-       mt.published_version_id,
-       mt.next_version_number,
-       mt.published_at,
-       mt.created_at,
-       mt.updated_at,
-       mt.deleted_at
+SELECT mt.*
 FROM message_templates AS mt
 WHERE mt.team_id = sqlc.arg(scope_team_id)
   AND mt.deleted_at IS NULL
@@ -58,17 +28,7 @@ ORDER BY mt.created_at DESC, mt.id DESC
 LIMIT sqlc.arg(page_limit);
 
 -- name: ListMessageTemplatesBefore :many
-SELECT mt.id,
-       mt.team_id,
-       mt.name,
-       mt.alias,
-       mt.current_version_id,
-       mt.published_version_id,
-       mt.next_version_number,
-       mt.published_at,
-       mt.created_at,
-       mt.updated_at,
-       mt.deleted_at
+SELECT mt.*
 FROM message_templates AS mt
 WHERE mt.team_id = sqlc.arg(scope_team_id)
   AND mt.deleted_at IS NULL
@@ -92,51 +52,21 @@ SELECT EXISTS (
 );
 
 -- name: GetMessageTemplateByID :one
-SELECT mt.id,
-       mt.team_id,
-       mt.name,
-       mt.alias,
-       mt.current_version_id,
-       mt.published_version_id,
-       mt.next_version_number,
-       mt.published_at,
-       mt.created_at,
-       mt.updated_at,
-       mt.deleted_at
+SELECT mt.*
 FROM message_templates AS mt
 WHERE mt.id = sqlc.arg(id)
   AND mt.team_id = sqlc.arg(team_id)
   AND mt.deleted_at IS NULL;
 
 -- name: GetMessageTemplateByAlias :one
-SELECT mt.id,
-       mt.team_id,
-       mt.name,
-       mt.alias,
-       mt.current_version_id,
-       mt.published_version_id,
-       mt.next_version_number,
-       mt.published_at,
-       mt.created_at,
-       mt.updated_at,
-       mt.deleted_at
+SELECT mt.*
 FROM message_templates AS mt
 WHERE mt.team_id = sqlc.arg(team_id)
   AND lower(mt.alias) = lower(sqlc.arg(alias))
   AND mt.deleted_at IS NULL;
 
 -- name: LockMessageTemplate :one
-SELECT mt.id,
-       mt.team_id,
-       mt.name,
-       mt.alias,
-       mt.current_version_id,
-       mt.published_version_id,
-       mt.next_version_number,
-       mt.published_at,
-       mt.created_at,
-       mt.updated_at,
-       mt.deleted_at
+SELECT mt.*
 FROM message_templates AS mt
 WHERE mt.id = sqlc.arg(id)
   AND mt.team_id = sqlc.arg(team_id)
@@ -147,21 +77,12 @@ FOR UPDATE;
 UPDATE message_templates
 SET name = sqlc.arg(name),
     alias = sqlc.narg(alias),
+    category = sqlc.arg(category)::message_template_category,
     updated_at = now()
 WHERE id = sqlc.arg(id)
   AND team_id = sqlc.arg(team_id)
   AND deleted_at IS NULL
-RETURNING id,
-          team_id,
-          name,
-          alias,
-          current_version_id,
-          published_version_id,
-          next_version_number,
-          published_at,
-          created_at,
-          updated_at,
-          deleted_at;
+RETURNING *;
 
 -- name: SetMessageTemplateCurrentVersion :one
 UPDATE message_templates
@@ -171,17 +92,7 @@ SET current_version_id = sqlc.arg(version_id),
 WHERE id = sqlc.arg(id)
   AND team_id = sqlc.arg(team_id)
   AND deleted_at IS NULL
-RETURNING id,
-          team_id,
-          name,
-          alias,
-          current_version_id,
-          published_version_id,
-          next_version_number,
-          published_at,
-          created_at,
-          updated_at,
-          deleted_at;
+RETURNING *;
 
 -- name: PublishMessageTemplateVersion :one
 UPDATE message_templates
@@ -191,17 +102,7 @@ SET published_version_id = sqlc.arg(version_id),
 WHERE id = sqlc.arg(id)
   AND team_id = sqlc.arg(team_id)
   AND deleted_at IS NULL
-RETURNING id,
-          team_id,
-          name,
-          alias,
-          current_version_id,
-          published_version_id,
-          next_version_number,
-          published_at,
-          created_at,
-          updated_at,
-          deleted_at;
+RETURNING *;
 
 -- name: SoftDeleteMessageTemplate :one
 UPDATE message_templates
@@ -210,17 +111,7 @@ SET deleted_at = now(),
 WHERE id = sqlc.arg(id)
   AND team_id = sqlc.arg(team_id)
   AND deleted_at IS NULL
-RETURNING id,
-          team_id,
-          name,
-          alias,
-          current_version_id,
-          published_version_id,
-          next_version_number,
-          published_at,
-          created_at,
-          updated_at,
-          deleted_at;
+RETURNING *;
 
 -- name: CreateMessageTemplatePublication :one
 INSERT INTO message_template_publications (team_id, template_id, version_id)

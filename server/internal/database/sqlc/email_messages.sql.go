@@ -75,7 +75,7 @@ SELECT
 FROM teams AS team
 WHERE team.id = $19
   AND team.status = 'active'
-RETURNING id, team_id, sender_domain_id, delivery_provider, provider_region, message_type, from_email, from_name, reply_to_email, to_email, to_name, subject, html_body, text_body, status, provider, provider_message_id, current_delivery_attempt_id, error_code, error_message, metadata, recipients, headers, attachments, tags, scheduled_at, queued_at, processing_at, submitted_at, delivered_at, failed_at, created_at, updated_at
+RETURNING id, team_id, sender_domain_id, delivery_provider, provider_region, message_type, from_email, from_name, reply_to_email, to_email, to_name, subject, html_body, text_body, status, provider, provider_message_id, current_delivery_attempt_id, error_code, error_message, metadata, recipients, headers, attachments, tags, scheduled_at, queued_at, processing_at, submitted_at, delivered_at, failed_at, created_at, updated_at, template_id
 `
 
 type CreateEmailMessageParams struct {
@@ -157,12 +157,13 @@ func (q *Queries) CreateEmailMessage(ctx context.Context, arg CreateEmailMessage
 		&i.FailedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.TemplateID,
 	)
 	return i, err
 }
 
 const getEmailMessage = `-- name: GetEmailMessage :one
-SELECT message.id, message.team_id, message.sender_domain_id, message.delivery_provider, message.provider_region, message.message_type, message.from_email, message.from_name, message.reply_to_email, message.to_email, message.to_name, message.subject, message.html_body, message.text_body, message.status, message.provider, message.provider_message_id, message.current_delivery_attempt_id, message.error_code, message.error_message, message.metadata, message.recipients, message.headers, message.attachments, message.tags, message.scheduled_at, message.queued_at, message.processing_at, message.submitted_at, message.delivered_at, message.failed_at, message.created_at, message.updated_at
+SELECT message.id, message.team_id, message.sender_domain_id, message.delivery_provider, message.provider_region, message.message_type, message.from_email, message.from_name, message.reply_to_email, message.to_email, message.to_name, message.subject, message.html_body, message.text_body, message.status, message.provider, message.provider_message_id, message.current_delivery_attempt_id, message.error_code, message.error_message, message.metadata, message.recipients, message.headers, message.attachments, message.tags, message.scheduled_at, message.queued_at, message.processing_at, message.submitted_at, message.delivered_at, message.failed_at, message.created_at, message.updated_at, message.template_id
 FROM email_messages AS message
 JOIN teams AS team ON team.id = message.team_id
 WHERE message.id = $1
@@ -212,6 +213,7 @@ func (q *Queries) GetEmailMessage(ctx context.Context, arg GetEmailMessageParams
 		&i.FailedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.TemplateID,
 	)
 	return i, err
 }
