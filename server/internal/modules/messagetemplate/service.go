@@ -94,7 +94,7 @@ func (s *Service) ListAPI(ctx context.Context, request APIListRequest) (ListResp
 	data := make([]ListItem, 0, len(values))
 	for _, value := range values {
 		data = append(data, ListItem{
-			ID: value.ID, Name: value.Name, Status: templateStatus(value),
+			ID: value.ID, Name: value.Name, Category: value.Category, Status: templateStatus(value),
 			PublishedAt: value.PublishedAt, CreatedAt: value.CreatedAt,
 			UpdatedAt: value.UpdatedAt, Alias: value.Alias,
 		})
@@ -130,6 +130,7 @@ func (s *Service) UpdateAPI(ctx context.Context, identifier string, request APIU
 	if request.Alias != nil {
 		mapped.Alias = &request.Alias
 	}
+	mapped.Category = request.Category
 	mapped.Subject = request.Subject
 	mapped.HTML = request.HTML
 	mapped.Variables = request.Variables
@@ -180,11 +181,15 @@ func (s *Service) PublishAPI(ctx context.Context, identifier string) (MutationRe
 }
 
 func (s *Service) DuplicateAPI(ctx context.Context, identifier string) (MutationResponse, error) {
-	value, err := s.Duplicate(ctx, identifier, DuplicateRequest{})
+	value, err := s.DuplicateAPIValue(ctx, identifier, DuplicateRequest{})
 	if err != nil {
 		return MutationResponse{}, err
 	}
 	return MutationResponse{Object: ObjectTemplate, ID: value.ID}, nil
+}
+
+func (s *Service) DuplicateAPIValue(ctx context.Context, identifier string, req DuplicateRequest) (Template, error) {
+	return s.Duplicate(ctx, identifier, req)
 }
 
 func mapAPICreateRequest(request APICreateRequest) (CreateRequest, error) {
@@ -205,7 +210,7 @@ func mapAPICreateRequest(request APICreateRequest) (CreateRequest, error) {
 		subject = *request.Subject
 	}
 	return CreateRequest{
-		Name: request.Name, Alias: request.Alias, FromEmail: email, FromName: name,
+		Name: request.Name, Alias: request.Alias, Category: request.Category, FromEmail: email, FromName: name,
 		ReplyTo: storedReplyTo, Subject: subject, HTML: request.HTML,
 		Text: request.Text, Variables: request.Variables,
 	}, nil
@@ -230,7 +235,7 @@ func resourceFromTemplate(template Template, version Version) (Resource, error) 
 	}
 	return Resource{
 		Object: ObjectTemplate, ID: template.ID, CurrentVersionID: version.ID,
-		Alias: template.Alias, Name: template.Name, CreatedAt: template.CreatedAt,
+		Alias: template.Alias, Name: template.Name, Category: template.Category, CreatedAt: template.CreatedAt,
 		UpdatedAt: template.UpdatedAt, Status: templateStatus(template),
 		PublishedAt: template.PublishedAt, From: formatSender(version),
 		Subject: optionalNonEmpty(version.Subject), ReplyTo: replyTo,
@@ -420,7 +425,7 @@ func (s *Service) Duplicate(ctx context.Context, identifier string, req Duplicat
 	if name == "" {
 		name = source.Name + " Copy"
 	}
-	create := CreateRequest{Name: name, Alias: req.Alias, FromEmail: version.FromEmail, FromName: version.FromName, ReplyTo: version.ReplyToEmail, Subject: version.Subject, HTML: version.HTML, Text: version.Text, Variables: version.Variables}
+	create := CreateRequest{Name: name, Alias: req.Alias, Category: source.Category, FromEmail: version.FromEmail, FromName: version.FromName, ReplyTo: version.ReplyToEmail, Subject: version.Subject, HTML: version.HTML, Text: version.Text, Variables: version.Variables}
 	create, err = validateCreate(create)
 	if err != nil {
 		return Template{}, err
@@ -436,24 +441,7 @@ func (s *Service) Duplicate(ctx context.Context, identifier string, req Duplicat
 	return copy, nil
 }
 
-func (s *Service) ListVersions(ctx context.Context, identifier string, req ListRequest) ([]Version, error) {
-	access, err := requireAccess(ctx, authz.PermissionTemplatesRead)
-	if err != nil {
-		return nil, err
-	}
-	template, err := s.resolveTemplate(ctx, access.Scope.TeamID, identifier)
-	if err != nil {
-		return nil, err
-	}
-	normalizeList(&req)
-	values, err := s.repository.ListVersions(ctx, access.Scope.TeamID, uuid.MustParse(template.ID), req.Limit, req.Offset)
-	if err != nil {
-		return nil, apperrors.NewInternal("Unable to list template versions", err)
-	}
-	return values, nil
-}
-
-func (s *Service) GetVersion(ctx context.Context, identifier, versionValue string) (Version, error) {
+func (s *Service) GetVersion(ctx context.Context, identifier, versionID string) (Version, error) {
 	access, err := requireAccess(ctx, authz.PermissionTemplatesRead)
 	if err != nil {
 		return Version{}, err
@@ -462,291 +450,9 @@ func (s *Service) GetVersion(ctx context.Context, identifier, versionValue strin
 	if err != nil {
 		return Version{}, err
 	}
-	versionID, err := uuid.Parse(strings.TrimSpace(versionValue))
+	id, err := uuid.Parse(versionID)
 	if err != nil {
 		return Version{}, apperrors.NewBadRequest("version_id must be a valid UUID")
 	}
-	version, err := s.repository.GetVersion(ctx, access.Scope.TeamID, uuid.MustParse(template.ID), versionID)
-	if errors.Is(err, ErrVersionNotFound) {
-		return Version{}, apperrors.NewNotFound("Template version not found")
-	}
-	if err != nil {
-		return Version{}, apperrors.NewInternal("Unable to get template version", err)
-	}
-	return version, nil
-}
-
-func (s *Service) Revert(ctx context.Context, identifier, versionValue string) (Template, error) {
-	access, err := requireAccess(ctx, authz.PermissionTemplatesWrite)
-	if err != nil {
-		return Template{}, err
-	}
-	template, err := s.resolveTemplate(ctx, access.Scope.TeamID, identifier)
-	if err != nil {
-		return Template{}, err
-	}
-	if template.CurrentVersionID == nil {
-		return Template{}, apperrors.NewConflict("Template has no current version")
-	}
-	targetID, err := uuid.Parse(strings.TrimSpace(versionValue))
-	if err != nil {
-		return Template{}, apperrors.NewBadRequest("version_id must be a valid UUID")
-	}
-	target, err := s.repository.GetVersion(ctx, access.Scope.TeamID, uuid.MustParse(template.ID), targetID)
-	if errors.Is(err, ErrVersionNotFound) {
-		return Template{}, apperrors.NewNotFound("Template version not found")
-	}
-	if err != nil {
-		return Template{}, apperrors.NewInternal("Unable to load template version", err)
-	}
-	base, err := s.repository.GetVersion(ctx, access.Scope.TeamID, uuid.MustParse(template.ID), uuid.MustParse(*template.CurrentVersionID))
-	if err != nil {
-		return Template{}, apperrors.NewInternal("Unable to load current template version", err)
-	}
-	fromEmail, fromName, replyTo, textBody := target.FromEmail, target.FromName, target.ReplyToEmail, target.Text
-	subject, htmlBody, variables := target.Subject, target.HTML, target.Variables
-	note := "Reverted from version " + fmt.Sprint(target.VersionNumber)
-	request := UpdateRequest{BaseVersionID: base.ID, FromEmail: &fromEmail, FromName: &fromName, ReplyTo: &replyTo, Subject: &subject, HTML: &htmlBody, Text: &textBody, Variables: &variables, ChangeNote: &note}
-	updated, _, err := s.repository.Update(ctx, access.Scope.TeamID, template, base, request)
-	if errors.Is(err, ErrVersionConflict) {
-		return Template{}, apperrors.NewConflict("The template draft has changed; reload before reverting")
-	}
-	if err != nil {
-		return Template{}, apperrors.NewInternal("Unable to revert template", err)
-	}
-	audit.Record(ctx, access, audit.Event{Action: "template.reverted", ResourceType: "message_template", ResourceID: updated.ID, Metadata: map[string]any{"source_version_id": target.ID}})
-	return updated, nil
-}
-
-func (s *Service) Preview(ctx context.Context, identifier string, req PreviewRequest) (PreviewResponse, error) {
-	access, err := requireAccess(ctx, authz.PermissionTemplatesRead)
-	if err != nil {
-		return PreviewResponse{}, err
-	}
-	template, err := s.resolveTemplate(ctx, access.Scope.TeamID, identifier)
-	if err != nil {
-		return PreviewResponse{}, err
-	}
-	version, err := s.resolveVersion(ctx, access.Scope.TeamID, template, req.VersionID)
-	if err != nil {
-		return PreviewResponse{}, err
-	}
-	result, err := Render(version, req.Variables)
-	if err != nil {
-		return PreviewResponse{}, apperrors.NewBadRequest(err.Error())
-	}
-	return result, nil
-}
-
-func (s *Service) RenderVersionTx(ctx context.Context, tx pgx.Tx, teamID, templateID, versionID uuid.UUID, variables map[string]any) (PreviewResponse, error) {
-	if s == nil || s.repository == nil {
-		return PreviewResponse{}, errors.New("message template repository is not configured")
-	}
-	if tx == nil {
-		return PreviewResponse{}, errors.New("message template transaction is not configured")
-	}
-	version, err := s.repository.GetVersionTx(ctx, tx, teamID, templateID, versionID)
-	if err != nil {
-		return PreviewResponse{}, fmt.Errorf("load pinned message template version: %w", err)
-	}
-	rendered, err := Render(version, variables)
-	if err != nil {
-		return PreviewResponse{}, fmt.Errorf("render pinned message template version: %w", err)
-	}
-	return rendered, nil
-}
-
-func (s *Service) TestSend(ctx context.Context, identifier string, req TestSendRequest) (emailmodule.SendResponse, error) {
-	access, err := requireAccess(ctx, authz.PermissionTemplatesWrite)
-	if err != nil {
-		return emailmodule.SendResponse{}, err
-	}
-	if s.email == nil {
-		return emailmodule.SendResponse{}, apperrors.NewInternal("Template test email sender is not configured", nil)
-	}
-	template, err := s.resolveTemplate(ctx, access.Scope.TeamID, identifier)
-	if err != nil {
-		return emailmodule.SendResponse{}, err
-	}
-	version, err := s.resolveVersion(ctx, access.Scope.TeamID, template, req.VersionID)
-	if err != nil {
-		return emailmodule.SendResponse{}, err
-	}
-	preview, err := Render(version, req.Variables)
-	if err != nil {
-		return emailmodule.SendResponse{}, apperrors.NewBadRequest(err.Error())
-	}
-	request := emailmodule.SendRequest{To: emailmodule.EmailAddressList{{Email: req.To}}, Subject: preview.Subject, HTML: preview.HTML}
-	if preview.Text != nil {
-		request.Text = *preview.Text
-	}
-	if preview.FromEmail != nil {
-		request.From = &emailmodule.EmailAddress{Email: *preview.FromEmail}
-		if preview.FromName != nil {
-			request.From.Name = *preview.FromName
-		}
-	}
-	if preview.ReplyTo != nil {
-		request.ReplyTo = emailmodule.EmailAddressList{{Email: *preview.ReplyTo}}
-	}
-	message, err := s.email.Send(ctx, request)
-	if err != nil {
-		return emailmodule.SendResponse{}, err
-	}
-	audit.Record(ctx, access, audit.Event{Action: "template.test_sent", ResourceType: "message_template", ResourceID: template.ID, Metadata: map[string]any{"version_id": version.ID, "email_id": message.ID}})
-	return emailmodule.SendResponse{ID: message.ID}, nil
-}
-
-func (s *Service) resolveTemplate(ctx context.Context, teamID uuid.UUID, identifier string) (Template, error) {
-	value, err := s.repository.Resolve(ctx, teamID, strings.TrimSpace(identifier))
-	if errors.Is(err, ErrNotFound) {
-		return Template{}, apperrors.NewNotFound("Template not found")
-	}
-	if err != nil {
-		return Template{}, apperrors.NewInternal("Unable to resolve template", err)
-	}
-	return value, nil
-}
-func (s *Service) resolveVersion(ctx context.Context, teamID uuid.UUID, template Template, requested string) (Version, error) {
-	versionID := template.CurrentVersionID
-	if strings.TrimSpace(requested) != "" {
-		id, err := uuid.Parse(requested)
-		if err != nil {
-			return Version{}, apperrors.NewBadRequest("version_id must be a valid UUID")
-		}
-		value := id.String()
-		versionID = &value
-	}
-	if versionID == nil {
-		return Version{}, apperrors.NewConflict("Template has no version")
-	}
-	version, err := s.repository.GetVersion(ctx, teamID, uuid.MustParse(template.ID), uuid.MustParse(*versionID))
-	if errors.Is(err, ErrVersionNotFound) {
-		return Version{}, apperrors.NewNotFound("Template version not found")
-	}
-	if err != nil {
-		return Version{}, apperrors.NewInternal("Unable to load template version", err)
-	}
-	return version, nil
-}
-
-func requireAccess(ctx context.Context, permission authz.Permission) (authz.Access, error) {
-	access, decision := authz.ResolveAccess(ctx, permission)
-	if !decision.Allowed {
-		return authz.Access{}, apperrors.NewForbidden(decision.Reason)
-	}
-	return access, nil
-}
-
-var placeholderPattern = regexp.MustCompile(`\{\{\{\s*([A-Za-z][A-Za-z0-9_]*)\s*\}\}\}`)
-
-func Render(version Version, supplied map[string]any) (PreviewResponse, error) {
-	values := make(map[string]string, len(version.Variables))
-	definitions := make(map[string]Variable, len(version.Variables))
-	for _, variable := range version.Variables {
-		definitions[variable.Key] = variable
-		value, exists := supplied[variable.Key]
-		if !exists {
-			value = variable.FallbackValue
-		}
-		if value == nil {
-			continue
-		}
-		normalized, err := renderVariableValue(variable, value)
-		if err != nil {
-			return PreviewResponse{}, err
-		}
-		values[variable.Key] = normalized
-	}
-
-	render := func(input string, escape bool) (string, error) {
-		var renderErr error
-		output := placeholderPattern.ReplaceAllStringFunc(input, func(match string) string {
-			parts := placeholderPattern.FindStringSubmatch(match)
-			key := parts[1]
-			if _, ok := definitions[key]; !ok {
-				renderErr = fmt.Errorf("unknown template variable %s", key)
-				return match
-			}
-			value, ok := values[key]
-			if !ok {
-				renderErr = fmt.Errorf("template variable %s is required", key)
-				return match
-			}
-			if escape {
-				return html.EscapeString(value)
-			}
-			return value
-		})
-		return output, renderErr
-	}
-
-	subject, err := render(version.Subject, false)
-	if err != nil {
-		return PreviewResponse{}, err
-	}
-	htmlBody, err := render(version.HTML, true)
-	if err != nil {
-		return PreviewResponse{}, err
-	}
-	var textBody *string
-	if version.Text != nil {
-		value, renderErr := render(*version.Text, false)
-		if renderErr != nil {
-			return PreviewResponse{}, renderErr
-		}
-		textBody = &value
-	}
-	return PreviewResponse{
-		TemplateID: version.TemplateID, VersionID: version.ID,
-		Subject: subject, HTML: htmlBody, Text: textBody,
-		FromEmail: version.FromEmail, FromName: version.FromName, ReplyTo: version.ReplyToEmail,
-	}, nil
-}
-
-func renderVariableValue(variable Variable, value any) (string, error) {
-	switch variable.Type {
-	case VariableTypeString:
-		text, ok := value.(string)
-		if !ok {
-			return "", fmt.Errorf("template variable %s must be a string", variable.Key)
-		}
-		return text, nil
-	case VariableTypeNumber:
-		switch number := value.(type) {
-		case json.Number:
-			if _, err := number.Float64(); err != nil {
-				return "", fmt.Errorf("template variable %s must be a number", variable.Key)
-			}
-			return number.String(), nil
-		case float64:
-			return strconv.FormatFloat(number, 'f', -1, 64), nil
-		case float32:
-			return strconv.FormatFloat(float64(number), 'f', -1, 64), nil
-		case int:
-			return strconv.Itoa(number), nil
-		case int32:
-			return strconv.FormatInt(int64(number), 10), nil
-		case int64:
-			return strconv.FormatInt(number, 10), nil
-		default:
-			return "", fmt.Errorf("template variable %s must be a number", variable.Key)
-		}
-	default:
-		return "", fmt.Errorf("unsupported template variable type %q", variable.Type)
-	}
-}
-
-func referencedVariables(inputs ...string) []string {
-	set := map[string]struct{}{}
-	for _, input := range inputs {
-		for _, match := range placeholderPattern.FindAllStringSubmatch(input, -1) {
-			set[strings.TrimSpace(match[1])] = struct{}{}
-		}
-	}
-	result := make([]string, 0, len(set))
-	for key := range set {
-		result = append(result, key)
-	}
-	return result
+	return s.repository.GetVersion(ctx, access.Scope.TeamID, uuid.MustParse(template.ID), id)
 }
