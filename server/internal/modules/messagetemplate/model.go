@@ -12,12 +12,12 @@ const (
 )
 
 const (
-	CategoryOTP            = "otp"
-	CategoryWelcome        = "welcome"
-	CategoryReceipt        = "receipt"
-	CategoryAlert          = "alert"
-	CategoryNotification  = "notification"
-	CategoryCustom         = "custom"
+	CategoryOTP          = "otp"
+	CategoryWelcome      = "welcome"
+	CategoryReceipt      = "receipt"
+	CategoryAlert        = "alert"
+	CategoryNotification = "notification"
+	CategoryCustom       = "custom"
 )
 
 type Template struct {

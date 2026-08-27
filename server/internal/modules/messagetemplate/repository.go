@@ -44,9 +44,9 @@ func (r *Repository) Create(ctx context.Context, teamID uuid.UUID, req CreateReq
 		category = CategoryCustom
 	}
 	row, err := queries.CreateMessageTemplate(ctx, dbsqlc.CreateMessageTemplateParams{
-		TeamID:  teamID,
-		Name:    req.Name,
-		Alias:   req.Alias,
+		TeamID:   teamID,
+		Name:     req.Name,
+		Alias:    req.Alias,
 		Category: category,
 	})
 	if err != nil {
