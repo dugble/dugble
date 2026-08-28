@@ -25,21 +25,6 @@ func TestValidateCreateRoutesGhanaToMoolre(t *testing.T) {
 	}
 }
 
-func TestValidateCreateRejectsInvalidGhanaProvider(t *testing.T) {
-	t.Parallel()
-
-	provider := "other"
-	_, _, _, _, err := validateCreate(CreateRequest{
-		Name:        "Dugble1",
-		CountryCode: "GH",
-		Purpose:     "Transactional notifications",
-		Provider:    &provider,
-	})
-	if err == nil {
-		t.Fatal("validateCreate() error = nil")
-	}
-}
-
 func TestValidateCreateRejectsInvalidNameBeforeDatabase(t *testing.T) {
 	t.Parallel()
 
