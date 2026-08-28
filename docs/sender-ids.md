@@ -6,7 +6,7 @@ This document reflects the current `senderid` module request/response types and 
 
 ## Sender ID resource
 
-The Sender ID model exposes:
+The public Sender ID JSON resource exposes:
 
 ```json
 {
@@ -26,9 +26,9 @@ The Sender ID model exposes:
 }
 ```
 
-`provider` exists internally on the model but is tagged `json:"-"`, so it is **not part of the public JSON response**. fileciteturn33file0
+The internal `provider` field is deliberately excluded from JSON responses.
 
-The public status values defined by the module are:
+The Sender ID module defines these statuses:
 
 - `pending`
 - `approved`
@@ -44,7 +44,7 @@ Requires the `sender_ids:read` permission.
 
 Returns the Sender IDs for the current team.
 
-The route currently accepts no pagination parameters and returns a plain array through the standard `200 OK` response helper. fileciteturn36file0 fileciteturn37file0
+The route currently accepts no pagination parameters and returns a plain array through the standard `200 OK` response helper.
 
 ### Response data
 
@@ -74,7 +74,7 @@ The outer `success`/`data` envelope is added by the standard HTTP response helpe
 
 ### `POST /sender-ids`
 
-Requires the `sender_ids:create` permission. The handler returns `201 Created`. fileciteturn36file0 fileciteturn37file0
+Requires the `sender_ids:create` permission. The handler returns `201 Created`.
 
 ### Request body
 
@@ -94,19 +94,19 @@ The request fields are:
 - `purpose` — required; maximum 500 characters.
 - `provider` — optional; maximum 120 characters after trimming.
 
-For Ghana (`GH`), the service forces the provider to Moolre. Supplying a different provider for Ghana is rejected. Supplying Moolre for a non-Ghana Sender ID is also rejected. fileciteturn38file0
+For Ghana (`GH`), the service forces the provider to Moolre. Supplying a different provider for Ghana is rejected. Supplying Moolre for a non-Ghana Sender ID is also rejected.
 
 ### Response
 
-The created Sender ID is returned using the standard `201 Created` response helper. fileciteturn36file0
+The created Sender ID is returned using the standard `201 Created` response helper.
 
 ## Retrieve
 
 ### `GET /sender-ids/:sender_id`
 
-Requires the `sender_ids:read` permission. fileciteturn37file0
+Requires the `sender_ids:read` permission.
 
-The `sender_id` path parameter must be a valid UUID. An invalid UUID produces a bad-request error; a UUID that is not found within the current team produces a not-found error. fileciteturn38file0
+The `sender_id` path parameter must be a valid UUID. An invalid UUID produces a bad-request error; a UUID that is not found within the current team produces a not-found error.
 
 The response is the same public Sender ID resource described above.
 
@@ -114,35 +114,35 @@ The response is the same public Sender ID resource described above.
 
 ### `DELETE /sender-ids/:sender_id`
 
-Requires the `sender_ids:delete` permission. fileciteturn37file0
+Requires the `sender_ids:delete` permission.
 
-This operation deactivates the Sender ID through the repository rather than exposing a separate update endpoint. The handler returns the resulting Sender ID with the standard `200 OK` response helper. fileciteturn36file0turn38file0
+This operation deactivates the Sender ID through the repository rather than exposing a separate update endpoint. The handler returns the resulting Sender ID with the standard `200 OK` response helper.
 
 ## Validation and conflicts
 
-Sender ID creation validates the name, country code, purpose, and optional provider. The service also scopes all Sender ID operations to the current team's tenant context. fileciteturn38file0
+Sender ID creation validates the name, country code, purpose, and optional provider. The service also scopes all Sender ID operations to the current team's tenant context.
 
-Creating a Sender ID that already exists for the same team and country returns a conflict error (`Sender ID already exists for this team and country`). fileciteturn38file0
+Creating a Sender ID that already exists for the same team and country returns a conflict error: `Sender ID already exists for this team and country`.
 
 ## Usage counts
 
-The current public Sender ID resource has **no usage-count field**. The internal `provider` field is also deliberately excluded from JSON responses. fileciteturn33file0
+The current public Sender ID resource has **no usage-count field**.
 
 The frontend should not infer a Sender ID usage count from this endpoint. If usage/quota information is added later, it should be introduced as an explicit API contract with a defined counting window and semantics.
 
 ## Pagination
 
-`GET /sender-ids` currently has no `limit`, `offset`, `after`, or `before` parameters. The handler calls the service without pagination arguments and returns the complete service result. fileciteturn36file0
+`GET /sender-ids` currently has no `limit`, `offset`, `after`, or `before` parameters. The handler calls the service without pagination arguments and returns the complete service result.
 
 If pagination is introduced later, it should be added as an explicit API change rather than assumed by the frontend.
 
-## Authentication and authorization
+## Authorization
 
-The Sender ID routes are protected by permission middleware:
+The Sender ID routes are protected by these permissions:
 
 - `GET /sender-ids` → `sender_ids:read`
 - `POST /sender-ids` → `sender_ids:create`
 - `GET /sender-ids/:sender_id` → `sender_ids:read`
-- `DELETE /sender-ids/:sender_id` → `sender_ids:delete` fileciteturn37file0
+- `DELETE /sender-ids/:sender_id` → `sender_ids:delete`
 
-Browser CSRF requirements are enforced by the application's HTTP middleware; this module's route registration itself defines the authorization permissions above.
+Browser CSRF requirements are enforced by the application's HTTP middleware; route registration itself defines the authorization permissions above.
