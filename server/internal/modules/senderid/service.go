@@ -18,7 +18,7 @@ import (
 
 const (
 	maxPurposeLength  = 500
-	maxProviderLength = 120
+	defaultProviderID = platformsenderid.ProviderMoolre
 )
 
 var countryCodePattern = regexp.MustCompile(`^[A-Z]{2}$`)
@@ -269,7 +269,7 @@ func validateCreate(req CreateRequest) (string, string, string, *string, error) 
 	name := platformsenderid.NormalizeName(req.Name)
 	countryCode := strings.ToUpper(strings.TrimSpace(req.CountryCode))
 	purpose := strings.TrimSpace(req.Purpose)
-	provider := normalizeOptional(req.Provider)
+	provider := defaultProviderID
 	if err := platformsenderid.ValidateName(name); err != nil {
 		return "", "", "", nil, apperrors.NewBadRequest(err.Error())
 	}
@@ -282,30 +282,10 @@ func validateCreate(req CreateRequest) (string, string, string, *string, error) 
 	if len(purpose) > maxPurposeLength {
 		return "", "", "", nil, apperrors.NewBadRequest("Sender ID purpose must be at most 500 characters")
 	}
-	if provider != nil && len(*provider) > maxProviderLength {
-		return "", "", "", nil, apperrors.NewBadRequest("Sender ID provider must be at most 120 characters")
+	if countryCode != "GH" {
+		return "", "", "", nil, apperrors.NewBadRequest("Sender ID registration is currently available only for Ghana")
 	}
-	if countryCode == "GH" {
-		if provider != nil && !strings.EqualFold(*provider, platformsenderid.ProviderMoolre) {
-			return "", "", "", nil, apperrors.NewBadRequest("Ghana Sender IDs are registered through Moolre")
-		}
-		value := platformsenderid.ProviderMoolre
-		provider = &value
-	} else if provider != nil && strings.EqualFold(*provider, platformsenderid.ProviderMoolre) {
-		return "", "", "", nil, apperrors.NewBadRequest("Moolre Sender ID registration is currently available only for Ghana")
-	}
-	return name, countryCode, purpose, provider, nil
-}
-
-func normalizeOptional(value *string) *string {
-	if value == nil {
-		return nil
-	}
-	trimmed := strings.TrimSpace(*value)
-	if trimmed == "" {
-		return nil
-	}
-	return &trimmed
+	return name, countryCode, purpose, &provider, nil
 }
 
 func requireTenantPermission(ctx context.Context, permission authz.Permission) (authz.Access, error) {
