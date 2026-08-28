@@ -44,10 +44,9 @@ type SenderID struct {
 }
 
 type CreateRequest struct {
-	Name        string  `json:"name"`
-	CountryCode string  `json:"country_code"`
-	Purpose     string  `json:"purpose"`
-	Provider    *string `json:"provider,omitempty"`
+	Name        string `json:"name"`
+	CountryCode string `json:"country_code"`
+	Purpose     string `json:"purpose"`
 }
 
 type RegistrationClaim struct {
