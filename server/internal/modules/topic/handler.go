@@ -28,15 +28,29 @@ func (h *Handler) Create(c *echo.Context) error {
 }
 
 func (h *Handler) List(c *echo.Context) error {
-	value, err := h.service.ListAPI(c.Request().Context(), APIListRequest{
-		Limit:  httputil.QueryInt32(c, "limit"),
-		After:  c.QueryParam("after"),
-		Before: c.QueryParam("before"),
-	})
+	limit, offset, err := httputil.Pagination(c)
 	if err != nil {
 		return httputil.Error(c, err)
 	}
-	return httputil.OK(c, value)
+	if limit <= 0 || limit > 100 {
+		limit = 50
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	values, err := h.service.List(c.Request().Context(), ListRequest{Limit: limit + 1, Offset: offset})
+	if err != nil {
+		return httputil.Error(c, err)
+	}
+	hasMore := len(values) > int(limit)
+	if hasMore {
+		values = values[:limit]
+	}
+	data := make([]Resource, 0, len(values))
+	for _, value := range values {
+		data = append(data, resourceFromTopic(value))
+	}
+	return httputil.OK(c, ListResponse{Object: ObjectList, HasMore: hasMore, Data: data})
 }
 
 func (h *Handler) Get(c *echo.Context) error {
