@@ -1,12 +1,12 @@
 # Sender IDs API
 
-Customer dashboard API for managing SMS Sender IDs.
+API reference for SMS Sender IDs.
 
-> **Note:** This document describes the current API contract. It intentionally does not document a usage-count field because the current Sender ID resource does not expose one.
+This document reflects the current `senderid` module request/response types and routes. It avoids inventing fields, pagination, or usage metrics that are not present in the implementation.
 
-## Sender ID object
+## Sender ID resource
 
-A Sender ID represents the sender identity used for SMS delivery.
+The Sender ID model exposes:
 
 ```json
 {
@@ -15,8 +15,7 @@ A Sender ID represents the sender identity used for SMS delivery.
   "name": "string",
   "country_code": "string",
   "purpose": "string",
-  "status": "string",
-  "provider": "string",
+  "status": "pending",
   "rejection_reason": "string",
   "approved_at": "2026-08-09T17:00:00Z",
   "rejected_at": "2026-08-09T17:00:00Z",
@@ -27,169 +26,123 @@ A Sender ID represents the sender identity used for SMS delivery.
 }
 ```
 
-### Fields
+`provider` exists internally on the model but is tagged `json:"-"`, so it is **not part of the public JSON response**. fileciteturn33file0
 
-| Field | Description |
-| --- | --- |
-| `id` | Unique Sender ID identifier |
-| `team_id` | Team that owns the Sender ID |
-| `name` | Sender ID/name presented for SMS sending |
-| `country_code` | Country associated with the Sender ID |
-| `purpose` | Declared purpose for the Sender ID |
-| `status` | Current Sender ID status |
-| `provider` | SMS provider associated with the Sender ID |
-| `rejection_reason` | Reason supplied when a Sender ID is rejected, when applicable |
-| `approved_at` | Approval timestamp, when applicable |
-| `rejected_at` | Rejection timestamp, when applicable |
-| `suspended_at` | Suspension timestamp, when applicable |
-| `created_by` | User that created the Sender ID |
-| `created_at` | Creation timestamp |
-| `updated_at` | Last update timestamp |
+The public status values defined by the module are:
 
-## List Sender IDs
+- `pending`
+- `approved`
+- `rejected`
+- `suspended`
+- `inactive`
+
+## List
 
 ### `GET /sender-ids`
 
-Returns Sender IDs belonging to the current team.
+Requires the `sender_ids:read` permission.
 
-- Session: required
-- CSRF: not required
-- Pagination: **not currently supported**
+Returns the Sender IDs for the current team.
 
-#### Request
+The route currently accepts no pagination parameters and returns a plain array through the standard `200 OK` response helper. fileciteturn36file0 fileciteturn37file0
 
-No JSON request body or pagination parameters are currently defined.
-
-#### Response — `200 OK`
+### Response data
 
 ```json
-{
-  "success": true,
-  "data": [
-    {
-      "id": "string",
-      "team_id": "string",
-      "name": "Example",
-      "country_code": "GH",
-      "purpose": "transactional",
-      "status": "pending",
-      "provider": "string",
-      "rejection_reason": "",
-      "approved_at": "2026-08-09T17:00:00Z",
-      "rejected_at": "2026-08-09T17:00:00Z",
-      "suspended_at": "2026-08-09T17:00:00Z",
-      "created_by": "string",
-      "created_at": "2026-08-09T17:00:00Z",
-      "updated_at": "2026-08-09T17:00:00Z"
-    }
-  ]
-}
-```
-
-## Create a Sender ID
-
-### `POST /sender-ids`
-
-Creates a Sender ID request for the current team.
-
-- Session: required
-- CSRF: required for browser requests
-
-#### Request body
-
-```json
-{
-  "name": "Example",
-  "country_code": "GH",
-  "purpose": "transactional",
-  "provider": "string"
-}
-```
-
-#### Response — `201 Created`
-
-```json
-{
-  "success": true,
-  "data": {
+[
+  {
     "id": "string",
     "team_id": "string",
     "name": "Example",
     "country_code": "GH",
     "purpose": "transactional",
     "status": "pending",
-    "provider": "string",
-    "rejection_reason": "",
-    "approved_at": "2026-08-09T17:00:00Z",
-    "rejected_at": "2026-08-09T17:00:00Z",
-    "suspended_at": "2026-08-09T17:00:00Z",
-    "created_by": "string",
+    "rejection_reason": null,
+    "approved_at": null,
+    "rejected_at": null,
+    "suspended_at": null,
+    "created_by": null,
     "created_at": "2026-08-09T17:00:00Z",
     "updated_at": "2026-08-09T17:00:00Z"
   }
+]
+```
+
+The outer `success`/`data` envelope is added by the standard HTTP response helper.
+
+## Create
+
+### `POST /sender-ids`
+
+Requires the `sender_ids:create` permission. The handler returns `201 Created`. fileciteturn36file0 fileciteturn37file0
+
+### Request body
+
+```json
+{
+  "name": "Example",
+  "country_code": "GH",
+  "purpose": "transactional",
+  "provider": "moolre"
 }
 ```
 
-## Get a Sender ID
+The request fields are:
+
+- `name` — normalized and validated as a Sender ID name.
+- `country_code` — required and must be an uppercase two-letter ISO 3166-1 alpha-2 code.
+- `purpose` — required; maximum 500 characters.
+- `provider` — optional; maximum 120 characters after trimming.
+
+For Ghana (`GH`), the service forces the provider to Moolre. Supplying a different provider for Ghana is rejected. Supplying Moolre for a non-Ghana Sender ID is also rejected. fileciteturn38file0
+
+### Response
+
+The created Sender ID is returned using the standard `201 Created` response helper. fileciteturn36file0
+
+## Retrieve
 
 ### `GET /sender-ids/:sender_id`
 
-Returns a single Sender ID belonging to the current team.
+Requires the `sender_ids:read` permission. fileciteturn37file0
 
-- Session: required
-- CSRF: not required
+The `sender_id` path parameter must be a valid UUID. An invalid UUID produces a bad-request error; a UUID that is not found within the current team produces a not-found error. fileciteturn38file0
 
-#### Request
+The response is the same public Sender ID resource described above.
 
-No JSON request body.
-
-#### Response — `200 OK`
-
-The response is a Sender ID object using the schema described above.
-
-## Delete a Sender ID
+## Delete
 
 ### `DELETE /sender-ids/:sender_id`
 
-Deletes/removes the specified Sender ID according to the current backend lifecycle rules.
+Requires the `sender_ids:delete` permission. fileciteturn37file0
 
-- Session: required
-- CSRF: required for browser requests
+This operation deactivates the Sender ID through the repository rather than exposing a separate update endpoint. The handler returns the resulting Sender ID with the standard `200 OK` response helper. fileciteturn36file0turn38file0
 
-#### Request
+## Validation and conflicts
 
-No JSON request body.
+Sender ID creation validates the name, country code, purpose, and optional provider. The service also scopes all Sender ID operations to the current team's tenant context. fileciteturn38file0
 
-#### Response — `200 OK`
-
-The response contains the resulting Sender ID object using the schema described above.
-
-## Status and lifecycle
-
-The Sender ID resource exposes lifecycle timestamps for approval, rejection, and suspension. The exact set of valid `status` values is defined by the backend implementation and should be treated as an enum rather than free-form display text.
-
-Frontend code should use the returned status and timestamps to render the current state instead of inferring state from the presence of a single timestamp.
+Creating a Sender ID that already exists for the same team and country returns a conflict error (`Sender ID already exists for this team and country`). fileciteturn38file0
 
 ## Usage counts
 
-The current Sender ID API **does not expose a usage-count field**.
+The current public Sender ID resource has **no usage-count field**. The internal `provider` field is also deliberately excluded from JSON responses. fileciteturn33file0
 
-Do not infer usage from the Sender ID object's message count, timestamps, or status. If usage/quota information is added later, the API should define:
-
-- what messages are counted;
-- the time window, if any;
-- whether the count is sent, delivered, or accepted messages;
-- whether the value is a current-period usage or lifetime total; and
-- whether the count is per Sender ID or per team.
-
-Until that contract exists, the frontend should not display a Sender ID usage count based on this endpoint.
+The frontend should not infer a Sender ID usage count from this endpoint. If usage/quota information is added later, it should be introduced as an explicit API contract with a defined counting window and semantics.
 
 ## Pagination
 
-`GET /sender-ids` currently returns a plain array and does not document `limit`, `offset`, `after`, or `before` parameters.
+`GET /sender-ids` currently has no `limit`, `offset`, `after`, or `before` parameters. The handler calls the service without pagination arguments and returns the complete service result. fileciteturn36file0
 
-This is intentional in the current contract. If Sender IDs need pagination as the dataset grows, pagination should be added as an explicit API change and documented here before the frontend depends on it.
+If pagination is introduced later, it should be added as an explicit API change rather than assumed by the frontend.
 
-## Errors
+## Authentication and authorization
 
-Sender ID endpoints use the standard API error envelope documented in `docs/README.md`. Expected errors include authentication, permission, validation, resource-not-found, conflict, rate-limit, and service failures according to the current API implementation.
+The Sender ID routes are protected by permission middleware:
+
+- `GET /sender-ids` → `sender_ids:read`
+- `POST /sender-ids` → `sender_ids:create`
+- `GET /sender-ids/:sender_id` → `sender_ids:read`
+- `DELETE /sender-ids/:sender_id` → `sender_ids:delete` fileciteturn37file0
+
+Browser CSRF requirements are enforced by the application's HTTP middleware; this module's route registration itself defines the authorization permissions above.
