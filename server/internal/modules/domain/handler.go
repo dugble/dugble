@@ -21,11 +21,28 @@ type Handler struct{ service *Service }
 func NewHandler(service *Service) *Handler { return &Handler{service: service} }
 
 func (h *Handler) List(c *echo.Context) error {
+	limit, offset, err := httputil.Pagination(c)
+	if err != nil {
+		return httputil.Error(c, err)
+	}
+	if limit <= 0 || limit > 100 {
+		limit = 50
+	}
+	if offset < 0 {
+		offset = 0
+	}
 	domains, err := h.service.List(c.Request().Context())
 	if err != nil {
 		return httputil.Error(c, err)
 	}
-	return httputil.OK(c, domains)
+	if offset >= int32(len(domains)) {
+		return httputil.OK(c, []SenderDomain{})
+	}
+	end := offset + limit
+	if end > int32(len(domains)) {
+		end = int32(len(domains))
+	}
+	return httputil.OK(c, domains[offset:end])
 }
 
 func (h *Handler) Get(c *echo.Context) error {
