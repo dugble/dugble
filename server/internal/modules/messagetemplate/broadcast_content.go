@@ -81,20 +81,7 @@ func (s *Service) DeleteBroadcastContentIfUnreferenced(ctx context.Context, team
 
 	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), broadcastCleanupTimeout)
 	defer cancel()
-	_, err = s.repository.db.Exec(cleanupCtx, `
-DELETE FROM message_templates AS mt
-WHERE mt.id = $1
-  AND mt.team_id = $2
-  AND mt.alias LIKE $3
-  AND NOT EXISTS (
-      SELECT 1
-      FROM broadcasts AS b
-      WHERE b.template_id = mt.id
-  )`, id, teamID, broadcastTemplateAliasPrefix+"%")
-	if err != nil {
-		return fmt.Errorf("delete unreferenced broadcast content: %w", err)
-	}
-	return nil
+	return s.repository.DeleteBroadcastTemplateIfUnreferenced(cleanupCtx, teamID, id)
 }
 
 // BroadcastPublishedVersion identifies internal broadcast content and returns
