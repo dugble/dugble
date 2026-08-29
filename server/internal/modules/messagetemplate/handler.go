@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
-	"strconv"
 
 	"github.com/labstack/echo/v5"
 
@@ -29,9 +28,11 @@ func (h *Handler) Create(c *echo.Context) error {
 }
 
 func (h *Handler) List(c *echo.Context) error {
-	value, err := h.service.ListAPI(c.Request().Context(), APIListRequest{
-		Limit: httputil.QueryInt32(c, "limit"), After: c.QueryParam("after"), Before: c.QueryParam("before"),
-	})
+	limit, offset, err := pagination(c)
+	if err != nil {
+		return httputil.Error(c, err)
+	}
+	value, err := h.service.ListOffsetAPI(c.Request().Context(), ListRequest{Limit: limit, Offset: offset})
 	if err != nil {
 		return httputil.Error(c, err)
 	}
@@ -78,7 +79,11 @@ func (h *Handler) Duplicate(c *echo.Context) error {
 	return httputil.OK(c, value)
 }
 func (h *Handler) ListVersions(c *echo.Context) error {
-	values, err := h.service.ListVersions(c.Request().Context(), c.Param("template"), ListRequest{Limit: parseInt32(c.QueryParam("limit")), Offset: parseInt32(c.QueryParam("offset"))})
+	limit, offset, err := pagination(c)
+	if err != nil {
+		return httputil.Error(c, err)
+	}
+	values, err := h.service.ListVersions(c.Request().Context(), c.Param("template"), ListRequest{Limit: limit, Offset: offset})
 	if err != nil {
 		return httputil.Error(c, err)
 	}
@@ -136,10 +141,19 @@ func decodeJSON(c *echo.Context, dst any, optional bool) error {
 	}
 	return nil
 }
-func parseInt32(value string) int32 {
-	parsed, err := strconv.ParseInt(value, 10, 32)
+
+func pagination(c *echo.Context) (int32, int32, error) {
+	limit, offset, err := httputil.Pagination(c)
 	if err != nil {
-		return 0
+		return 0, 0, err
 	}
-	return int32(parsed)
+	if limit <= 0 {
+		limit = 50
+	} else if limit > 100 {
+		limit = 100
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	return limit, offset, nil
 }
