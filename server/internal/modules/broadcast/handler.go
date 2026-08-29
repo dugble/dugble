@@ -66,7 +66,7 @@ func (h *Handler) Send(c *echo.Context) error {
 	if err := decodeJSON(c, &req, true); err != nil {
 		return err
 	}
-	value, err := h.service.Send(c.Request().Context(), c.Param("broadcast"), req)
+	value, err := h.service.SendAPI(c.Request().Context(), c.Param("broadcast"), req)
 	if err != nil {
 		return httputil.Error(c, err)
 	}
