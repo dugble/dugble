@@ -98,11 +98,10 @@ Requires the `templates:read` permission.
 
 The HTTP handler accepts:
 
-- `limit`
-- `after`
-- `before`
+- `limit` — defaults to `50` and is capped at `100`
+- `offset` — defaults to `0`; negative values are treated as `0`
 
-The template API therefore uses cursor-style pagination at the HTTP boundary.
+`limit` and `offset` must be valid integers when supplied.
 
 ### Response
 
@@ -202,12 +201,12 @@ The current route handler does not decode a request body, so do not rely on `nam
 
 Requires the `templates:read` permission.
 
-The handler accepts:
+The handler accepts the same pagination parameters as `GET /templates`:
 
-- `limit`
-- `offset`
+- `limit` — defaults to `50` and is capped at `100`
+- `offset` — defaults to `0`; negative values are treated as `0`
 
-This endpoint is offset-based, unlike the top-level template list endpoint.
+`limit` and `offset` must be valid integers when supplied.
 
 ### `GET /templates/:template/versions/:version_id`
 
