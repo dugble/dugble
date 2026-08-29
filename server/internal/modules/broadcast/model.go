@@ -3,6 +3,8 @@ package broadcast
 import (
 	"encoding/json"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 const (
@@ -14,18 +16,18 @@ const (
 	StatusCanceled  = "canceled"
 )
 
-// Broadcast is the materialized message that will be delivered to a segment.
+// Broadcast is the materialized message delivered to a segment.
 //
-// A broadcast owns its delivery content. Reusable message templates may be used
-// by callers to compose a broadcast, but the broadcast module never depends on
-// a template during preview, scheduling, fanout, or delivery.
+// The public resource owns its delivery content. Template fields below are
+// temporary internal compatibility fields while the old repository/fanout path
+// is removed; they are deliberately excluded from JSON.
 type Broadcast struct {
-	ID      string `json:"id"`
-	TeamID  string `json:"team_id"`
-	Name    string `json:"name"`
-	Status  string `json:"status"`
-	SegmentID string `json:"segment_id"`
-	TopicID *string `json:"topic_id,omitempty"`
+	ID        string  `json:"id"`
+	TeamID    string  `json:"team_id"`
+	Name      string  `json:"name"`
+	Status    string  `json:"status"`
+	SegmentID string  `json:"segment_id"`
+	TopicID   *string `json:"topic_id,omitempty"`
 
 	FromEmail    string  `json:"from_email"`
 	FromName     *string `json:"from_name,omitempty"`
@@ -51,16 +53,38 @@ type Broadcast struct {
 	Revision  int64     `json:"revision"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
+
+	// Deprecated: remove with the old template-backed repository/fanout path.
+	TemplateID        string  `json:"-"`
+	TemplateVersionID *string `json:"-"`
 }
 
-// CreateRequest creates a draft by default. Setting Send queues the broadcast
-// immediately, or schedules it when ScheduledAt is provided.
+// FanoutRecipient is kept temporarily for the existing fanout implementation.
+// Its template fields disappear when the worker is moved to broadcast-owned
+// content.
+type FanoutRecipient struct {
+	ID                uuid.UUID
+	TeamID            uuid.UUID
+	BroadcastID       uuid.UUID
+	ContactID         *uuid.UUID
+	Email             string
+	FirstName         *string
+	LastName          *string
+	ContactSnapshot   map[string]any
+	TemplateID        uuid.UUID
+	TemplateVersionID uuid.UUID
+	VariableBindings  map[string]any
+	AttemptCount      int32
+}
+
+// CreateRequest creates a draft by default. Name is optional at the API
+// boundary; service validation derives it from Subject when it is blank.
 type CreateRequest struct {
-	Name      *string `json:"name,omitempty"`
+	Name      string  `json:"name,omitempty"`
 	SegmentID string  `json:"segment_id"`
 	TopicID   *string `json:"topic_id,omitempty"`
 
-	FromEmail    string  `json:"from_email"`
+	FromEmail    *string `json:"from_email,omitempty"`
 	FromName     *string `json:"from_name,omitempty"`
 	ReplyToEmail *string `json:"reply_to_email,omitempty"`
 	Subject      string  `json:"subject"`
@@ -69,13 +93,16 @@ type CreateRequest struct {
 	Text         *string `json:"text,omitempty"`
 
 	VariableBindings map[string]any `json:"variable_bindings,omitempty"`
+	Send             bool           `json:"send,omitempty"`
+	ScheduledAt      *time.Time     `json:"scheduled_at,omitempty"`
 
-	Send        bool       `json:"send,omitempty"`
-	ScheduledAt *time.Time `json:"scheduled_at,omitempty"`
+	// Deprecated compatibility input. The rebuilt public API does not require a
+	// template to create a broadcast.
+	Template string `json:"template,omitempty"`
 }
 
 // UpdateRequest supports partial updates. Nullable fields use pointer-to-pointer
-// values so omitted means "leave unchanged" while JSON null means "clear".
+// values so omitted means leave unchanged while JSON null means clear.
 type UpdateRequest struct {
 	Revision int64 `json:"revision"`
 
@@ -83,7 +110,7 @@ type UpdateRequest struct {
 	SegmentID *string  `json:"segment_id,omitempty"`
 	TopicID   **string `json:"topic_id,omitempty"`
 
-	FromEmail    *string  `json:"from_email,omitempty"`
+	FromEmail    **string `json:"from_email,omitempty"`
 	FromName     **string `json:"from_name,omitempty"`
 	ReplyToEmail **string `json:"reply_to_email,omitempty"`
 	Subject      *string  `json:"subject,omitempty"`
@@ -92,6 +119,9 @@ type UpdateRequest struct {
 	Text         **string `json:"text,omitempty"`
 
 	VariableBindings *map[string]any `json:"variable_bindings,omitempty"`
+
+	// Deprecated compatibility input during repository/service replacement.
+	Template *string `json:"template,omitempty"`
 }
 
 func (r *UpdateRequest) UnmarshalJSON(data []byte) error {
@@ -108,20 +138,20 @@ func (r *UpdateRequest) UnmarshalJSON(data []byte) error {
 	}
 
 	*r = UpdateRequest(decoded)
-	if err := decodeNullableString(fields, "topic_id", &r.TopicID); err != nil {
-		return err
-	}
-	if err := decodeNullableString(fields, "from_name", &r.FromName); err != nil {
-		return err
-	}
-	if err := decodeNullableString(fields, "reply_to_email", &r.ReplyToEmail); err != nil {
-		return err
-	}
-	if err := decodeNullableString(fields, "preview_text", &r.PreviewText); err != nil {
-		return err
-	}
-	if err := decodeNullableString(fields, "text", &r.Text); err != nil {
-		return err
+	for _, field := range []struct {
+		key string
+		dst ***string
+	}{
+		{"topic_id", &r.TopicID},
+		{"from_email", &r.FromEmail},
+		{"from_name", &r.FromName},
+		{"reply_to_email", &r.ReplyToEmail},
+		{"preview_text", &r.PreviewText},
+		{"text", &r.Text},
+	} {
+		if err := decodeNullableString(fields, field.key, field.dst); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -140,7 +170,7 @@ func decodeNullableString(fields map[string]json.RawMessage, key string, dst ***
 }
 
 type DuplicateRequest struct {
-	Name *string `json:"name,omitempty"`
+	Name string `json:"name"`
 }
 
 type SendRequest struct {
