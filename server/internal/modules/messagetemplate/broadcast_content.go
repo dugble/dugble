@@ -2,16 +2,21 @@ package messagetemplate
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	htmlpkg "html"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 
 	apperrors "github.com/dugble/dugble/server/pkg/errors"
 )
 
-const broadcastTemplateAliasPrefix = "__broadcast_"
+const (
+	broadcastTemplateAliasPrefix = "__broadcast_"
+	broadcastCleanupTimeout      = 5 * time.Second
+)
 
 // BroadcastContentRequest is the internal bridge between the broadcast composer
 // and the existing versioned template renderer. Templates created through this
@@ -53,9 +58,43 @@ func (s *Service) CreateBroadcastContent(ctx context.Context, teamID uuid.UUID, 
 	}
 	published, err := s.repository.Publish(ctx, teamID, uuid.MustParse(template.ID), uuid.MustParse(version.ID))
 	if err != nil {
+		if cleanupErr := s.DeleteBroadcastContentIfUnreferenced(ctx, teamID, template.ID); cleanupErr != nil {
+			err = errors.Join(err, cleanupErr)
+		}
 		return Template{}, apperrors.NewInternal("Unable to publish broadcast content", err)
 	}
 	return published, nil
+}
+
+// DeleteBroadcastContentIfUnreferenced hard-deletes an internal broadcast
+// template only when no broadcast still references it. Cleanup deliberately
+// ignores request cancellation for a short bounded period so a canceled or
+// conflicted request does not leave an internal template behind.
+func (s *Service) DeleteBroadcastContentIfUnreferenced(ctx context.Context, teamID uuid.UUID, templateID string) error {
+	if s == nil || s.repository == nil {
+		return errors.New("template service is not configured")
+	}
+	id, err := uuid.Parse(templateID)
+	if err != nil {
+		return fmt.Errorf("parse broadcast content template id: %w", err)
+	}
+
+	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), broadcastCleanupTimeout)
+	defer cancel()
+	_, err = s.repository.db.Exec(cleanupCtx, `
+DELETE FROM message_templates AS mt
+WHERE mt.id = $1
+  AND mt.team_id = $2
+  AND mt.alias LIKE $3
+  AND NOT EXISTS (
+      SELECT 1
+      FROM broadcasts AS b
+      WHERE b.template_id = mt.id
+  )`, id, teamID, broadcastTemplateAliasPrefix+"%")
+	if err != nil {
+		return fmt.Errorf("delete unreferenced broadcast content: %w", err)
+	}
+	return nil
 }
 
 // BroadcastPublishedVersion identifies internal broadcast content and returns
