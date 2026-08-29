@@ -8,6 +8,12 @@ import (
 	apperrors "github.com/dugble/dugble/server/pkg/errors"
 )
 
+const (
+	defaultListLimit = int32(50)
+	maxListLimit     = int32(100)
+	listLookahead    = int32(1)
+)
+
 func validateCreate(req CreateRequest) (CreateRequest, error) {
 	req.Name = strings.TrimSpace(req.Name)
 	req.Description = normalizeOptional(req.Description)
@@ -58,8 +64,11 @@ func parseID(value string) (uuid.UUID, error) {
 }
 
 func normalizeListRequest(req *ListRequest) {
-	if req.Limit <= 0 || req.Limit > 100 {
-		req.Limit = 50
+	// The HTTP handler requests one row beyond the public page limit so it can
+	// calculate has_more. Preserve that internal lookahead while still bounding
+	// all other service callers.
+	if req.Limit <= 0 || req.Limit > maxListLimit+listLookahead {
+		req.Limit = defaultListLimit
 	}
 	if req.Offset < 0 {
 		req.Offset = 0

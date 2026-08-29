@@ -22,6 +22,31 @@ func TestTopicResponseContracts(t *testing.T) {
 	}
 }
 
+func TestNormalizeListRequestPreservesMaximumPageLookahead(t *testing.T) {
+	t.Parallel()
+
+	request := ListRequest{Limit: maxListLimit + listLookahead, Offset: 10}
+	normalizeListRequest(&request)
+
+	if request.Limit != 101 {
+		t.Fatalf("limit = %d, want 101", request.Limit)
+	}
+	if request.Offset != 10 {
+		t.Fatalf("offset = %d, want 10", request.Offset)
+	}
+}
+
+func TestNormalizeListRequestRejectsLimitBeyondLookahead(t *testing.T) {
+	t.Parallel()
+
+	request := ListRequest{Limit: maxListLimit + listLookahead + 1}
+	normalizeListRequest(&request)
+
+	if request.Limit != defaultListLimit {
+		t.Fatalf("limit = %d, want %d", request.Limit, defaultListLimit)
+	}
+}
+
 func TestCreateTopicDefaultsPrivate(t *testing.T) {
 	request, err := validateCreate(CreateRequest{Name: "Newsletter", DefaultSubscription: "opt_in"})
 	if err != nil {
