@@ -73,7 +73,7 @@ func (registry *Registry) registerModules(router *echo.Echo) error {
 	if err != nil {
 		return fmt.Errorf("initialize MFA cipher: %w", err)
 	}
-	mfaService := mfamodule.NewService(mfamodule.NewRepository(queries), mfaCipher, "Dugble").WithNotifier(notificationEmailService)
+	mfaService := mfamodule.NewService(db, mfamodule.NewRepository(queries), mfaCipher, "Dugble").WithNotifier(notificationEmailService)
 	authService := authmodule.NewService(authRepository, sessionRepository, notificationEmailService, mfaService)
 	userRepository := usermodule.NewRepository(db)
 	mfaService.WithRecipientStore(userRepository)
@@ -103,7 +103,7 @@ func (registry *Registry) registerModules(router *echo.Echo) error {
 		emailmodule.ServiceConfig{DefaultFromEmail: cfg.AWS.FromEmail, DefaultProvider: domainmodule.DefaultProvider, DefaultRegion: cfg.AWS.Region},
 		billingService,
 	).WithDatabase(db)
-	messageTemplateService := messagetemplatemodule.NewService(messageTemplateRepository, emailAPIService)
+	messageTemplateService := messagetemplatemodule.NewService(db, messageTemplateRepository, emailAPIService)
 	broadcastService := broadcastmodule.NewService(broadcastRepository, messageTemplateService)
 	webhookService := webhooksmodule.NewService(db, webhookRepository, webhookEmitter)
 	dnsVerifier := netdns.New()

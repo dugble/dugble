@@ -18,6 +18,7 @@ import (
 	apperrors "github.com/dugble/dugble/server/pkg/errors"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type EmailSender interface {
@@ -25,18 +26,65 @@ type EmailSender interface {
 }
 
 type Service struct {
+	db         *pgxpool.Pool
 	repository *Repository
 	email      EmailSender
 }
 
-func NewService(repository *Repository, dependencies ...any) *Service {
-	service := &Service{repository: repository}
+func NewService(db *pgxpool.Pool, repository *Repository, dependencies ...any) *Service {
+	service := &Service{db: db, repository: repository}
 	for _, dependency := range dependencies {
 		if sender, ok := dependency.(EmailSender); ok {
 			service.email = sender
 		}
 	}
 	return service
+}
+
+func (s *Service) create(ctx context.Context, teamID uuid.UUID, request CreateRequest) (Template, Version, error) {
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return Template{}, Version{}, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	value, version, err := s.repository.WithTx(tx).Create(ctx, teamID, request)
+	if err != nil {
+		return Template{}, Version{}, err
+	}
+	if err = tx.Commit(ctx); err != nil {
+		return Template{}, Version{}, err
+	}
+	return value, version, nil
+}
+func (s *Service) update(ctx context.Context, teamID uuid.UUID, template Template, base Version, request UpdateRequest) (Template, Version, error) {
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return Template{}, Version{}, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	value, version, err := s.repository.WithTx(tx).Update(ctx, teamID, template, base, request)
+	if err != nil {
+		return Template{}, Version{}, err
+	}
+	if err = tx.Commit(ctx); err != nil {
+		return Template{}, Version{}, err
+	}
+	return value, version, nil
+}
+func (s *Service) publish(ctx context.Context, teamID, templateID, versionID uuid.UUID) (Template, error) {
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return Template{}, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	value, err := s.repository.WithTx(tx).Publish(ctx, teamID, templateID, versionID)
+	if err != nil {
+		return Template{}, err
+	}
+	if err = tx.Commit(ctx); err != nil {
+		return Template{}, err
+	}
+	return value, nil
 }
 
 func (s *Service) CreateAPI(ctx context.Context, request APICreateRequest) (MutationResponse, error) {
@@ -225,7 +273,7 @@ func (s *Service) Create(ctx context.Context, req CreateRequest) (Template, erro
 	if err != nil {
 		return Template{}, err
 	}
-	template, _, err := s.repository.Create(ctx, access.Scope.TeamID, req)
+	template, _, err := s.create(ctx, access.Scope.TeamID, req)
 	if errors.Is(err, ErrAliasConflict) {
 		return Template{}, apperrors.NewConflict("A template with this alias already exists")
 	}
@@ -292,7 +340,7 @@ func (s *Service) Update(ctx context.Context, identifier string, req UpdateReque
 	if err = validateUpdate(template, base, &req); err != nil {
 		return Template{}, err
 	}
-	updated, _, err := s.repository.Update(ctx, access.Scope.TeamID, template, base, req)
+	updated, _, err := s.update(ctx, access.Scope.TeamID, template, base, req)
 	switch {
 	case errors.Is(err, ErrVersionConflict):
 		return Template{}, apperrors.NewConflict("The template draft has changed; reload before updating")
@@ -356,7 +404,7 @@ func (s *Service) Publish(ctx context.Context, identifier string, req PublishReq
 	if err = validateVersion(version); err != nil {
 		return Template{}, err
 	}
-	published, err := s.repository.Publish(ctx, access.Scope.TeamID, uuid.MustParse(template.ID), uuid.MustParse(version.ID))
+	published, err := s.publish(ctx, access.Scope.TeamID, uuid.MustParse(template.ID), uuid.MustParse(version.ID))
 	if err != nil {
 		return Template{}, apperrors.NewInternal("Unable to publish template", err)
 	}
@@ -389,7 +437,7 @@ func (s *Service) Duplicate(ctx context.Context, identifier string, req Duplicat
 	if err != nil {
 		return Template{}, err
 	}
-	copy, _, err := s.repository.Create(ctx, access.Scope.TeamID, create)
+	copy, _, err := s.create(ctx, access.Scope.TeamID, create)
 	if errors.Is(err, ErrAliasConflict) {
 		return Template{}, apperrors.NewConflict("A template with this alias already exists")
 	}
@@ -471,7 +519,7 @@ func (s *Service) Revert(ctx context.Context, identifier, versionValue string) (
 	subject, htmlBody, variables := target.Subject, target.HTML, target.Variables
 	note := "Reverted from version " + fmt.Sprint(target.VersionNumber)
 	request := UpdateRequest{BaseVersionID: base.ID, FromEmail: &fromEmail, FromName: &fromName, ReplyTo: &replyTo, Subject: &subject, HTML: &htmlBody, Text: &textBody, Variables: &variables, ChangeNote: &note}
-	updated, _, err := s.repository.Update(ctx, access.Scope.TeamID, template, base, request)
+	updated, _, err := s.update(ctx, access.Scope.TeamID, template, base, request)
 	if errors.Is(err, ErrVersionConflict) {
 		return Template{}, apperrors.NewConflict("The template draft has changed; reload before reverting")
 	}
@@ -741,11 +789,11 @@ func (s *Service) CreateBroadcastContent(ctx context.Context, teamID uuid.UUID, 
 	if err != nil {
 		return Template{}, err
 	}
-	template, version, err := s.repository.Create(ctx, teamID, create)
+	template, version, err := s.create(ctx, teamID, create)
 	if err != nil {
 		return Template{}, apperrors.NewInternal("Unable to create broadcast content", err)
 	}
-	published, err := s.repository.Publish(ctx, teamID, uuid.MustParse(template.ID), uuid.MustParse(version.ID))
+	published, err := s.publish(ctx, teamID, uuid.MustParse(template.ID), uuid.MustParse(version.ID))
 	if err != nil {
 		if cleanupErr := s.DeleteBroadcastContentIfUnreferenced(ctx, teamID, template.ID); cleanupErr != nil {
 			err = errors.Join(err, cleanupErr)

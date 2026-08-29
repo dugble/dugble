@@ -53,12 +53,8 @@ func (r *Repository) RotateSecretCiphertext(ctx context.Context, userID uuid.UUI
 }
 
 func (r *Repository) Confirm(ctx context.Context, userID uuid.UUID, sessionID string, step int64, codeHashes []string) error {
-	tx, err := r.queries.Begin(ctx)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	queries := r.WithTx(tx).queries
+	queries := r.queries
+	var err error
 
 	rows, err := queries.ConfirmTOTPCredential(ctx, dbsqlc.ConfirmTOTPCredentialParams{UserID: userID, LastUsedStep: &step})
 	if err != nil {
@@ -82,7 +78,7 @@ func (r *Repository) Confirm(ctx context.Context, userID uuid.UUID, sessionID st
 	if rows != 1 {
 		return pgx.ErrNoRows
 	}
-	return tx.Commit(ctx)
+	return nil
 }
 
 func (r *Repository) Verify(ctx context.Context, userID uuid.UUID, sessionID string, step int64) error {
@@ -112,12 +108,8 @@ func (r *Repository) UseRecoveryCode(ctx context.Context, userID uuid.UUID, sess
 }
 
 func (r *Repository) Disable(ctx context.Context, userID uuid.UUID, currentSessionID string) error {
-	tx, err := r.queries.Begin(ctx)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	queries := r.WithTx(tx).queries
+	queries := r.queries
+	var err error
 	if err = queries.DeleteTOTPCredential(ctx, dbsqlc.DeleteTOTPCredentialParams{UserID: userID}); err != nil {
 		return err
 	}
@@ -131,7 +123,7 @@ func (r *Repository) Disable(ctx context.Context, userID uuid.UUID, currentSessi
 	if err = queries.DowngradeSessionAfterMFADisable(ctx, dbsqlc.DowngradeSessionAfterMFADisableParams(params)); err != nil {
 		return err
 	}
-	return tx.Commit(ctx)
+	return nil
 }
 
 func (r *Repository) Enabled(ctx context.Context, userID uuid.UUID) (bool, error) {

@@ -34,12 +34,7 @@ func (r *Repository) WithTx(tx pgx.Tx) *Repository {
 }
 
 func (r *Repository) Create(ctx context.Context, teamID uuid.UUID, req CreateRequest) (Template, Version, error) {
-	tx, err := r.queries.Begin(ctx)
-	if err != nil {
-		return Template{}, Version{}, err
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	queries := r.WithTx(tx).queries
+	queries := r.queries
 
 	category := req.Category
 	if category == "" {
@@ -88,9 +83,6 @@ func (r *Repository) Create(ctx context.Context, teamID uuid.UUID, req CreateReq
 		TeamID:    teamID,
 	})
 	if err != nil {
-		return Template{}, Version{}, err
-	}
-	if err := tx.Commit(ctx); err != nil {
 		return Template{}, Version{}, err
 	}
 	return templateFromSQLC(row), version, nil
@@ -170,12 +162,7 @@ func (r *Repository) ListVersions(ctx context.Context, teamID, templateID uuid.U
 }
 
 func (r *Repository) Update(ctx context.Context, teamID uuid.UUID, template Template, base Version, req UpdateRequest) (Template, Version, error) {
-	tx, err := r.queries.Begin(ctx)
-	if err != nil {
-		return Template{}, Version{}, err
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	queries := r.WithTx(tx).queries
+	queries := r.queries
 	templateID := uuid.MustParse(template.ID)
 
 	locked, err := queries.LockMessageTemplate(ctx, dbsqlc.LockMessageTemplateParams{ID: templateID, TeamID: teamID})
@@ -255,19 +242,11 @@ func (r *Repository) Update(ctx context.Context, teamID uuid.UUID, template Temp
 	if err != nil {
 		return Template{}, Version{}, err
 	}
-	if err := tx.Commit(ctx); err != nil {
-		return Template{}, Version{}, err
-	}
 	return templateFromSQLC(finalRow), version, nil
 }
 
 func (r *Repository) Publish(ctx context.Context, teamID uuid.UUID, templateID, versionID uuid.UUID) (Template, error) {
-	tx, err := r.queries.Begin(ctx)
-	if err != nil {
-		return Template{}, err
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	queries := r.WithTx(tx).queries
+	queries := r.queries
 
 	exists, err := queries.MessageTemplateVersionExists(ctx, dbsqlc.MessageTemplateVersionExistsParams{
 		VersionID: versionID, TemplateID: templateID, TeamID: teamID,
@@ -290,9 +269,6 @@ func (r *Repository) Publish(ctx context.Context, teamID uuid.UUID, templateID, 
 	if _, err = queries.CreateMessageTemplatePublication(ctx, dbsqlc.CreateMessageTemplatePublicationParams{
 		TeamID: teamID, TemplateID: templateID, VersionID: versionID,
 	}); err != nil {
-		return Template{}, err
-	}
-	if err := tx.Commit(ctx); err != nil {
 		return Template{}, err
 	}
 	return templateFromSQLC(row), nil
