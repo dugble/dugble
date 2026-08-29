@@ -11,7 +11,7 @@ func TestWithPreviewText(t *testing.T) {
 	preview := `New <features> & fixes`
 	body := `<p>Hello</p>`
 	got := withPreviewText(body, &preview)
-	if !strings.Contains(got, `data-dugble-preheader=\"true\"`) {
+	if !strings.Contains(got, `data-dugble-preheader='true'`) {
 		t.Fatalf("withPreviewText() missing preheader marker: %q", got)
 	}
 	if !strings.Contains(got, `New &lt;features&gt; &amp; fixes`) {
