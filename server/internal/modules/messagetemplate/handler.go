@@ -32,7 +32,7 @@ func (h *Handler) List(c *echo.Context) error {
 	if err != nil {
 		return httputil.Error(c, err)
 	}
-	value, err := h.service.ListOffsetAPI(c.Request().Context(), ListRequest{Limit: limit, Offset: offset})
+	value, err := h.service.List(c.Request().Context(), ListRequest{Limit: limit, Offset: offset})
 	if err != nil {
 		return httputil.Error(c, err)
 	}

@@ -176,6 +176,7 @@ type Querier interface {
 	DeleteSuppressionsByIDs(ctx context.Context, arg DeleteSuppressionsByIDsParams) ([]ChannelSuppression, error)
 	DeleteTOTPCredential(ctx context.Context, arg DeleteTOTPCredentialParams) error
 	DeleteTopic(ctx context.Context, arg DeleteTopicParams) (Topic, error)
+	DeleteUnreferencedBroadcastTemplate(ctx context.Context, arg DeleteUnreferencedBroadcastTemplateParams) error
 	DeleteUser(ctx context.Context, arg DeleteUserParams) error
 	DeleteVerificationToken(ctx context.Context, arg DeleteVerificationTokenParams) error
 	DeleteVerificationTokensByIdentifier(ctx context.Context, arg DeleteVerificationTokensByIdentifierParams) error
@@ -285,8 +286,6 @@ type Querier interface {
 	ListEnabledPlans(ctx context.Context) ([]Plan, error)
 	ListMessageTemplateVersions(ctx context.Context, arg ListMessageTemplateVersionsParams) ([]MessageTemplateVersion, error)
 	ListMessageTemplates(ctx context.Context, arg ListMessageTemplatesParams) ([]MessageTemplate, error)
-	ListMessageTemplatesAfter(ctx context.Context, arg ListMessageTemplatesAfterParams) ([]MessageTemplate, error)
-	ListMessageTemplatesBefore(ctx context.Context, arg ListMessageTemplatesBeforeParams) ([]MessageTemplate, error)
 	ListOAuthIdentitiesByUserID(ctx context.Context, arg ListOAuthIdentitiesByUserIDParams) ([]OauthIdentity, error)
 	ListPaymentTransactionsByTeam(ctx context.Context, arg ListPaymentTransactionsByTeamParams) ([]PaymentTransaction, error)
 	ListPendingTeamInvitations(ctx context.Context, arg ListPendingTeamInvitationsParams) ([]TeamInvitation, error)
@@ -342,7 +341,6 @@ type Querier interface {
 	MarkWebhookDeliverySucceeded(ctx context.Context, arg MarkWebhookDeliverySucceededParams) (MarkWebhookDeliverySucceededRow, error)
 	MaterializeBroadcastRecipients(ctx context.Context, arg MaterializeBroadcastRecipientsParams) error
 	MaterializeClaimedSMSCampaignRecipients(ctx context.Context, arg MaterializeClaimedSMSCampaignRecipientsParams) (int64, error)
-	MessageTemplateCursorExists(ctx context.Context, arg MessageTemplateCursorExistsParams) (bool, error)
 	MessageTemplateVersionExists(ctx context.Context, arg MessageTemplateVersionExistsParams) (bool, error)
 	PublishMessageTemplateVersion(ctx context.Context, arg PublishMessageTemplateVersionParams) (MessageTemplate, error)
 	PutUnverifiedTOTPCredential(ctx context.Context, arg PutUnverifiedTOTPCredentialParams) (int64, error)

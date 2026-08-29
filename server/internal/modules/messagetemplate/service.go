@@ -6,10 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"html"
-	htmlpkg "html"
 	"net/mail"
 	"regexp"
-	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -51,57 +49,6 @@ func (s *Service) CreateAPI(ctx context.Context, request APICreateRequest) (Muta
 		return MutationResponse{}, err
 	}
 	return MutationResponse{Object: ObjectTemplate, ID: value.ID}, nil
-}
-
-func (s *Service) ListAPI(ctx context.Context, request APIListRequest) (ListResponse, error) {
-	access, err := requireAccess(ctx, authz.PermissionTemplatesRead)
-	if err != nil {
-		return ListResponse{}, err
-	}
-	if err := normalizeAPIListRequest(&request); err != nil {
-		return ListResponse{}, err
-	}
-	after, err := parseTemplateCursor(request.After)
-	if err != nil {
-		return ListResponse{}, err
-	}
-	before, err := parseTemplateCursor(request.Before)
-	if err != nil {
-		return ListResponse{}, err
-	}
-	cursor := after
-	if cursor == nil {
-		cursor = before
-	}
-	if cursor != nil {
-		exists, lookupErr := s.repository.CursorExists(ctx, access.Scope.TeamID, *cursor)
-		if lookupErr != nil {
-			return ListResponse{}, apperrors.NewInternal("Unable to validate template cursor", lookupErr)
-		}
-		if !exists {
-			return ListResponse{}, apperrors.NewNotFound("Template cursor not found")
-		}
-	}
-	values, err := s.repository.ListPage(ctx, access.Scope.TeamID, request.Limit+1, after, before)
-	if err != nil {
-		return ListResponse{}, apperrors.NewInternal("Unable to list templates", err)
-	}
-	hasMore := len(values) > int(request.Limit)
-	if hasMore {
-		values = values[:request.Limit]
-	}
-	if before != nil {
-		slices.Reverse(values)
-	}
-	data := make([]ListItem, 0, len(values))
-	for _, value := range values {
-		data = append(data, ListItem{
-			ID: value.ID, Name: value.Name, Category: value.Category, Status: templateStatus(value),
-			PublishedAt: value.PublishedAt, CreatedAt: value.CreatedAt,
-			UpdatedAt: value.UpdatedAt, Alias: value.Alias,
-		})
-	}
-	return ListResponse{Object: ObjectList, Data: data, HasMore: hasMore}, nil
 }
 
 func (s *Service) GetAPI(ctx context.Context, identifier string) (Resource, error) {
@@ -289,17 +236,29 @@ func (s *Service) Create(ctx context.Context, req CreateRequest) (Template, erro
 	return template, nil
 }
 
-func (s *Service) List(ctx context.Context, req ListRequest) ([]Template, error) {
+func (s *Service) List(ctx context.Context, req ListRequest) (ListResponse, error) {
 	access, err := requireAccess(ctx, authz.PermissionTemplatesRead)
 	if err != nil {
-		return nil, err
+		return ListResponse{}, err
 	}
 	normalizeList(&req)
-	values, err := s.repository.List(ctx, access.Scope.TeamID, req.Limit, req.Offset)
+	values, err := s.repository.List(ctx, access.Scope.TeamID, req.Limit+1, req.Offset)
 	if err != nil {
-		return nil, apperrors.NewInternal("Unable to list templates", err)
+		return ListResponse{}, apperrors.NewInternal("Unable to list templates", err)
 	}
-	return values, nil
+	hasMore := len(values) > int(req.Limit)
+	if hasMore {
+		values = values[:req.Limit]
+	}
+	data := make([]ListItem, 0, len(values))
+	for _, value := range values {
+		data = append(data, ListItem{
+			ID: value.ID, Name: value.Name, Category: value.Category, Status: templateStatus(value),
+			PublishedAt: value.PublishedAt, CreatedAt: value.CreatedAt,
+			UpdatedAt: value.UpdatedAt, Alias: value.Alias,
+		})
+	}
+	return ListResponse{Object: ObjectList, Data: data, HasMore: hasMore}, nil
 }
 
 func (s *Service) Get(ctx context.Context, identifier string) (Template, error) {
@@ -756,89 +715,12 @@ func referencedVariables(inputs ...string) []string {
 	return result
 }
 
-// ListOffsetAPI returns the public template list using the same limit/offset
-// pagination contract as the other list APIs. Broadcast-owned templates are
-// implementation details and never consume public pagination positions.
-func (s *Service) ListOffsetAPI(ctx context.Context, request ListRequest) (ListResponse, error) {
-	access, err := requireAccess(ctx, authz.PermissionTemplatesRead)
-	if err != nil {
-		return ListResponse{}, err
-	}
-
-	normalizeList(&request)
-	wanted := int(request.Limit) + 1
-	visible := make([]Template, 0, wanted)
-	rawOffset := int32(0)
-	visibleOffset := int32(0)
-
-	for len(visible) < wanted {
-		values, listErr := s.repository.List(ctx, access.Scope.TeamID, 100, rawOffset)
-		if listErr != nil {
-			return ListResponse{}, apperrors.NewInternal("Unable to list templates", listErr)
-		}
-		if len(values) == 0 {
-			break
-		}
-		rawOffset += int32(len(values))
-		for _, value := range values {
-			if IsBroadcastTemplate(value) {
-				continue
-			}
-			if visibleOffset < request.Offset {
-				visibleOffset++
-				continue
-			}
-			visible = append(visible, value)
-			if len(visible) == wanted {
-				break
-			}
-		}
-		if len(values) < 100 {
-			break
-		}
-	}
-
-	hasMore := len(visible) > int(request.Limit)
-	if hasMore {
-		visible = visible[:request.Limit]
-	}
-
-	data := make([]ListItem, 0, len(visible))
-	for _, value := range visible {
-		data = append(data, ListItem{
-			ID:          value.ID,
-			Name:        value.Name,
-			Category:    value.Category,
-			Status:      templateStatus(value),
-			PublishedAt: value.PublishedAt,
-			CreatedAt:   value.CreatedAt,
-			UpdatedAt:   value.UpdatedAt,
-			Alias:       value.Alias,
-		})
-	}
-
-	return ListResponse{Object: ObjectList, Data: data, HasMore: hasMore}, nil
-}
-
 const (
 	broadcastTemplateAliasPrefix = "__broadcast_"
 	broadcastCleanupTimeout      = 5 * time.Second
 )
 
-// BroadcastContentRequest is the internal bridge between the broadcast composer
-// and the existing versioned template renderer. Templates created through this
-// path are implementation details and are not intended to be reusable resources.
-type BroadcastContentRequest struct {
-	Name        string
-	Subject     string
-	HTML        string
-	Text        *string
-	FromEmail   *string
-	FromName    *string
-	PreviewText *string
-}
-
-func IsBroadcastTemplate(value Template) bool {
+func isBroadcastTemplate(value Template) bool {
 	return value.Alias != nil && strings.HasPrefix(*value.Alias, broadcastTemplateAliasPrefix)
 }
 
@@ -902,7 +784,7 @@ func (s *Service) BroadcastPublishedVersion(ctx context.Context, teamID uuid.UUI
 	if err != nil {
 		return "", false, apperrors.NewInternal("Unable to load broadcast content", err)
 	}
-	if !IsBroadcastTemplate(template) {
+	if !isBroadcastTemplate(template) {
 		return "", false, nil
 	}
 	if template.PublishedVersionID == nil {
@@ -916,6 +798,6 @@ func withPreviewText(body string, previewText *string) string {
 	if previewText == nil || strings.TrimSpace(*previewText) == "" {
 		return body
 	}
-	preview := htmlpkg.EscapeString(strings.TrimSpace(*previewText))
+	preview := html.EscapeString(strings.TrimSpace(*previewText))
 	return fmt.Sprintf(`<div data-dugble-preheader='true' style='display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;'>%s</div>%s`, preview, body)
 }

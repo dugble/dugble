@@ -309,53 +309,16 @@ func (r *Repository) Delete(ctx context.Context, teamID, templateID uuid.UUID) (
 
 // DeleteBroadcastTemplateIfUnreferenced hard-deletes generated broadcast
 // content only when its reserved alias prefix matches and no broadcast points
-// at it. The reference check also protects templates shared by duplicates.
+// at it. The sqlc query's reference check protects templates shared by duplicates.
 func (r *Repository) DeleteBroadcastTemplateIfUnreferenced(ctx context.Context, teamID, templateID uuid.UUID) error {
-	_, err := r.db.Exec(ctx, `
-DELETE FROM message_templates AS mt
-WHERE mt.id = $1
-  AND mt.team_id = $2
-  AND left(mt.alias, length($3)) = $3
-  AND NOT EXISTS (
-      SELECT 1
-      FROM broadcasts AS b
-      WHERE b.template_id = mt.id
-  )`, templateID, teamID, broadcastTemplateAliasPrefix)
+	err := r.queries.DeleteUnreferencedBroadcastTemplate(ctx, dbsqlc.DeleteUnreferencedBroadcastTemplateParams{
+		TemplateID: templateID,
+		TeamID:     teamID,
+	})
 	if err != nil {
 		return fmt.Errorf("delete unreferenced broadcast template: %w", err)
 	}
 	return nil
-}
-
-func (r *Repository) CursorExists(ctx context.Context, teamID, cursorID uuid.UUID) (bool, error) {
-	return r.queries.MessageTemplateCursorExists(ctx, dbsqlc.MessageTemplateCursorExistsParams{
-		CursorID: cursorID, TeamID: teamID,
-	})
-}
-
-func (r *Repository) ListPage(ctx context.Context, teamID uuid.UUID, limit int32, after, before *uuid.UUID) ([]Template, error) {
-	var (
-		rows []dbsqlc.MessageTemplate
-		err  error
-	)
-	switch {
-	case after != nil:
-		rows, err = r.queries.ListMessageTemplatesAfter(ctx, dbsqlc.ListMessageTemplatesAfterParams{
-			ScopeTeamID: teamID, CursorID: *after, PageLimit: limit,
-		})
-	case before != nil:
-		rows, err = r.queries.ListMessageTemplatesBefore(ctx, dbsqlc.ListMessageTemplatesBeforeParams{
-			ScopeTeamID: teamID, CursorID: *before, PageLimit: limit,
-		})
-	default:
-		rows, err = r.queries.ListMessageTemplates(ctx, dbsqlc.ListMessageTemplatesParams{
-			TeamID: teamID, PageOffset: 0, PageLimit: limit,
-		})
-	}
-	if err != nil {
-		return nil, err
-	}
-	return templatesFromSQLC(rows), nil
 }
 
 func templateFromSQLC(row dbsqlc.MessageTemplate) Template {
