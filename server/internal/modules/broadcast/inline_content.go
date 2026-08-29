@@ -15,6 +15,7 @@ import (
 
 type broadcastContentTemplateService interface {
 	CreateBroadcastContent(context.Context, uuid.UUID, messagetemplate.BroadcastContentRequest) (messagetemplate.Template, error)
+	DeleteBroadcastContentIfUnreferenced(context.Context, uuid.UUID, string) error
 	BroadcastPublishedVersion(context.Context, uuid.UUID, string) (string, bool, error)
 }
 
@@ -65,6 +66,7 @@ func (s *Service) CreateAPI(ctx context.Context, req CreateRequest) (Broadcast, 
 	req.Name = name
 	value, err := s.repository.Create(ctx, tc.Scope.TeamID, segmentID, topicID, uuid.MustParse(template.ID), req)
 	if err != nil {
+		_ = templates.DeleteBroadcastContentIfUnreferenced(ctx, tc.Scope.TeamID, template.ID)
 		return Broadcast{}, apperrors.NewInternal("Unable to create broadcast", err)
 	}
 	return value, nil
@@ -134,6 +136,7 @@ func (s *Service) UpdateAPI(ctx context.Context, identifier string, req UpdateRe
 	if !ok {
 		return Broadcast{}, apperrors.NewInternal("Template service does not support broadcast content", nil)
 	}
+	previousTemplateID := current.TemplateID
 	template, err := templates.CreateBroadcastContent(ctx, tc.Scope.TeamID, messagetemplate.BroadcastContentRequest{
 		Name: current.Name, Subject: *req.Subject, HTML: *req.HTML,
 		Text: pointerPointerValue(req.Text), FromEmail: pointerPointerValue(req.FromEmail),
@@ -146,12 +149,19 @@ func (s *Service) UpdateAPI(ctx context.Context, identifier string, req UpdateRe
 		current.VariableBindings = *req.VariableBindings
 	}
 	value, err := s.repository.Update(ctx, tc.Scope.TeamID, id, segmentID, topicID, uuid.MustParse(template.ID), req, current)
-	if errors.Is(err, ErrConflict) {
-		return Broadcast{}, apperrors.NewConflict("Broadcast was modified or is no longer a draft")
-	}
 	if err != nil {
+		_ = templates.DeleteBroadcastContentIfUnreferenced(ctx, tc.Scope.TeamID, template.ID)
+		if errors.Is(err, ErrConflict) {
+			return Broadcast{}, apperrors.NewConflict("Broadcast was modified or is no longer a draft")
+		}
 		return Broadcast{}, apperrors.NewInternal("Unable to update broadcast", err)
 	}
+
+	// A successful inline edit replaces the prior immutable content snapshot.
+	// Delete it only if it is internal and no other broadcast (for example a
+	// duplicate) still references it. Cleanup failure must not turn a committed
+	// broadcast update into an API failure.
+	_ = templates.DeleteBroadcastContentIfUnreferenced(ctx, tc.Scope.TeamID, previousTemplateID)
 	return value, nil
 }
 
