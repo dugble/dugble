@@ -6,7 +6,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
 
 	dbsqlc "github.com/dugble/dugble/server/internal/database/sqlc"
 	"github.com/dugble/dugble/server/pkg/pgconv"
@@ -16,8 +15,12 @@ type Repository struct {
 	queries *dbsqlc.Queries
 }
 
-func NewRepository(db *pgxpool.Pool) *Repository {
-	return &Repository{queries: dbsqlc.New(db)}
+func NewRepository(queries *dbsqlc.Queries) *Repository {
+	return &Repository{queries: queries}
+}
+
+func (r *Repository) WithTx(tx pgx.Tx) *Repository {
+	return NewRepository(r.queries.WithTx(tx))
 }
 
 func (r *Repository) PutUnverified(ctx context.Context, userID uuid.UUID, ciphertext []byte) error {
@@ -55,7 +58,7 @@ func (r *Repository) Confirm(ctx context.Context, userID uuid.UUID, sessionID st
 		return err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	queries := r.queries.WithTx(tx)
+	queries := r.WithTx(tx).queries
 
 	rows, err := queries.ConfirmTOTPCredential(ctx, dbsqlc.ConfirmTOTPCredentialParams{UserID: userID, LastUsedStep: &step})
 	if err != nil {
@@ -114,7 +117,7 @@ func (r *Repository) Disable(ctx context.Context, userID uuid.UUID, currentSessi
 		return err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	queries := r.queries.WithTx(tx)
+	queries := r.WithTx(tx).queries
 	if err = queries.DeleteTOTPCredential(ctx, dbsqlc.DeleteTOTPCredentialParams{UserID: userID}); err != nil {
 		return err
 	}

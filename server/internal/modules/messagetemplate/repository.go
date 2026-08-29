@@ -10,7 +10,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
-	"github.com/jackc/pgx/v5/pgxpool"
 
 	dbsqlc "github.com/dugble/dugble/server/internal/database/sqlc"
 )
@@ -26,8 +25,12 @@ type Repository struct {
 	queries *dbsqlc.Queries
 }
 
-func NewRepository(db *pgxpool.Pool) *Repository {
-	return &Repository{queries: dbsqlc.New(db)}
+func NewRepository(queries *dbsqlc.Queries) *Repository {
+	return &Repository{queries: queries}
+}
+
+func (r *Repository) WithTx(tx pgx.Tx) *Repository {
+	return NewRepository(r.queries.WithTx(tx))
 }
 
 func (r *Repository) Create(ctx context.Context, teamID uuid.UUID, req CreateRequest) (Template, Version, error) {
@@ -36,7 +39,7 @@ func (r *Repository) Create(ctx context.Context, teamID uuid.UUID, req CreateReq
 		return Template{}, Version{}, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	queries := r.queries.WithTx(tx)
+	queries := r.WithTx(tx).queries
 
 	category := req.Category
 	if category == "" {
@@ -172,7 +175,7 @@ func (r *Repository) Update(ctx context.Context, teamID uuid.UUID, template Temp
 		return Template{}, Version{}, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	queries := r.queries.WithTx(tx)
+	queries := r.WithTx(tx).queries
 	templateID := uuid.MustParse(template.ID)
 
 	locked, err := queries.LockMessageTemplate(ctx, dbsqlc.LockMessageTemplateParams{ID: templateID, TeamID: teamID})
@@ -264,7 +267,7 @@ func (r *Repository) Publish(ctx context.Context, teamID uuid.UUID, templateID, 
 		return Template{}, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	queries := r.queries.WithTx(tx)
+	queries := r.WithTx(tx).queries
 
 	exists, err := queries.MessageTemplateVersionExists(ctx, dbsqlc.MessageTemplateVersionExistsParams{
 		VersionID: versionID, TemplateID: templateID, TeamID: teamID,
