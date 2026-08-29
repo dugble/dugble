@@ -58,24 +58,24 @@ func (s *Service) CreateBroadcastContent(ctx context.Context, teamID uuid.UUID, 
 	return published, nil
 }
 
-// BroadcastPublishedVersion returns a pinned version for an internal broadcast
-// template without applying public Templates permissions. Broadcast authorization
-// is performed by the caller before this method is used.
-func (s *Service) BroadcastPublishedVersion(ctx context.Context, teamID uuid.UUID, templateID string) (string, error) {
+// BroadcastPublishedVersion identifies internal broadcast content and returns
+// its published version without applying public Templates permissions. The
+// caller is responsible for Broadcast authorization.
+func (s *Service) BroadcastPublishedVersion(ctx context.Context, teamID uuid.UUID, templateID string) (string, bool, error) {
 	if s == nil || s.repository == nil {
-		return "", apperrors.NewInternal("Template service is not configured", nil)
+		return "", false, apperrors.NewInternal("Template service is not configured", nil)
 	}
 	template, err := s.repository.Resolve(ctx, teamID, templateID)
 	if err != nil {
-		return "", apperrors.NewInternal("Unable to load broadcast content", err)
+		return "", false, apperrors.NewInternal("Unable to load broadcast content", err)
 	}
 	if !IsBroadcastTemplate(template) {
-		return "", apperrors.NewConflict("Broadcast template is not internal content")
+		return "", false, nil
 	}
 	if template.PublishedVersionID == nil {
-		return "", apperrors.NewConflict("Broadcast content has no published version")
+		return "", true, apperrors.NewConflict("Broadcast content has no published version")
 	}
-	return *template.PublishedVersionID, nil
+	return *template.PublishedVersionID, true, nil
 }
 
 func withPreviewText(body string, previewText *string) string {
