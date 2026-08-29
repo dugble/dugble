@@ -389,6 +389,52 @@ None.
 
 ---
 
+## Email analytics
+
+### `GET /emails/analytics`
+
+Returns team-wide email delivery, open, click, and bounce analytics for 7-day, 30-day, and 90-day windows. Each window includes aggregate rates and daily series points.
+
+#### Request body
+
+None.
+
+#### Response
+
+`200 OK`.
+
+```json
+{
+  "success": true,
+  "data": {
+    "object": "email.analytics",
+    "windows": [
+      {
+        "days": 7,
+        "rates": [
+          { "name": "delivery_rate", "value": 0.985 },
+          { "name": "open_rate", "value": 0.452 },
+          { "name": "click_rate", "value": 0.127 },
+          { "name": "bounce_rate", "value": 0.015 }
+        ],
+        "series": [
+          {
+            "date": "2026-08-29",
+            "total": 100,
+            "delivered": 98,
+            "opened": 44,
+            "clicked": 12,
+            "bounced": 2
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+---
+
 ## Email statuses
 
 - `queued`

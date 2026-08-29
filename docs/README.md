@@ -114,7 +114,7 @@ Do not infer fields from database tables. Payloads and responses must come from 
 - [Team Tokens](team-tokens.md)
 - [Contacts](contacts.md)
 - [Segments](segments.md)
-- [Messaging](messaging.md)
+- [Messaging APIs](messaging.md)
 - [Campaigns](campaigns.md)
 - [Suppressions](suppressions.md)
 - [Webhooks](webhooks.md)
