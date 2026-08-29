@@ -98,6 +98,46 @@ ORDER BY message.created_at DESC
 LIMIT sqlc.arg(limit_count)
 OFFSET sqlc.arg(offset_count);
 
+-- name: GetEmailAnalyticsSeries :many
+WITH dates AS (
+    SELECT generate_series(
+        date_trunc('day', now()) - ((sqlc.arg(window_days)::int - 1) * interval '1 day'),
+        date_trunc('day', now()),
+        interval '1 day'
+    ) AS bucket
+), messages AS (
+    SELECT id, date_trunc('day', created_at) AS bucket, status
+    FROM email_messages
+    WHERE team_id = sqlc.arg(team_id)
+      AND created_at >= date_trunc('day', now()) - ((sqlc.arg(window_days)::int - 1) * interval '1 day')
+), counts AS (
+    SELECT
+        messages.bucket,
+        count(DISTINCT messages.id)::bigint AS total,
+        count(DISTINCT messages.id) FILTER (
+            WHERE messages.status IN ('delivered', 'partially_delivered')
+        )::bigint AS delivered,
+        count(DISTINCT messages.id) FILTER (WHERE event.event_type = 'open')::bigint AS opened,
+        count(DISTINCT messages.id) FILTER (WHERE event.event_type = 'click')::bigint AS clicked,
+        count(DISTINCT messages.id) FILTER (
+            WHERE messages.status IN ('bounced', 'complained', 'rejected', 'failed', 'partially_failed')
+               OR event.event_type IN ('bounce', 'complaint', 'reject', 'rendering_failure')
+        )::bigint AS bounced
+    FROM messages
+    LEFT JOIN email_provider_events AS event ON event.email_message_id = messages.id
+    GROUP BY messages.bucket
+)
+SELECT
+    to_char(dates.bucket, 'YYYY-MM-DD') AS date,
+    COALESCE(counts.total, 0)::bigint AS total,
+    COALESCE(counts.delivered, 0)::bigint AS delivered,
+    COALESCE(counts.opened, 0)::bigint AS opened,
+    COALESCE(counts.clicked, 0)::bigint AS clicked,
+    COALESCE(counts.bounced, 0)::bigint AS bounced
+FROM dates
+LEFT JOIN counts ON counts.bucket = dates.bucket
+ORDER BY dates.bucket;
+
 -- name: ListEmailMessageEvents :many
 SELECT event.id::text AS id, event.type, event.occurred_at, event.provider, event.code, event.message
 FROM (

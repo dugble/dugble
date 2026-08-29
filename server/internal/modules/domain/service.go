@@ -70,12 +70,12 @@ func NewService(
 	}
 }
 
-func (s *Service) List(ctx context.Context) ([]SenderDomain, error) {
+func (s *Service) List(ctx context.Context, limit, offset int32) ([]SenderDomain, error) {
 	tc, err := requireTenantPermission(ctx, authz.PermissionSenderDomainsRead)
 	if err != nil {
 		return nil, err
 	}
-	domains, err := s.repository.List(ctx, tc.Scope.TeamID)
+	domains, err := s.repository.List(ctx, tc.Scope.TeamID, limit, offset)
 	if err != nil {
 		return nil, apperrors.NewInternal("Unable to list sender domains", err)
 	}

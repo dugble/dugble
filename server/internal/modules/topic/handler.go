@@ -32,13 +32,13 @@ func (h *Handler) List(c *echo.Context) error {
 	if err != nil {
 		return httputil.Error(c, err)
 	}
-	if limit <= 0 || limit > 100 {
-		limit = 50
+	if limit <= 0 || limit > maxListLimit {
+		limit = defaultListLimit
 	}
 	if offset < 0 {
 		offset = 0
 	}
-	values, err := h.service.List(c.Request().Context(), ListRequest{Limit: limit + 1, Offset: offset})
+	values, err := h.service.List(c.Request().Context(), ListRequest{Limit: limit + listLookahead, Offset: offset})
 	if err != nil {
 		return httputil.Error(c, err)
 	}

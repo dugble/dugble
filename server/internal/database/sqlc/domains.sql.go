@@ -675,14 +675,18 @@ FROM domains AS domain_record
 WHERE domain_record.team_id = $1
   AND domain_record.disabled_at IS NULL
 ORDER BY domain_record.created_at DESC, domain_record.id DESC
+LIMIT $3
+OFFSET $2
 `
 
 type ListDomainsParams struct {
-	TeamID uuid.UUID `db:"team_id" json:"team_id"`
+	TeamID     uuid.UUID `db:"team_id" json:"team_id"`
+	PageOffset int32     `db:"page_offset" json:"page_offset"`
+	PageLimit  int32     `db:"page_limit" json:"page_limit"`
 }
 
 func (q *Queries) ListDomains(ctx context.Context, arg ListDomainsParams) ([]Domain, error) {
-	rows, err := q.db.Query(ctx, listDomains, arg.TeamID)
+	rows, err := q.db.Query(ctx, listDomains, arg.TeamID, arg.PageOffset, arg.PageLimit)
 	if err != nil {
 		return nil, err
 	}

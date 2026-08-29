@@ -3,7 +3,6 @@ package topic
 import (
 	"context"
 	"errors"
-	"slices"
 	"strings"
 
 	"github.com/jackc/pgx/v5"
@@ -23,53 +22,6 @@ func (s *Service) CreateAPI(ctx context.Context, request CreateRequest) (Mutatio
 		return MutationResponse{}, err
 	}
 	return MutationResponse{Object: ObjectTopic, ID: value.ID}, nil
-}
-
-func (s *Service) ListAPI(ctx context.Context, request APIListRequest) (ListResponse, error) {
-	access, err := requireTenant(ctx, authz.PermissionTopicsRead)
-	if err != nil {
-		return ListResponse{}, err
-	}
-	if err := normalizeAPIListRequest(&request); err != nil {
-		return ListResponse{}, err
-	}
-	after, err := parseTopicCursor(request.After)
-	if err != nil {
-		return ListResponse{}, err
-	}
-	before, err := parseTopicCursor(request.Before)
-	if err != nil {
-		return ListResponse{}, err
-	}
-	cursor := after
-	if cursor == nil {
-		cursor = before
-	}
-	if cursor != nil {
-		exists, lookupErr := s.repository.CursorExists(ctx, access.Scope.TeamID, *cursor)
-		if lookupErr != nil {
-			return ListResponse{}, apperrors.NewInternal("Unable to validate topic cursor", lookupErr)
-		}
-		if !exists {
-			return ListResponse{}, apperrors.NewNotFound("Topic cursor not found")
-		}
-	}
-	values, err := s.repository.ListPage(ctx, access.Scope.TeamID, request.Limit+1, after, before)
-	if err != nil {
-		return ListResponse{}, apperrors.NewInternal("Unable to list topics", err)
-	}
-	hasMore := len(values) > int(request.Limit)
-	if hasMore {
-		values = values[:request.Limit]
-	}
-	if before != nil {
-		slices.Reverse(values)
-	}
-	data := make([]Resource, 0, len(values))
-	for _, value := range values {
-		data = append(data, resourceFromTopic(value))
-	}
-	return ListResponse{Object: ObjectList, HasMore: hasMore, Data: data}, nil
 }
 
 func (s *Service) GetAPI(ctx context.Context, identifier string) (Resource, error) {

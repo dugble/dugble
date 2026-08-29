@@ -22,19 +22,28 @@ func TestTopicResponseContracts(t *testing.T) {
 	}
 }
 
-func TestNormalizeTopicAPIListRequest(t *testing.T) {
-	request := APIListRequest{}
-	if err := normalizeAPIListRequest(&request); err != nil {
-		t.Fatal(err)
+func TestNormalizeListRequestPreservesMaximumPageLookahead(t *testing.T) {
+	t.Parallel()
+
+	request := ListRequest{Limit: maxListLimit + listLookahead, Offset: 10}
+	normalizeListRequest(&request)
+
+	if request.Limit != 101 {
+		t.Fatalf("limit = %d, want 101", request.Limit)
 	}
-	if request.Limit != 20 {
-		t.Fatalf("default limit = %d", request.Limit)
+	if request.Offset != 10 {
+		t.Fatalf("offset = %d, want 10", request.Offset)
 	}
-	if err := normalizeAPIListRequest(&APIListRequest{Limit: -1}); err == nil {
-		t.Fatal("expected invalid limit")
-	}
-	if err := normalizeAPIListRequest(&APIListRequest{After: uuidText, Before: uuidText}); err == nil {
-		t.Fatal("expected mutually exclusive cursors")
+}
+
+func TestNormalizeListRequestRejectsLimitBeyondLookahead(t *testing.T) {
+	t.Parallel()
+
+	request := ListRequest{Limit: maxListLimit + listLookahead + 1}
+	normalizeListRequest(&request)
+
+	if request.Limit != defaultListLimit {
+		t.Fatalf("limit = %d, want %d", request.Limit, defaultListLimit)
 	}
 }
 
@@ -47,5 +56,3 @@ func TestCreateTopicDefaultsPrivate(t *testing.T) {
 		t.Fatalf("visibility = %q, want private", request.Visibility)
 	}
 }
-
-const uuidText = "b6d24b8e-af0b-4c3c-be0c-359bbd97381e"

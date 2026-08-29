@@ -33,7 +33,9 @@ SELECT domain_record.*
 FROM domains AS domain_record
 WHERE domain_record.team_id = sqlc.arg(team_id)
   AND domain_record.disabled_at IS NULL
-ORDER BY domain_record.created_at DESC, domain_record.id DESC;
+ORDER BY domain_record.created_at DESC, domain_record.id DESC
+LIMIT sqlc.arg(page_limit)
+OFFSET sqlc.arg(page_offset);
 
 -- name: GetDomain :one
 SELECT domain_record.*

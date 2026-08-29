@@ -88,11 +88,15 @@ func (r *Repository) Create(ctx context.Context, input CreateDomainInput) (Sende
 	return r.Get(ctx, row.ID, input.TeamID)
 }
 
-func (r *Repository) List(ctx context.Context, teamID uuid.UUID) ([]SenderDomain, error) {
+func (r *Repository) List(ctx context.Context, teamID uuid.UUID, limit, offset int32) ([]SenderDomain, error) {
 	if err := r.requireConfigured(); err != nil {
 		return nil, err
 	}
-	rows, err := r.queries.ListDomains(ctx, dbsqlc.ListDomainsParams{TeamID: teamID})
+	rows, err := r.queries.ListDomains(ctx, dbsqlc.ListDomainsParams{
+		TeamID:     teamID,
+		PageLimit:  limit,
+		PageOffset: offset,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("list sender domains: %w", err)
 	}

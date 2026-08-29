@@ -8,7 +8,11 @@ import (
 	apperrors "github.com/dugble/dugble/server/pkg/errors"
 )
 
-const maxAPITopicPage = 100
+const (
+	defaultListLimit = int32(50)
+	maxListLimit     = int32(100)
+	listLookahead    = int32(1)
+)
 
 func validateCreate(req CreateRequest) (CreateRequest, error) {
 	req.Name = strings.TrimSpace(req.Name)
@@ -60,37 +64,13 @@ func parseID(value string) (uuid.UUID, error) {
 }
 
 func normalizeListRequest(req *ListRequest) {
-	if req.Limit <= 0 || req.Limit > 100 {
-		req.Limit = 50
+	// The HTTP handler requests one row beyond the public page limit so it can
+	// calculate has_more. Preserve that internal lookahead while still bounding
+	// all other service callers.
+	if req.Limit <= 0 || req.Limit > maxListLimit+listLookahead {
+		req.Limit = defaultListLimit
 	}
 	if req.Offset < 0 {
 		req.Offset = 0
 	}
-}
-
-func normalizeAPIListRequest(request *APIListRequest) error {
-	if request.Limit == 0 {
-		request.Limit = 20
-	}
-	if request.Limit < 1 || request.Limit > maxAPITopicPage {
-		return apperrors.NewBadRequest("Limit must be between 1 and 100")
-	}
-	request.After = strings.TrimSpace(request.After)
-	request.Before = strings.TrimSpace(request.Before)
-	if request.After != "" && request.Before != "" {
-		return apperrors.NewBadRequest("After and before cannot be used together")
-	}
-	return nil
-}
-
-func parseTopicCursor(value string) (*uuid.UUID, error) {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return nil, nil
-	}
-	id, err := uuid.Parse(value)
-	if err != nil {
-		return nil, apperrors.NewBadRequest("Topic cursor must be a valid UUID")
-	}
-	return &id, nil
 }
