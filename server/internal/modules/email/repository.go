@@ -33,12 +33,11 @@ type SenderDomainRoute struct {
 }
 
 type Repository struct {
-	db      *pgxpool.Pool
 	queries *dbsqlc.Queries
 }
 
 func NewRepository(db *pgxpool.Pool) *Repository {
-	return &Repository{db: db, queries: dbsqlc.New(db)}
+	return &Repository{queries: dbsqlc.New(db)}
 }
 
 func (r *Repository) ResolveSandboxRecipientForToken(ctx context.Context, teamID, tokenID uuid.UUID) (string, bool, error) {
@@ -283,40 +282,19 @@ func (r *Repository) GetAnalytics(ctx context.Context, teamID uuid.UUID) (Analyt
 }
 
 func (r *Repository) emailAnalyticsSeries(ctx context.Context, teamID uuid.UUID, days int32) ([]AnalyticsPoint, error) {
-	rows, err := r.db.Query(ctx, `
-		WITH dates AS (
-			SELECT generate_series(date_trunc('day', now()) - (($2::int - 1) * interval '1 day'), date_trunc('day', now()), interval '1 day') AS bucket
-		), messages AS (
-			SELECT id, date_trunc('day', created_at) AS bucket, status
-			FROM email_messages
-			WHERE team_id = $1 AND created_at >= date_trunc('day', now()) - (($2::int - 1) * interval '1 day')
-		), counts AS (
-			SELECT messages.bucket,
-			       count(DISTINCT messages.id)::bigint AS total,
-			       count(DISTINCT messages.id) FILTER (WHERE messages.status IN ('delivered', 'partially_delivered'))::bigint AS delivered,
-			       count(DISTINCT messages.id) FILTER (WHERE event.event_type = 'open')::bigint AS opened,
-			       count(DISTINCT messages.id) FILTER (WHERE event.event_type = 'click')::bigint AS clicked,
-			       count(DISTINCT messages.id) FILTER (WHERE messages.status IN ('bounced', 'complained', 'rejected', 'failed', 'partially_failed') OR event.event_type IN ('bounce', 'complaint', 'reject', 'rendering_failure'))::bigint AS bounced
-			FROM messages LEFT JOIN email_provider_events AS event ON event.email_message_id = messages.id
-			GROUP BY messages.bucket
-		)
-		SELECT to_char(dates.bucket, 'YYYY-MM-DD'), COALESCE(counts.total, 0), COALESCE(counts.delivered, 0), COALESCE(counts.opened, 0), COALESCE(counts.clicked, 0), COALESCE(counts.bounced, 0)
-		FROM dates LEFT JOIN counts ON counts.bucket = dates.bucket ORDER BY dates.bucket
-	`, teamID, days)
+	rows, err := r.queries.GetEmailAnalyticsSeries(ctx, dbsqlc.GetEmailAnalyticsSeriesParams{
+		WindowDays: days,
+		TeamID:     teamID,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("get email analytics series: %w", err)
 	}
-	defer rows.Close()
-	points := make([]AnalyticsPoint, 0, days)
-	for rows.Next() {
-		var p AnalyticsPoint
-		if err := rows.Scan(&p.Date, &p.Total, &p.Delivered, &p.Opened, &p.Clicked, &p.Bounced); err != nil {
-			return nil, fmt.Errorf("scan email analytics series: %w", err)
-		}
-		points = append(points, p)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate email analytics series: %w", err)
+	points := make([]AnalyticsPoint, 0, len(rows))
+	for _, row := range rows {
+		points = append(points, AnalyticsPoint{
+			Date: row.Date, Total: row.Total, Delivered: row.Delivered,
+			Opened: row.Opened, Clicked: row.Clicked, Bounced: row.Bounced,
+		})
 	}
 	return points, nil
 }

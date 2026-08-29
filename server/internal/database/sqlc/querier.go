@@ -218,6 +218,7 @@ type Querier interface {
 	GetDomainClaim(ctx context.Context, arg GetDomainClaimParams) (DomainClaim, error)
 	GetDomainClaimByID(ctx context.Context, arg GetDomainClaimByIDParams) (DomainClaim, error)
 	GetDomainForClaimByID(ctx context.Context, arg GetDomainForClaimByIDParams) (Domain, error)
+	GetEmailAnalyticsSeries(ctx context.Context, arg GetEmailAnalyticsSeriesParams) ([]GetEmailAnalyticsSeriesRow, error)
 	GetEmailMessage(ctx context.Context, arg GetEmailMessageParams) (EmailMessage, error)
 	GetEmailMessageScheduleForUpdate(ctx context.Context, arg GetEmailMessageScheduleForUpdateParams) (GetEmailMessageScheduleForUpdateRow, error)
 	GetEmailProviderEventForUpdate(ctx context.Context, arg GetEmailProviderEventForUpdateParams) (EmailProviderEvent, error)

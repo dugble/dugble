@@ -162,6 +162,88 @@ func (q *Queries) CreateEmailMessage(ctx context.Context, arg CreateEmailMessage
 	return i, err
 }
 
+const getEmailAnalyticsSeries = `-- name: GetEmailAnalyticsSeries :many
+WITH dates AS (
+    SELECT generate_series(
+        date_trunc('day', now()) - (($1::int - 1) * interval '1 day'),
+        date_trunc('day', now()),
+        interval '1 day'
+    ) AS bucket
+), messages AS (
+    SELECT id, date_trunc('day', created_at) AS bucket, status
+    FROM email_messages
+    WHERE team_id = $2
+      AND created_at >= date_trunc('day', now()) - (($1::int - 1) * interval '1 day')
+), counts AS (
+    SELECT
+        messages.bucket,
+        count(DISTINCT messages.id)::bigint AS total,
+        count(DISTINCT messages.id) FILTER (
+            WHERE messages.status IN ('delivered', 'partially_delivered')
+        )::bigint AS delivered,
+        count(DISTINCT messages.id) FILTER (WHERE event.event_type = 'open')::bigint AS opened,
+        count(DISTINCT messages.id) FILTER (WHERE event.event_type = 'click')::bigint AS clicked,
+        count(DISTINCT messages.id) FILTER (
+            WHERE messages.status IN ('bounced', 'complained', 'rejected', 'failed', 'partially_failed')
+               OR event.event_type IN ('bounce', 'complaint', 'reject', 'rendering_failure')
+        )::bigint AS bounced
+    FROM messages
+    LEFT JOIN email_provider_events AS event ON event.email_message_id = messages.id
+    GROUP BY messages.bucket
+)
+SELECT
+    to_char(dates.bucket, 'YYYY-MM-DD') AS date,
+    COALESCE(counts.total, 0)::bigint AS total,
+    COALESCE(counts.delivered, 0)::bigint AS delivered,
+    COALESCE(counts.opened, 0)::bigint AS opened,
+    COALESCE(counts.clicked, 0)::bigint AS clicked,
+    COALESCE(counts.bounced, 0)::bigint AS bounced
+FROM dates
+LEFT JOIN counts ON counts.bucket = dates.bucket
+ORDER BY dates.bucket
+`
+
+type GetEmailAnalyticsSeriesParams struct {
+	WindowDays int32     `db:"window_days" json:"window_days"`
+	TeamID     uuid.UUID `db:"team_id" json:"team_id"`
+}
+
+type GetEmailAnalyticsSeriesRow struct {
+	Date      string `db:"date" json:"date"`
+	Total     int64  `db:"total" json:"total"`
+	Delivered int64  `db:"delivered" json:"delivered"`
+	Opened    int64  `db:"opened" json:"opened"`
+	Clicked   int64  `db:"clicked" json:"clicked"`
+	Bounced   int64  `db:"bounced" json:"bounced"`
+}
+
+func (q *Queries) GetEmailAnalyticsSeries(ctx context.Context, arg GetEmailAnalyticsSeriesParams) ([]GetEmailAnalyticsSeriesRow, error) {
+	rows, err := q.db.Query(ctx, getEmailAnalyticsSeries, arg.WindowDays, arg.TeamID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetEmailAnalyticsSeriesRow{}
+	for rows.Next() {
+		var i GetEmailAnalyticsSeriesRow
+		if err := rows.Scan(
+			&i.Date,
+			&i.Total,
+			&i.Delivered,
+			&i.Opened,
+			&i.Clicked,
+			&i.Bounced,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getEmailMessage = `-- name: GetEmailMessage :one
 SELECT message.id, message.team_id, message.sender_domain_id, message.delivery_provider, message.provider_region, message.message_type, message.from_email, message.from_name, message.reply_to_email, message.to_email, message.to_name, message.subject, message.html_body, message.text_body, message.status, message.provider, message.provider_message_id, message.current_delivery_attempt_id, message.error_code, message.error_message, message.metadata, message.recipients, message.headers, message.attachments, message.tags, message.scheduled_at, message.queued_at, message.processing_at, message.submitted_at, message.delivered_at, message.failed_at, message.created_at, message.updated_at, message.template_id
 FROM email_messages AS message
