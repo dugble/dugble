@@ -15,8 +15,11 @@ import (
 
 type broadcastContentTemplateService interface {
 	CreateBroadcastContent(context.Context, uuid.UUID, messagetemplate.BroadcastContentRequest) (messagetemplate.Template, error)
-	DeleteBroadcastContentIfUnreferenced(context.Context, uuid.UUID, string) error
 	BroadcastPublishedVersion(context.Context, uuid.UUID, string) (string, bool, error)
+}
+
+type broadcastContentCleanupService interface {
+	DeleteBroadcastContentIfUnreferenced(context.Context, uuid.UUID, string) error
 }
 
 func (s *Service) CreateAPI(ctx context.Context, req CreateRequest) (Broadcast, error) {
@@ -66,7 +69,7 @@ func (s *Service) CreateAPI(ctx context.Context, req CreateRequest) (Broadcast, 
 	req.Name = name
 	value, err := s.repository.Create(ctx, tc.Scope.TeamID, segmentID, topicID, uuid.MustParse(template.ID), req)
 	if err != nil {
-		_ = templates.DeleteBroadcastContentIfUnreferenced(ctx, tc.Scope.TeamID, template.ID)
+		s.cleanupBroadcastContent(ctx, tc.Scope.TeamID, template.ID)
 		return Broadcast{}, apperrors.NewInternal("Unable to create broadcast", err)
 	}
 	return value, nil
@@ -150,7 +153,7 @@ func (s *Service) UpdateAPI(ctx context.Context, identifier string, req UpdateRe
 	}
 	value, err := s.repository.Update(ctx, tc.Scope.TeamID, id, segmentID, topicID, uuid.MustParse(template.ID), req, current)
 	if err != nil {
-		_ = templates.DeleteBroadcastContentIfUnreferenced(ctx, tc.Scope.TeamID, template.ID)
+		s.cleanupBroadcastContent(ctx, tc.Scope.TeamID, template.ID)
 		if errors.Is(err, ErrConflict) {
 			return Broadcast{}, apperrors.NewConflict("Broadcast was modified or is no longer a draft")
 		}
@@ -161,8 +164,16 @@ func (s *Service) UpdateAPI(ctx context.Context, identifier string, req UpdateRe
 	// Delete it only if it is internal and no other broadcast (for example a
 	// duplicate) still references it. Cleanup failure must not turn a committed
 	// broadcast update into an API failure.
-	_ = templates.DeleteBroadcastContentIfUnreferenced(ctx, tc.Scope.TeamID, previousTemplateID)
+	s.cleanupBroadcastContent(ctx, tc.Scope.TeamID, previousTemplateID)
 	return value, nil
+}
+
+func (s *Service) cleanupBroadcastContent(ctx context.Context, teamID uuid.UUID, templateID string) {
+	cleanup, ok := s.templates.(broadcastContentCleanupService)
+	if !ok {
+		return
+	}
+	_ = cleanup.DeleteBroadcastContentIfUnreferenced(ctx, teamID, templateID)
 }
 
 func (s *Service) SendAPI(ctx context.Context, identifier string, req SendRequest) (Broadcast, error) {
