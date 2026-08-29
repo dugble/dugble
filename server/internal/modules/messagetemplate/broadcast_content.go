@@ -84,5 +84,5 @@ func withPreviewText(body string, previewText *string) string {
 		return body
 	}
 	preview := htmlpkg.EscapeString(strings.TrimSpace(*previewText))
-	return fmt.Sprintf(`<div data-dugble-preheader="true" style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;">%s</div>%s`, preview, body)
+	return fmt.Sprintf(`<div data-dugble-preheader='true' style='display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;'>%s</div>%s`, preview, body)
 }
