@@ -8,7 +8,8 @@ import (
 )
 
 // ListOffsetAPI returns the public template list using the same limit/offset
-// pagination contract as the other list APIs.
+// pagination contract as the other list APIs. Broadcast-owned templates are
+// implementation details and never consume public pagination positions.
 func (s *Service) ListOffsetAPI(ctx context.Context, request ListRequest) (ListResponse, error) {
 	access, err := requireAccess(ctx, authz.PermissionTemplatesRead)
 	if err != nil {
@@ -16,18 +17,45 @@ func (s *Service) ListOffsetAPI(ctx context.Context, request ListRequest) (ListR
 	}
 
 	normalizeList(&request)
-	values, err := s.repository.List(ctx, access.Scope.TeamID, request.Limit+1, request.Offset)
-	if err != nil {
-		return ListResponse{}, apperrors.NewInternal("Unable to list templates", err)
+	wanted := int(request.Limit) + 1
+	visible := make([]Template, 0, wanted)
+	rawOffset := int32(0)
+	visibleOffset := int32(0)
+
+	for len(visible) < wanted {
+		values, listErr := s.repository.List(ctx, access.Scope.TeamID, 100, rawOffset)
+		if listErr != nil {
+			return ListResponse{}, apperrors.NewInternal("Unable to list templates", listErr)
+		}
+		if len(values) == 0 {
+			break
+		}
+		rawOffset += int32(len(values))
+		for _, value := range values {
+			if IsBroadcastTemplate(value) {
+				continue
+			}
+			if visibleOffset < request.Offset {
+				visibleOffset++
+				continue
+			}
+			visible = append(visible, value)
+			if len(visible) == wanted {
+				break
+			}
+		}
+		if len(values) < 100 {
+			break
+		}
 	}
 
-	hasMore := len(values) > int(request.Limit)
+	hasMore := len(visible) > int(request.Limit)
 	if hasMore {
-		values = values[:request.Limit]
+		visible = visible[:request.Limit]
 	}
 
-	data := make([]ListItem, 0, len(values))
-	for _, value := range values {
+	data := make([]ListItem, 0, len(visible))
+	for _, value := range visible {
 		data = append(data, ListItem{
 			ID:          value.ID,
 			Name:        value.Name,

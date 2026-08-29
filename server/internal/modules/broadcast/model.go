@@ -59,7 +59,13 @@ type CreateRequest struct {
 	Name             string         `json:"name"`
 	SegmentID        string         `json:"segment_id"`
 	TopicID          *string        `json:"topic_id,omitempty"`
-	Template         string         `json:"template"`
+	Template         string         `json:"template,omitempty"`
+	Subject          string         `json:"subject,omitempty"`
+	HTML             string         `json:"html,omitempty"`
+	Text             *string        `json:"text,omitempty"`
+	FromEmail        *string        `json:"from_email,omitempty"`
+	FromName         *string        `json:"from_name,omitempty"`
+	PreviewText      *string        `json:"preview_text,omitempty"`
 	VariableBindings map[string]any `json:"variable_bindings,omitempty"`
 }
 
@@ -69,6 +75,12 @@ type UpdateRequest struct {
 	SegmentID        *string         `json:"segment_id,omitempty"`
 	TopicID          **string        `json:"topic_id,omitempty"`
 	Template         *string         `json:"template,omitempty"`
+	Subject          *string         `json:"subject,omitempty"`
+	HTML             *string         `json:"html,omitempty"`
+	Text             **string        `json:"text,omitempty"`
+	FromEmail        **string        `json:"from_email,omitempty"`
+	FromName         **string        `json:"from_name,omitempty"`
+	PreviewText      **string        `json:"preview_text,omitempty"`
 	VariableBindings *map[string]any `json:"variable_bindings,omitempty"`
 }
 
@@ -92,6 +104,34 @@ func (r *UpdateRequest) UnmarshalJSON(data []byte) error {
 			return err
 		}
 		r.TopicID = &topicID
+	}
+	if raw, ok := fields["text"]; ok {
+		var value *string
+		if err := json.Unmarshal(raw, &value); err != nil {
+			return err
+		}
+		r.Text = &value
+	}
+	if raw, ok := fields["from_email"]; ok {
+		var value *string
+		if err := json.Unmarshal(raw, &value); err != nil {
+			return err
+		}
+		r.FromEmail = &value
+	}
+	if raw, ok := fields["from_name"]; ok {
+		var value *string
+		if err := json.Unmarshal(raw, &value); err != nil {
+			return err
+		}
+		r.FromName = &value
+	}
+	if raw, ok := fields["preview_text"]; ok {
+		var value *string
+		if err := json.Unmarshal(raw, &value); err != nil {
+			return err
+		}
+		r.PreviewText = &value
 	}
 	return nil
 }

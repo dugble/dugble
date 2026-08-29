@@ -307,6 +307,26 @@ func (r *Repository) Delete(ctx context.Context, teamID, templateID uuid.UUID) (
 	return templateFromSQLC(row), nil
 }
 
+// DeleteBroadcastTemplateIfUnreferenced hard-deletes generated broadcast
+// content only when its reserved alias prefix matches and no broadcast points
+// at it. The reference check also protects templates shared by duplicates.
+func (r *Repository) DeleteBroadcastTemplateIfUnreferenced(ctx context.Context, teamID, templateID uuid.UUID) error {
+	_, err := r.db.Exec(ctx, `
+DELETE FROM message_templates AS mt
+WHERE mt.id = $1
+  AND mt.team_id = $2
+  AND left(mt.alias, length($3)) = $3
+  AND NOT EXISTS (
+      SELECT 1
+      FROM broadcasts AS b
+      WHERE b.template_id = mt.id
+  )`, templateID, teamID, broadcastTemplateAliasPrefix)
+	if err != nil {
+		return fmt.Errorf("delete unreferenced broadcast template: %w", err)
+	}
+	return nil
+}
+
 func (r *Repository) CursorExists(ctx context.Context, teamID, cursorID uuid.UUID) (bool, error) {
 	return r.queries.MessageTemplateCursorExists(ctx, dbsqlc.MessageTemplateCursorExistsParams{
 		CursorID: cursorID, TeamID: teamID,
