@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -14,6 +15,7 @@ import (
 
 type broadcastContentTemplateService interface {
 	CreateBroadcastContent(context.Context, uuid.UUID, messagetemplate.BroadcastContentRequest) (messagetemplate.Template, error)
+	BroadcastPublishedVersion(context.Context, uuid.UUID, string) (string, bool, error)
 }
 
 func (s *Service) CreateAPI(ctx context.Context, req CreateRequest) (Broadcast, error) {
@@ -149,6 +151,47 @@ func (s *Service) UpdateAPI(ctx context.Context, identifier string, req UpdateRe
 	}
 	if err != nil {
 		return Broadcast{}, apperrors.NewInternal("Unable to update broadcast", err)
+	}
+	return value, nil
+}
+
+func (s *Service) SendAPI(ctx context.Context, identifier string, req SendRequest) (Broadcast, error) {
+	tc, err := requireTenant(ctx, authz.PermissionBroadcastsSend)
+	if err != nil {
+		return Broadcast{}, err
+	}
+	id, err := parseID(identifier, "Broadcast id")
+	if err != nil {
+		return Broadcast{}, err
+	}
+	current, err := s.repository.Get(ctx, tc.Scope.TeamID, id)
+	if errors.Is(err, ErrNotFound) {
+		return Broadcast{}, apperrors.NewNotFound("Broadcast not found")
+	}
+	if err != nil {
+		return Broadcast{}, apperrors.NewInternal("Unable to get broadcast", err)
+	}
+
+	templates, ok := s.templates.(broadcastContentTemplateService)
+	if !ok {
+		return s.Send(ctx, identifier, req)
+	}
+	versionID, internal, err := templates.BroadcastPublishedVersion(ctx, tc.Scope.TeamID, current.TemplateID)
+	if err != nil {
+		return Broadcast{}, err
+	}
+	if !internal {
+		return s.Send(ctx, identifier, req)
+	}
+	if req.ScheduledAt != nil && !req.ScheduledAt.After(time.Now()) {
+		return Broadcast{}, apperrors.NewBadRequest("scheduled_at must be in the future")
+	}
+	value, err := s.repository.Send(ctx, tc.Scope.TeamID, id, uuid.MustParse(versionID), req.ScheduledAt)
+	if errors.Is(err, ErrConflict) {
+		return Broadcast{}, apperrors.NewConflict("Only draft broadcasts can be sent")
+	}
+	if err != nil {
+		return Broadcast{}, apperrors.NewInternal("Unable to send broadcast", err)
 	}
 	return value, nil
 }
