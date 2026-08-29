@@ -310,8 +310,6 @@ type Querier interface {
 	ListTeamTokens(ctx context.Context, arg ListTeamTokensParams) ([]TeamToken, error)
 	ListTeamsForUser(ctx context.Context, arg ListTeamsForUserParams) ([]Team, error)
 	ListTopics(ctx context.Context, arg ListTopicsParams) ([]Topic, error)
-	ListTopicsAfter(ctx context.Context, arg ListTopicsAfterParams) ([]Topic, error)
-	ListTopicsBefore(ctx context.Context, arg ListTopicsBeforeParams) ([]Topic, error)
 	ListWalletLedger(ctx context.Context, arg ListWalletLedgerParams) ([]WalletLedger, error)
 	ListWebhookDeliveriesForEvent(ctx context.Context, arg ListWebhookDeliveriesForEventParams) ([]WebhookDelivery, error)
 	ListWebhookDeliveryAttempts(ctx context.Context, arg ListWebhookDeliveryAttemptsParams) ([]WebhookDeliveryAttempt, error)
@@ -389,7 +387,6 @@ type Querier interface {
 	SoftDeleteMessageTemplate(ctx context.Context, arg SoftDeleteMessageTemplateParams) (MessageTemplate, error)
 	SupersedeDomainTrackingRecords(ctx context.Context, arg SupersedeDomainTrackingRecordsParams) error
 	SuppressionCursorExists(ctx context.Context, arg SuppressionCursorExistsParams) (bool, error)
-	TopicCursorExists(ctx context.Context, arg TopicCursorExistsParams) (bool, error)
 	TouchSession(ctx context.Context, arg TouchSessionParams) error
 	TouchTeamToken(ctx context.Context, arg TouchTeamTokenParams) error
 	UpdateBroadcastDraft(ctx context.Context, arg UpdateBroadcastDraftParams) (Broadcast, error)

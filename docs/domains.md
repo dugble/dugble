@@ -123,7 +123,16 @@ The public `SenderDomain` response has this shape:
 
 ### `GET /domains`
 
-Returns all sender domains belonging to the current team.
+Returns a page of active sender domains belonging to the current team, ordered by creation time and ID from newest to oldest.
+
+#### Query parameters
+
+| Parameter | Type | Description |
+| --- | --- | --- |
+| `limit` | integer | Maximum number of domains to return. Defaults to `50` when omitted or non-positive; values greater than `100` also use the default. |
+| `offset` | integer | Number of domains to skip. Defaults to `0`; negative values are treated as `0`. |
+
+Malformed or overflowing integer values return `400 Bad Request`. Pagination is applied after team scoping and disabled domains are excluded.
 
 #### Request body
 

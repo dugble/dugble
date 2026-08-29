@@ -74,45 +74,6 @@ func (r *Repository) Delete(ctx context.Context, id, teamID uuid.UUID) (Topic, e
 	return topicFromSQLC(row), nil
 }
 
-func (r *Repository) CursorExists(ctx context.Context, teamID, cursorID uuid.UUID) (bool, error) {
-	return r.queries.TopicCursorExists(ctx, dbsqlc.TopicCursorExistsParams{
-		CursorID: cursorID,
-		TeamID:   teamID,
-	})
-}
-
-func (r *Repository) ListPage(ctx context.Context, teamID uuid.UUID, limit int32, after, before *uuid.UUID) ([]Topic, error) {
-	var (
-		rows []dbsqlc.Topic
-		err  error
-	)
-
-	switch {
-	case after != nil:
-		rows, err = r.queries.ListTopicsAfter(ctx, dbsqlc.ListTopicsAfterParams{
-			ScopeTeamID: teamID,
-			CursorID:    *after,
-			PageLimit:   limit,
-		})
-	case before != nil:
-		rows, err = r.queries.ListTopicsBefore(ctx, dbsqlc.ListTopicsBeforeParams{
-			ScopeTeamID: teamID,
-			CursorID:    *before,
-			PageLimit:   limit,
-		})
-	default:
-		rows, err = r.queries.ListTopics(ctx, dbsqlc.ListTopicsParams{
-			TeamID:     teamID,
-			PageOffset: 0,
-			PageLimit:  limit,
-		})
-	}
-	if err != nil {
-		return nil, fmt.Errorf("list topic page: %w", err)
-	}
-	return topicsFromSQLC(rows), nil
-}
-
 func topicsFromSQLC(rows []dbsqlc.Topic) []Topic {
 	values := make([]Topic, 0, len(rows))
 	for _, row := range rows {

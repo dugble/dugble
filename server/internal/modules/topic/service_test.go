@@ -22,22 +22,6 @@ func TestTopicResponseContracts(t *testing.T) {
 	}
 }
 
-func TestNormalizeTopicAPIListRequest(t *testing.T) {
-	request := APIListRequest{}
-	if err := normalizeAPIListRequest(&request); err != nil {
-		t.Fatal(err)
-	}
-	if request.Limit != 20 {
-		t.Fatalf("default limit = %d", request.Limit)
-	}
-	if err := normalizeAPIListRequest(&APIListRequest{Limit: -1}); err == nil {
-		t.Fatal("expected invalid limit")
-	}
-	if err := normalizeAPIListRequest(&APIListRequest{After: uuidText, Before: uuidText}); err == nil {
-		t.Fatal("expected mutually exclusive cursors")
-	}
-}
-
 func TestCreateTopicDefaultsPrivate(t *testing.T) {
 	request, err := validateCreate(CreateRequest{Name: "Newsletter", DefaultSubscription: "opt_in"})
 	if err != nil {
@@ -47,5 +31,3 @@ func TestCreateTopicDefaultsPrivate(t *testing.T) {
 		t.Fatalf("visibility = %q, want private", request.Visibility)
 	}
 }
-
-const uuidText = "b6d24b8e-af0b-4c3c-be0c-359bbd97381e"

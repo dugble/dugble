@@ -31,18 +31,11 @@ func (h *Handler) List(c *echo.Context) error {
 	if offset < 0 {
 		offset = 0
 	}
-	domains, err := h.service.List(c.Request().Context())
+	domains, err := h.service.List(c.Request().Context(), limit, offset)
 	if err != nil {
 		return httputil.Error(c, err)
 	}
-	if offset >= int32(len(domains)) {
-		return httputil.OK(c, []SenderDomain{})
-	}
-	end := offset + limit
-	if end > int32(len(domains)) {
-		end = int32(len(domains))
-	}
-	return httputil.OK(c, domains[offset:end])
+	return httputil.OK(c, domains)
 }
 
 func (h *Handler) Get(c *echo.Context) error {

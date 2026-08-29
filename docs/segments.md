@@ -221,7 +221,7 @@ Errors use the standard envelope in [README.md](README.md). Expected statuses de
 
 #### Payload
 
-Query parameters: `after`, `before`, `limit`.
+Query parameters: `limit`, `offset`. `limit` defaults to `50` when it is omitted or non-positive and is capped at `100`; negative `offset` values are treated as `0`. Pagination is applied to the returned array.
 
 No JSON request body.
 

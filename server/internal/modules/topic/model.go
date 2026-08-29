@@ -36,12 +36,6 @@ const (
 	ObjectList  = "list"
 )
 
-type APIListRequest struct {
-	Limit  int32
-	After  string
-	Before string
-}
-
 type MutationResponse struct {
 	Object string `json:"object"`
 	ID     string `json:"id"`
