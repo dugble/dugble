@@ -12,19 +12,12 @@ import (
 	"github.com/dugble/dugble/server/pkg/pgconv"
 )
 
-type Credential struct {
-	SecretCiphertext []byte
-	VerifiedAt       *time.Time
-	LastUsedStep     *int64
-}
-
 type Repository struct {
-	db      *pgxpool.Pool
 	queries *dbsqlc.Queries
 }
 
 func NewRepository(db *pgxpool.Pool) *Repository {
-	return &Repository{db: db, queries: dbsqlc.New(db)}
+	return &Repository{queries: dbsqlc.New(db)}
 }
 
 func (r *Repository) PutUnverified(ctx context.Context, userID uuid.UUID, ciphertext []byte) error {
@@ -57,7 +50,7 @@ func (r *Repository) RotateSecretCiphertext(ctx context.Context, userID uuid.UUI
 }
 
 func (r *Repository) Confirm(ctx context.Context, userID uuid.UUID, sessionID string, step int64, codeHashes []string) error {
-	tx, err := r.db.Begin(ctx)
+	tx, err := r.queries.Begin(ctx)
 	if err != nil {
 		return err
 	}
@@ -116,7 +109,7 @@ func (r *Repository) UseRecoveryCode(ctx context.Context, userID uuid.UUID, sess
 }
 
 func (r *Repository) Disable(ctx context.Context, userID uuid.UUID, currentSessionID string) error {
-	tx, err := r.db.Begin(ctx)
+	tx, err := r.queries.Begin(ctx)
 	if err != nil {
 		return err
 	}

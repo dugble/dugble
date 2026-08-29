@@ -23,16 +23,15 @@ var (
 )
 
 type Repository struct {
-	db      *pgxpool.Pool
 	queries *dbsqlc.Queries
 }
 
 func NewRepository(db *pgxpool.Pool) *Repository {
-	return &Repository{db: db, queries: dbsqlc.New(db)}
+	return &Repository{queries: dbsqlc.New(db)}
 }
 
 func (r *Repository) Create(ctx context.Context, teamID uuid.UUID, req CreateRequest) (Template, Version, error) {
-	tx, err := r.db.Begin(ctx)
+	tx, err := r.queries.Begin(ctx)
 	if err != nil {
 		return Template{}, Version{}, err
 	}
@@ -168,7 +167,7 @@ func (r *Repository) ListVersions(ctx context.Context, teamID, templateID uuid.U
 }
 
 func (r *Repository) Update(ctx context.Context, teamID uuid.UUID, template Template, base Version, req UpdateRequest) (Template, Version, error) {
-	tx, err := r.db.Begin(ctx)
+	tx, err := r.queries.Begin(ctx)
 	if err != nil {
 		return Template{}, Version{}, err
 	}
@@ -260,7 +259,7 @@ func (r *Repository) Update(ctx context.Context, teamID uuid.UUID, template Temp
 }
 
 func (r *Repository) Publish(ctx context.Context, teamID uuid.UUID, templateID, versionID uuid.UUID) (Template, error) {
-	tx, err := r.db.Begin(ctx)
+	tx, err := r.queries.Begin(ctx)
 	if err != nil {
 		return Template{}, err
 	}
