@@ -10,7 +10,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
-	"github.com/jackc/pgx/v5/pgxpool"
 
 	dbsqlc "github.com/dugble/dugble/server/internal/database/sqlc"
 )
@@ -23,21 +22,19 @@ var (
 )
 
 type Repository struct {
-	db      *pgxpool.Pool
 	queries *dbsqlc.Queries
 }
 
-func NewRepository(db *pgxpool.Pool) *Repository {
-	return &Repository{db: db, queries: dbsqlc.New(db)}
+func NewRepository(queries *dbsqlc.Queries) *Repository {
+	return &Repository{queries: queries}
+}
+
+func (r *Repository) WithTx(tx pgx.Tx) *Repository {
+	return NewRepository(r.queries.WithTx(tx))
 }
 
 func (r *Repository) Create(ctx context.Context, teamID uuid.UUID, req CreateRequest) (Template, Version, error) {
-	tx, err := r.db.Begin(ctx)
-	if err != nil {
-		return Template{}, Version{}, err
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	queries := r.queries.WithTx(tx)
+	queries := r.queries
 
 	category := req.Category
 	if category == "" {
@@ -86,9 +83,6 @@ func (r *Repository) Create(ctx context.Context, teamID uuid.UUID, req CreateReq
 		TeamID:    teamID,
 	})
 	if err != nil {
-		return Template{}, Version{}, err
-	}
-	if err := tx.Commit(ctx); err != nil {
 		return Template{}, Version{}, err
 	}
 	return templateFromSQLC(row), version, nil
@@ -168,12 +162,7 @@ func (r *Repository) ListVersions(ctx context.Context, teamID, templateID uuid.U
 }
 
 func (r *Repository) Update(ctx context.Context, teamID uuid.UUID, template Template, base Version, req UpdateRequest) (Template, Version, error) {
-	tx, err := r.db.Begin(ctx)
-	if err != nil {
-		return Template{}, Version{}, err
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	queries := r.queries.WithTx(tx)
+	queries := r.queries
 	templateID := uuid.MustParse(template.ID)
 
 	locked, err := queries.LockMessageTemplate(ctx, dbsqlc.LockMessageTemplateParams{ID: templateID, TeamID: teamID})
@@ -253,19 +242,11 @@ func (r *Repository) Update(ctx context.Context, teamID uuid.UUID, template Temp
 	if err != nil {
 		return Template{}, Version{}, err
 	}
-	if err := tx.Commit(ctx); err != nil {
-		return Template{}, Version{}, err
-	}
 	return templateFromSQLC(finalRow), version, nil
 }
 
 func (r *Repository) Publish(ctx context.Context, teamID uuid.UUID, templateID, versionID uuid.UUID) (Template, error) {
-	tx, err := r.db.Begin(ctx)
-	if err != nil {
-		return Template{}, err
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	queries := r.queries.WithTx(tx)
+	queries := r.queries
 
 	exists, err := queries.MessageTemplateVersionExists(ctx, dbsqlc.MessageTemplateVersionExistsParams{
 		VersionID: versionID, TemplateID: templateID, TeamID: teamID,
@@ -290,9 +271,6 @@ func (r *Repository) Publish(ctx context.Context, teamID uuid.UUID, templateID, 
 	}); err != nil {
 		return Template{}, err
 	}
-	if err := tx.Commit(ctx); err != nil {
-		return Template{}, err
-	}
 	return templateFromSQLC(row), nil
 }
 
@@ -309,53 +287,16 @@ func (r *Repository) Delete(ctx context.Context, teamID, templateID uuid.UUID) (
 
 // DeleteBroadcastTemplateIfUnreferenced hard-deletes generated broadcast
 // content only when its reserved alias prefix matches and no broadcast points
-// at it. The reference check also protects templates shared by duplicates.
+// at it. The sqlc query's reference check protects templates shared by duplicates.
 func (r *Repository) DeleteBroadcastTemplateIfUnreferenced(ctx context.Context, teamID, templateID uuid.UUID) error {
-	_, err := r.db.Exec(ctx, `
-DELETE FROM message_templates AS mt
-WHERE mt.id = $1
-  AND mt.team_id = $2
-  AND left(mt.alias, length($3)) = $3
-  AND NOT EXISTS (
-      SELECT 1
-      FROM broadcasts AS b
-      WHERE b.template_id = mt.id
-  )`, templateID, teamID, broadcastTemplateAliasPrefix)
+	err := r.queries.DeleteUnreferencedBroadcastTemplate(ctx, dbsqlc.DeleteUnreferencedBroadcastTemplateParams{
+		TemplateID: templateID,
+		TeamID:     teamID,
+	})
 	if err != nil {
 		return fmt.Errorf("delete unreferenced broadcast template: %w", err)
 	}
 	return nil
-}
-
-func (r *Repository) CursorExists(ctx context.Context, teamID, cursorID uuid.UUID) (bool, error) {
-	return r.queries.MessageTemplateCursorExists(ctx, dbsqlc.MessageTemplateCursorExistsParams{
-		CursorID: cursorID, TeamID: teamID,
-	})
-}
-
-func (r *Repository) ListPage(ctx context.Context, teamID uuid.UUID, limit int32, after, before *uuid.UUID) ([]Template, error) {
-	var (
-		rows []dbsqlc.MessageTemplate
-		err  error
-	)
-	switch {
-	case after != nil:
-		rows, err = r.queries.ListMessageTemplatesAfter(ctx, dbsqlc.ListMessageTemplatesAfterParams{
-			ScopeTeamID: teamID, CursorID: *after, PageLimit: limit,
-		})
-	case before != nil:
-		rows, err = r.queries.ListMessageTemplatesBefore(ctx, dbsqlc.ListMessageTemplatesBeforeParams{
-			ScopeTeamID: teamID, CursorID: *before, PageLimit: limit,
-		})
-	default:
-		rows, err = r.queries.ListMessageTemplates(ctx, dbsqlc.ListMessageTemplatesParams{
-			TeamID: teamID, PageOffset: 0, PageLimit: limit,
-		})
-	}
-	if err != nil {
-		return nil, err
-	}
-	return templatesFromSQLC(rows), nil
 }
 
 func templateFromSQLC(row dbsqlc.MessageTemplate) Template {

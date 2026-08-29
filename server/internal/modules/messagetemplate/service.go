@@ -8,9 +8,9 @@ import (
 	"html"
 	"net/mail"
 	"regexp"
-	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/dugble/dugble/server/internal/authz"
 	emailmodule "github.com/dugble/dugble/server/internal/modules/email"
@@ -18,6 +18,7 @@ import (
 	apperrors "github.com/dugble/dugble/server/pkg/errors"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type EmailSender interface {
@@ -25,18 +26,65 @@ type EmailSender interface {
 }
 
 type Service struct {
+	db         *pgxpool.Pool
 	repository *Repository
 	email      EmailSender
 }
 
-func NewService(repository *Repository, dependencies ...any) *Service {
-	service := &Service{repository: repository}
+func NewService(db *pgxpool.Pool, repository *Repository, dependencies ...any) *Service {
+	service := &Service{db: db, repository: repository}
 	for _, dependency := range dependencies {
 		if sender, ok := dependency.(EmailSender); ok {
 			service.email = sender
 		}
 	}
 	return service
+}
+
+func (s *Service) create(ctx context.Context, teamID uuid.UUID, request CreateRequest) (Template, Version, error) {
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return Template{}, Version{}, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	value, version, err := s.repository.WithTx(tx).Create(ctx, teamID, request)
+	if err != nil {
+		return Template{}, Version{}, err
+	}
+	if err = tx.Commit(ctx); err != nil {
+		return Template{}, Version{}, err
+	}
+	return value, version, nil
+}
+func (s *Service) update(ctx context.Context, teamID uuid.UUID, template Template, base Version, request UpdateRequest) (Template, Version, error) {
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return Template{}, Version{}, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	value, version, err := s.repository.WithTx(tx).Update(ctx, teamID, template, base, request)
+	if err != nil {
+		return Template{}, Version{}, err
+	}
+	if err = tx.Commit(ctx); err != nil {
+		return Template{}, Version{}, err
+	}
+	return value, version, nil
+}
+func (s *Service) publish(ctx context.Context, teamID, templateID, versionID uuid.UUID) (Template, error) {
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return Template{}, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	value, err := s.repository.WithTx(tx).Publish(ctx, teamID, templateID, versionID)
+	if err != nil {
+		return Template{}, err
+	}
+	if err = tx.Commit(ctx); err != nil {
+		return Template{}, err
+	}
+	return value, nil
 }
 
 func (s *Service) CreateAPI(ctx context.Context, request APICreateRequest) (MutationResponse, error) {
@@ -49,57 +97,6 @@ func (s *Service) CreateAPI(ctx context.Context, request APICreateRequest) (Muta
 		return MutationResponse{}, err
 	}
 	return MutationResponse{Object: ObjectTemplate, ID: value.ID}, nil
-}
-
-func (s *Service) ListAPI(ctx context.Context, request APIListRequest) (ListResponse, error) {
-	access, err := requireAccess(ctx, authz.PermissionTemplatesRead)
-	if err != nil {
-		return ListResponse{}, err
-	}
-	if err := normalizeAPIListRequest(&request); err != nil {
-		return ListResponse{}, err
-	}
-	after, err := parseTemplateCursor(request.After)
-	if err != nil {
-		return ListResponse{}, err
-	}
-	before, err := parseTemplateCursor(request.Before)
-	if err != nil {
-		return ListResponse{}, err
-	}
-	cursor := after
-	if cursor == nil {
-		cursor = before
-	}
-	if cursor != nil {
-		exists, lookupErr := s.repository.CursorExists(ctx, access.Scope.TeamID, *cursor)
-		if lookupErr != nil {
-			return ListResponse{}, apperrors.NewInternal("Unable to validate template cursor", lookupErr)
-		}
-		if !exists {
-			return ListResponse{}, apperrors.NewNotFound("Template cursor not found")
-		}
-	}
-	values, err := s.repository.ListPage(ctx, access.Scope.TeamID, request.Limit+1, after, before)
-	if err != nil {
-		return ListResponse{}, apperrors.NewInternal("Unable to list templates", err)
-	}
-	hasMore := len(values) > int(request.Limit)
-	if hasMore {
-		values = values[:request.Limit]
-	}
-	if before != nil {
-		slices.Reverse(values)
-	}
-	data := make([]ListItem, 0, len(values))
-	for _, value := range values {
-		data = append(data, ListItem{
-			ID: value.ID, Name: value.Name, Category: value.Category, Status: templateStatus(value),
-			PublishedAt: value.PublishedAt, CreatedAt: value.CreatedAt,
-			UpdatedAt: value.UpdatedAt, Alias: value.Alias,
-		})
-	}
-	return ListResponse{Object: ObjectList, Data: data, HasMore: hasMore}, nil
 }
 
 func (s *Service) GetAPI(ctx context.Context, identifier string) (Resource, error) {
@@ -276,7 +273,7 @@ func (s *Service) Create(ctx context.Context, req CreateRequest) (Template, erro
 	if err != nil {
 		return Template{}, err
 	}
-	template, _, err := s.repository.Create(ctx, access.Scope.TeamID, req)
+	template, _, err := s.create(ctx, access.Scope.TeamID, req)
 	if errors.Is(err, ErrAliasConflict) {
 		return Template{}, apperrors.NewConflict("A template with this alias already exists")
 	}
@@ -287,17 +284,29 @@ func (s *Service) Create(ctx context.Context, req CreateRequest) (Template, erro
 	return template, nil
 }
 
-func (s *Service) List(ctx context.Context, req ListRequest) ([]Template, error) {
+func (s *Service) List(ctx context.Context, req ListRequest) (ListResponse, error) {
 	access, err := requireAccess(ctx, authz.PermissionTemplatesRead)
 	if err != nil {
-		return nil, err
+		return ListResponse{}, err
 	}
 	normalizeList(&req)
-	values, err := s.repository.List(ctx, access.Scope.TeamID, req.Limit, req.Offset)
+	values, err := s.repository.List(ctx, access.Scope.TeamID, req.Limit+1, req.Offset)
 	if err != nil {
-		return nil, apperrors.NewInternal("Unable to list templates", err)
+		return ListResponse{}, apperrors.NewInternal("Unable to list templates", err)
 	}
-	return values, nil
+	hasMore := len(values) > int(req.Limit)
+	if hasMore {
+		values = values[:req.Limit]
+	}
+	data := make([]ListItem, 0, len(values))
+	for _, value := range values {
+		data = append(data, ListItem{
+			ID: value.ID, Name: value.Name, Category: value.Category, Status: templateStatus(value),
+			PublishedAt: value.PublishedAt, CreatedAt: value.CreatedAt,
+			UpdatedAt: value.UpdatedAt, Alias: value.Alias,
+		})
+	}
+	return ListResponse{Object: ObjectList, Data: data, HasMore: hasMore}, nil
 }
 
 func (s *Service) Get(ctx context.Context, identifier string) (Template, error) {
@@ -331,7 +340,7 @@ func (s *Service) Update(ctx context.Context, identifier string, req UpdateReque
 	if err = validateUpdate(template, base, &req); err != nil {
 		return Template{}, err
 	}
-	updated, _, err := s.repository.Update(ctx, access.Scope.TeamID, template, base, req)
+	updated, _, err := s.update(ctx, access.Scope.TeamID, template, base, req)
 	switch {
 	case errors.Is(err, ErrVersionConflict):
 		return Template{}, apperrors.NewConflict("The template draft has changed; reload before updating")
@@ -395,7 +404,7 @@ func (s *Service) Publish(ctx context.Context, identifier string, req PublishReq
 	if err = validateVersion(version); err != nil {
 		return Template{}, err
 	}
-	published, err := s.repository.Publish(ctx, access.Scope.TeamID, uuid.MustParse(template.ID), uuid.MustParse(version.ID))
+	published, err := s.publish(ctx, access.Scope.TeamID, uuid.MustParse(template.ID), uuid.MustParse(version.ID))
 	if err != nil {
 		return Template{}, apperrors.NewInternal("Unable to publish template", err)
 	}
@@ -428,7 +437,7 @@ func (s *Service) Duplicate(ctx context.Context, identifier string, req Duplicat
 	if err != nil {
 		return Template{}, err
 	}
-	copy, _, err := s.repository.Create(ctx, access.Scope.TeamID, create)
+	copy, _, err := s.create(ctx, access.Scope.TeamID, create)
 	if errors.Is(err, ErrAliasConflict) {
 		return Template{}, apperrors.NewConflict("A template with this alias already exists")
 	}
@@ -510,7 +519,7 @@ func (s *Service) Revert(ctx context.Context, identifier, versionValue string) (
 	subject, htmlBody, variables := target.Subject, target.HTML, target.Variables
 	note := "Reverted from version " + fmt.Sprint(target.VersionNumber)
 	request := UpdateRequest{BaseVersionID: base.ID, FromEmail: &fromEmail, FromName: &fromName, ReplyTo: &replyTo, Subject: &subject, HTML: &htmlBody, Text: &textBody, Variables: &variables, ChangeNote: &note}
-	updated, _, err := s.repository.Update(ctx, access.Scope.TeamID, template, base, request)
+	updated, _, err := s.update(ctx, access.Scope.TeamID, template, base, request)
 	if errors.Is(err, ErrVersionConflict) {
 		return Template{}, apperrors.NewConflict("The template draft has changed; reload before reverting")
 	}
@@ -752,4 +761,91 @@ func referencedVariables(inputs ...string) []string {
 		result = append(result, key)
 	}
 	return result
+}
+
+const (
+	broadcastTemplateAliasPrefix = "__broadcast_"
+	broadcastCleanupTimeout      = 5 * time.Second
+)
+
+func isBroadcastTemplate(value Template) bool {
+	return value.Alias != nil && strings.HasPrefix(*value.Alias, broadcastTemplateAliasPrefix)
+}
+
+func (s *Service) CreateBroadcastContent(ctx context.Context, teamID uuid.UUID, request BroadcastContentRequest) (Template, error) {
+	if s == nil || s.repository == nil {
+		return Template{}, apperrors.NewInternal("Template service is not configured", nil)
+	}
+	alias := broadcastTemplateAliasPrefix + strings.ReplaceAll(uuid.NewString(), "-", "_")
+	name := strings.TrimSpace(request.Name)
+	if name == "" {
+		name = "Broadcast content"
+	}
+	create, err := validateCreate(CreateRequest{
+		Name: name, Alias: &alias, Category: CategoryCustom,
+		FromEmail: request.FromEmail, FromName: request.FromName,
+		Subject: request.Subject, HTML: withPreviewText(request.HTML, request.PreviewText), Text: request.Text,
+	})
+	if err != nil {
+		return Template{}, err
+	}
+	template, version, err := s.create(ctx, teamID, create)
+	if err != nil {
+		return Template{}, apperrors.NewInternal("Unable to create broadcast content", err)
+	}
+	published, err := s.publish(ctx, teamID, uuid.MustParse(template.ID), uuid.MustParse(version.ID))
+	if err != nil {
+		if cleanupErr := s.DeleteBroadcastContentIfUnreferenced(ctx, teamID, template.ID); cleanupErr != nil {
+			err = errors.Join(err, cleanupErr)
+		}
+		return Template{}, apperrors.NewInternal("Unable to publish broadcast content", err)
+	}
+	return published, nil
+}
+
+// DeleteBroadcastContentIfUnreferenced hard-deletes an internal broadcast
+// template only when no broadcast still references it. Cleanup deliberately
+// ignores request cancellation for a short bounded period so a canceled or
+// conflicted request does not leave an internal template behind.
+func (s *Service) DeleteBroadcastContentIfUnreferenced(ctx context.Context, teamID uuid.UUID, templateID string) error {
+	if s == nil || s.repository == nil {
+		return errors.New("template service is not configured")
+	}
+	id, err := uuid.Parse(templateID)
+	if err != nil {
+		return fmt.Errorf("parse broadcast content template id: %w", err)
+	}
+
+	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), broadcastCleanupTimeout)
+	defer cancel()
+	return s.repository.DeleteBroadcastTemplateIfUnreferenced(cleanupCtx, teamID, id)
+}
+
+// BroadcastPublishedVersion identifies internal broadcast content and returns
+// its published version without applying public Templates permissions. The
+// caller is responsible for Broadcast authorization.
+func (s *Service) BroadcastPublishedVersion(ctx context.Context, teamID uuid.UUID, templateID string) (string, bool, error) {
+	if s == nil || s.repository == nil {
+		return "", false, apperrors.NewInternal("Template service is not configured", nil)
+	}
+	template, err := s.repository.Resolve(ctx, teamID, templateID)
+	if err != nil {
+		return "", false, apperrors.NewInternal("Unable to load broadcast content", err)
+	}
+	if !isBroadcastTemplate(template) {
+		return "", false, nil
+	}
+	if template.PublishedVersionID == nil {
+		return "", true, apperrors.NewConflict("Broadcast content has no published version")
+	}
+	return *template.PublishedVersionID, true, nil
+}
+
+func withPreviewText(body string, previewText *string) string {
+	body = strings.TrimSpace(body)
+	if previewText == nil || strings.TrimSpace(*previewText) == "" {
+		return body
+	}
+	preview := html.EscapeString(strings.TrimSpace(*previewText))
+	return fmt.Sprintf(`<div data-dugble-preheader='true' style='display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;'>%s</div>%s`, preview, body)
 }

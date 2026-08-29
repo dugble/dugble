@@ -12,6 +12,7 @@ import (
 	planmodule "github.com/dugble/dugble/server/internal/billing/plan"
 	subscriptionmodule "github.com/dugble/dugble/server/internal/billing/subscription"
 	walletmodule "github.com/dugble/dugble/server/internal/billing/wallet"
+	dbsqlc "github.com/dugble/dugble/server/internal/database/sqlc"
 	emaildelivery "github.com/dugble/dugble/server/internal/delivery/email/outbound"
 	smsdelivery "github.com/dugble/dugble/server/internal/delivery/sms/outbound"
 	auditeventmodule "github.com/dugble/dugble/server/internal/modules/auditevent"
@@ -53,6 +54,7 @@ type serverMiddleware struct {
 func (registry *Registry) registerModules(router *echo.Echo) error {
 	cfg := registry.config
 	db := registry.postgres
+	queries := dbsqlc.New(db)
 
 	renderer, err := systemmail.NewRenderer()
 	if err != nil {
@@ -71,7 +73,7 @@ func (registry *Registry) registerModules(router *echo.Echo) error {
 	if err != nil {
 		return fmt.Errorf("initialize MFA cipher: %w", err)
 	}
-	mfaService := mfamodule.NewService(mfamodule.NewRepository(db), mfaCipher, "Dugble").WithNotifier(notificationEmailService)
+	mfaService := mfamodule.NewService(db, mfamodule.NewRepository(queries), mfaCipher, "Dugble").WithNotifier(notificationEmailService)
 	authService := authmodule.NewService(authRepository, sessionRepository, notificationEmailService, mfaService)
 	userRepository := usermodule.NewRepository(db)
 	mfaService.WithRecipientStore(userRepository)
@@ -84,7 +86,7 @@ func (registry *Registry) registerModules(router *echo.Echo) error {
 	segmentRepository := segmentmodule.NewRepository(db)
 	topicRepository := topicmodule.NewRepository(db)
 	suppressionRepository := suppressionmodule.NewRepository(db)
-	messageTemplateRepository := messagetemplatemodule.NewRepository(db)
+	messageTemplateRepository := messagetemplatemodule.NewRepository(queries)
 	broadcastRepository := broadcastmodule.NewRepository(db)
 	domainRepository := domainmodule.NewRepository(db)
 	emailTenantService := emailtenant.NewService(db, emailtenant.NewRepository(db), emailtenant.NewProvisioningQueue(registry.outbox))
@@ -101,7 +103,7 @@ func (registry *Registry) registerModules(router *echo.Echo) error {
 		emailmodule.ServiceConfig{DefaultFromEmail: cfg.AWS.FromEmail, DefaultProvider: domainmodule.DefaultProvider, DefaultRegion: cfg.AWS.Region},
 		billingService,
 	).WithDatabase(db)
-	messageTemplateService := messagetemplatemodule.NewService(messageTemplateRepository, emailAPIService)
+	messageTemplateService := messagetemplatemodule.NewService(db, messageTemplateRepository, emailAPIService)
 	broadcastService := broadcastmodule.NewService(broadcastRepository, messageTemplateService)
 	webhookService := webhooksmodule.NewService(db, webhookRepository, webhookEmitter)
 	dnsVerifier := netdns.New()

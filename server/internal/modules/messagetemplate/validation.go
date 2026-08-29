@@ -7,13 +7,10 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/google/uuid"
-
 	apperrors "github.com/dugble/dugble/server/pkg/errors"
 )
 
 const (
-	maxAPIPerPage              = 100
 	maxTemplateNameCharacters  = 100
 	maxTemplateAliasCharacters = 100
 	maxTemplateVariables       = 50
@@ -203,33 +200,6 @@ func normalizeList(req *ListRequest) {
 	if req.Offset < 0 {
 		req.Offset = 0
 	}
-}
-
-func normalizeAPIListRequest(request *APIListRequest) error {
-	if request.Limit == 0 {
-		request.Limit = 20
-	}
-	if request.Limit < 1 || request.Limit > maxAPIPerPage {
-		return apperrors.NewBadRequest("Limit must be between 1 and 100")
-	}
-	request.After = strings.TrimSpace(request.After)
-	request.Before = strings.TrimSpace(request.Before)
-	if request.After != "" && request.Before != "" {
-		return apperrors.NewBadRequest("After and before cannot be used together")
-	}
-	return nil
-}
-
-func parseTemplateCursor(value string) (*uuid.UUID, error) {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return nil, nil
-	}
-	id, err := uuid.Parse(value)
-	if err != nil {
-		return nil, apperrors.NewBadRequest("Template cursor must be a valid UUID")
-	}
-	return &id, nil
 }
 
 func splitSender(value *string) (*string, *string, error) {

@@ -1,5 +1,13 @@
 package mfa
 
+import "time"
+
+type Credential struct {
+	SecretCiphertext []byte
+	VerifiedAt       *time.Time
+	LastUsedStep     *int64
+}
+
 type EnrollResponse struct {
 	Secret string `json:"secret"`
 	URI    string `json:"uri"`

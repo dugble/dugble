@@ -74,6 +74,28 @@ func (q *Queries) CreateMessageTemplatePublication(ctx context.Context, arg Crea
 	return i, err
 }
 
+const deleteUnreferencedBroadcastTemplate = `-- name: DeleteUnreferencedBroadcastTemplate :exec
+DELETE FROM message_templates AS mt
+WHERE mt.id = $1
+  AND mt.team_id = $2
+  AND left(mt.alias, length('__broadcast_')) = '__broadcast_'
+  AND NOT EXISTS (
+      SELECT 1
+      FROM broadcasts AS b
+      WHERE b.template_id = mt.id
+  )
+`
+
+type DeleteUnreferencedBroadcastTemplateParams struct {
+	TemplateID uuid.UUID `db:"template_id" json:"template_id"`
+	TeamID     uuid.UUID `db:"team_id" json:"team_id"`
+}
+
+func (q *Queries) DeleteUnreferencedBroadcastTemplate(ctx context.Context, arg DeleteUnreferencedBroadcastTemplateParams) error {
+	_, err := q.db.Exec(ctx, deleteUnreferencedBroadcastTemplate, arg.TemplateID, arg.TeamID)
+	return err
+}
+
 const getMessageTemplateByAlias = `-- name: GetMessageTemplateByAlias :one
 SELECT mt.id, mt.team_id, mt.name, mt.alias, mt.current_version_id, mt.published_version_id, mt.next_version_number, mt.published_at, mt.created_at, mt.updated_at, mt.deleted_at, mt.category
 FROM message_templates AS mt
@@ -145,6 +167,7 @@ SELECT mt.id, mt.team_id, mt.name, mt.alias, mt.current_version_id, mt.published
 FROM message_templates AS mt
 WHERE mt.team_id = $1
   AND mt.deleted_at IS NULL
+  AND (mt.alias IS NULL OR left(mt.alias, length('__broadcast_')) <> '__broadcast_')
 ORDER BY mt.created_at DESC, mt.id DESC
 LIMIT $3
 OFFSET $2
@@ -158,116 +181,6 @@ type ListMessageTemplatesParams struct {
 
 func (q *Queries) ListMessageTemplates(ctx context.Context, arg ListMessageTemplatesParams) ([]MessageTemplate, error) {
 	rows, err := q.db.Query(ctx, listMessageTemplates, arg.TeamID, arg.PageOffset, arg.PageLimit)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []MessageTemplate{}
-	for rows.Next() {
-		var i MessageTemplate
-		if err := rows.Scan(
-			&i.ID,
-			&i.TeamID,
-			&i.Name,
-			&i.Alias,
-			&i.CurrentVersionID,
-			&i.PublishedVersionID,
-			&i.NextVersionNumber,
-			&i.PublishedAt,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-			&i.DeletedAt,
-			&i.Category,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const listMessageTemplatesAfter = `-- name: ListMessageTemplatesAfter :many
-SELECT mt.id, mt.team_id, mt.name, mt.alias, mt.current_version_id, mt.published_version_id, mt.next_version_number, mt.published_at, mt.created_at, mt.updated_at, mt.deleted_at, mt.category
-FROM message_templates AS mt
-WHERE mt.team_id = $1
-  AND mt.deleted_at IS NULL
-  AND (mt.created_at, mt.id) < (
-      SELECT cursor_template.created_at, cursor_template.id
-      FROM message_templates AS cursor_template
-      WHERE cursor_template.id = $2
-        AND cursor_template.team_id = $1
-        AND cursor_template.deleted_at IS NULL
-  )
-ORDER BY mt.created_at DESC, mt.id DESC
-LIMIT $3
-`
-
-type ListMessageTemplatesAfterParams struct {
-	ScopeTeamID uuid.UUID `db:"scope_team_id" json:"scope_team_id"`
-	CursorID    uuid.UUID `db:"cursor_id" json:"cursor_id"`
-	PageLimit   int32     `db:"page_limit" json:"page_limit"`
-}
-
-func (q *Queries) ListMessageTemplatesAfter(ctx context.Context, arg ListMessageTemplatesAfterParams) ([]MessageTemplate, error) {
-	rows, err := q.db.Query(ctx, listMessageTemplatesAfter, arg.ScopeTeamID, arg.CursorID, arg.PageLimit)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []MessageTemplate{}
-	for rows.Next() {
-		var i MessageTemplate
-		if err := rows.Scan(
-			&i.ID,
-			&i.TeamID,
-			&i.Name,
-			&i.Alias,
-			&i.CurrentVersionID,
-			&i.PublishedVersionID,
-			&i.NextVersionNumber,
-			&i.PublishedAt,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-			&i.DeletedAt,
-			&i.Category,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const listMessageTemplatesBefore = `-- name: ListMessageTemplatesBefore :many
-SELECT mt.id, mt.team_id, mt.name, mt.alias, mt.current_version_id, mt.published_version_id, mt.next_version_number, mt.published_at, mt.created_at, mt.updated_at, mt.deleted_at, mt.category
-FROM message_templates AS mt
-WHERE mt.team_id = $1
-  AND mt.deleted_at IS NULL
-  AND (mt.created_at, mt.id) > (
-      SELECT cursor_template.created_at, cursor_template.id
-      FROM message_templates AS cursor_template
-      WHERE cursor_template.id = $2
-        AND cursor_template.team_id = $1
-        AND cursor_template.deleted_at IS NULL
-  )
-ORDER BY mt.created_at ASC, mt.id ASC
-LIMIT $3
-`
-
-type ListMessageTemplatesBeforeParams struct {
-	ScopeTeamID uuid.UUID `db:"scope_team_id" json:"scope_team_id"`
-	CursorID    uuid.UUID `db:"cursor_id" json:"cursor_id"`
-	PageLimit   int32     `db:"page_limit" json:"page_limit"`
-}
-
-func (q *Queries) ListMessageTemplatesBefore(ctx context.Context, arg ListMessageTemplatesBeforeParams) ([]MessageTemplate, error) {
-	rows, err := q.db.Query(ctx, listMessageTemplatesBefore, arg.ScopeTeamID, arg.CursorID, arg.PageLimit)
 	if err != nil {
 		return nil, err
 	}
@@ -331,28 +244,6 @@ func (q *Queries) LockMessageTemplate(ctx context.Context, arg LockMessageTempla
 		&i.Category,
 	)
 	return i, err
-}
-
-const messageTemplateCursorExists = `-- name: MessageTemplateCursorExists :one
-SELECT EXISTS (
-    SELECT 1
-    FROM message_templates AS mt
-    WHERE mt.id = $1
-      AND mt.team_id = $2
-      AND mt.deleted_at IS NULL
-)
-`
-
-type MessageTemplateCursorExistsParams struct {
-	CursorID uuid.UUID `db:"cursor_id" json:"cursor_id"`
-	TeamID   uuid.UUID `db:"team_id" json:"team_id"`
-}
-
-func (q *Queries) MessageTemplateCursorExists(ctx context.Context, arg MessageTemplateCursorExistsParams) (bool, error) {
-	row := q.db.QueryRow(ctx, messageTemplateCursorExists, arg.CursorID, arg.TeamID)
-	var exists bool
-	err := row.Scan(&exists)
-	return exists, err
 }
 
 const publishMessageTemplateVersion = `-- name: PublishMessageTemplateVersion :one

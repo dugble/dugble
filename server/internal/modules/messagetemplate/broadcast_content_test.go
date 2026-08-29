@@ -27,10 +27,10 @@ func TestIsBroadcastTemplate(t *testing.T) {
 
 	internal := "__broadcast_123"
 	public := "welcome"
-	if !IsBroadcastTemplate(Template{Alias: &internal}) {
+	if !isBroadcastTemplate(Template{Alias: &internal}) {
 		t.Fatal("internal broadcast alias was not detected")
 	}
-	if IsBroadcastTemplate(Template{Alias: &public}) || IsBroadcastTemplate(Template{}) {
+	if isBroadcastTemplate(Template{Alias: &public}) || isBroadcastTemplate(Template{}) {
 		t.Fatal("public template was detected as broadcast-owned")
 	}
 }

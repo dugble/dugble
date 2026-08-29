@@ -6,25 +6,21 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
 
 	dbsqlc "github.com/dugble/dugble/server/internal/database/sqlc"
 	"github.com/dugble/dugble/server/pkg/pgconv"
 )
 
-type Credential struct {
-	SecretCiphertext []byte
-	VerifiedAt       *time.Time
-	LastUsedStep     *int64
-}
-
 type Repository struct {
-	db      *pgxpool.Pool
 	queries *dbsqlc.Queries
 }
 
-func NewRepository(db *pgxpool.Pool) *Repository {
-	return &Repository{db: db, queries: dbsqlc.New(db)}
+func NewRepository(queries *dbsqlc.Queries) *Repository {
+	return &Repository{queries: queries}
+}
+
+func (r *Repository) WithTx(tx pgx.Tx) *Repository {
+	return NewRepository(r.queries.WithTx(tx))
 }
 
 func (r *Repository) PutUnverified(ctx context.Context, userID uuid.UUID, ciphertext []byte) error {
@@ -57,12 +53,8 @@ func (r *Repository) RotateSecretCiphertext(ctx context.Context, userID uuid.UUI
 }
 
 func (r *Repository) Confirm(ctx context.Context, userID uuid.UUID, sessionID string, step int64, codeHashes []string) error {
-	tx, err := r.db.Begin(ctx)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	queries := r.queries.WithTx(tx)
+	queries := r.queries
+	var err error
 
 	rows, err := queries.ConfirmTOTPCredential(ctx, dbsqlc.ConfirmTOTPCredentialParams{UserID: userID, LastUsedStep: &step})
 	if err != nil {
@@ -86,7 +78,7 @@ func (r *Repository) Confirm(ctx context.Context, userID uuid.UUID, sessionID st
 	if rows != 1 {
 		return pgx.ErrNoRows
 	}
-	return tx.Commit(ctx)
+	return nil
 }
 
 func (r *Repository) Verify(ctx context.Context, userID uuid.UUID, sessionID string, step int64) error {
@@ -116,12 +108,8 @@ func (r *Repository) UseRecoveryCode(ctx context.Context, userID uuid.UUID, sess
 }
 
 func (r *Repository) Disable(ctx context.Context, userID uuid.UUID, currentSessionID string) error {
-	tx, err := r.db.Begin(ctx)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	queries := r.queries.WithTx(tx)
+	queries := r.queries
+	var err error
 	if err = queries.DeleteTOTPCredential(ctx, dbsqlc.DeleteTOTPCredentialParams{UserID: userID}); err != nil {
 		return err
 	}
@@ -135,7 +123,7 @@ func (r *Repository) Disable(ctx context.Context, userID uuid.UUID, currentSessi
 	if err = queries.DowngradeSessionAfterMFADisable(ctx, dbsqlc.DowngradeSessionAfterMFADisableParams(params)); err != nil {
 		return err
 	}
-	return tx.Commit(ctx)
+	return nil
 }
 
 func (r *Repository) Enabled(ctx context.Context, userID uuid.UUID) (bool, error) {

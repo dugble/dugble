@@ -29,21 +29,3 @@ func TestTemplateMutationResponseContract(t *testing.T) {
 		t.Fatalf("unexpected response: %s", data)
 	}
 }
-
-func TestNormalizeAPIListRequest(t *testing.T) {
-	request := APIListRequest{}
-	if err := normalizeAPIListRequest(&request); err != nil {
-		t.Fatal(err)
-	}
-	if request.Limit != 20 {
-		t.Fatalf("default limit = %d", request.Limit)
-	}
-	if err := normalizeAPIListRequest(&APIListRequest{Limit: 101}); err == nil {
-		t.Fatal("expected invalid limit")
-	}
-	if err := normalizeAPIListRequest(&APIListRequest{After: uuidText, Before: uuidText}); err == nil {
-		t.Fatal("expected mutually exclusive cursors")
-	}
-}
-
-const uuidText = "b6d24b8e-af0b-4c3c-be0c-359bbd97381e"

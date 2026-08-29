@@ -23,6 +23,7 @@ import (
 	apperrors "github.com/dugble/dugble/server/pkg/errors"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 const recoveryCodeCount = 10
@@ -45,6 +46,7 @@ type store interface {
 }
 
 type Service struct {
+	db         *pgxpool.Pool
 	repository store
 	cipher     *security.SecretCipher
 	issuer     string
@@ -64,7 +66,7 @@ type RecipientStore interface {
 	GetNotificationRecipient(context.Context, uuid.UUID) (notifications.Recipient, error)
 }
 
-func NewService(repository store, cipher *security.SecretCipher, issuer string) *Service {
+func NewService(db *pgxpool.Pool, repository store, cipher *security.SecretCipher, issuer string) *Service {
 	return &Service{repository: repository, cipher: cipher, issuer: issuer, now: time.Now}
 }
 
@@ -100,6 +102,40 @@ func (s *Service) Enroll(ctx context.Context) (EnrollResponse, error) {
 	return EnrollResponse{Secret: secret, URI: TOTPURI(s.issuer, principal.Email, secret)}, nil
 }
 
+func (s *Service) transactionRepository(ctx context.Context) (*Repository, pgx.Tx, error) {
+	repository, ok := s.repository.(*Repository)
+	if !ok {
+		return nil, nil, errors.New("MFA repository does not support transactions")
+	}
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	return repository.WithTx(tx), tx, nil
+}
+func (s *Service) confirm(ctx context.Context, userID uuid.UUID, sessionID string, step int64, hashes []string) error {
+	repository, tx, err := s.transactionRepository(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if err = repository.Confirm(ctx, userID, sessionID, step, hashes); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+func (s *Service) disable(ctx context.Context, userID uuid.UUID, sessionID string) error {
+	repository, tx, err := s.transactionRepository(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if err = repository.Disable(ctx, userID, sessionID); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
 func (s *Service) Confirm(ctx context.Context, code string) (ConfirmResponse, error) {
 	principal, err := principalFromContext(ctx)
 	if err != nil {
@@ -117,7 +153,7 @@ func (s *Service) Confirm(ctx context.Context, code string) (ConfirmResponse, er
 	if err != nil {
 		return ConfirmResponse{}, apperrors.NewInternal("Unable to create recovery codes", err)
 	}
-	if err := s.repository.Confirm(ctx, principal.UserID, principal.SessionID, step, hashes); err != nil {
+	if err := s.confirm(ctx, principal.UserID, principal.SessionID, step, hashes); err != nil {
 		return ConfirmResponse{}, apperrors.NewInternal("Unable to confirm MFA enrollment", err)
 	}
 	audit.RecordIdentity(ctx, principal.UserID, audit.Event{Action: "identity.mfa_enabled", ResourceType: "user", ResourceID: principal.UserID.String()})
@@ -177,7 +213,7 @@ func (s *Service) Disable(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if err := s.repository.Disable(ctx, principal.UserID, principal.SessionID); err != nil {
+	if err := s.disable(ctx, principal.UserID, principal.SessionID); err != nil {
 		return apperrors.NewInternal("Unable to disable MFA", err)
 	}
 	audit.RecordIdentity(ctx, principal.UserID, audit.Event{Action: "identity.mfa_disabled", ResourceType: "user", ResourceID: principal.UserID.String()})

@@ -19,7 +19,7 @@ func (h *Handler) Create(c *echo.Context) error {
 	if err := decodeJSON(c, &req, false); err != nil {
 		return err
 	}
-	value, err := h.service.CreateAPI(c.Request().Context(), req)
+	value, err := h.service.Create(c.Request().Context(), req)
 	if err != nil {
 		return httputil.Error(c, err)
 	}
@@ -48,7 +48,7 @@ func (h *Handler) Update(c *echo.Context) error {
 	if err := decodeJSON(c, &req, false); err != nil {
 		return err
 	}
-	value, err := h.service.UpdateAPI(c.Request().Context(), c.Param("broadcast"), req)
+	value, err := h.service.Update(c.Request().Context(), c.Param("broadcast"), req)
 	if err != nil {
 		return httputil.Error(c, err)
 	}
@@ -66,7 +66,7 @@ func (h *Handler) Send(c *echo.Context) error {
 	if err := decodeJSON(c, &req, true); err != nil {
 		return err
 	}
-	value, err := h.service.SendAPI(c.Request().Context(), c.Param("broadcast"), req)
+	value, err := h.service.Send(c.Request().Context(), c.Param("broadcast"), req)
 	if err != nil {
 		return httputil.Error(c, err)
 	}
