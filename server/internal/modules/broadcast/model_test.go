@@ -146,7 +146,7 @@ func TestUpdateRequestNullableFieldsJSONContract(t *testing.T) {
 func TestRenderPreviewUsesBroadcastContent(t *testing.T) {
 	t.Parallel()
 
-	preview := renderPreview(Broadcast{
+	preview, err := RenderBroadcast(Broadcast{
 		FromEmail: "hello@example.com",
 		Subject:   "Hello {{{NAME}}}",
 		HTML:      "<p>Welcome {{{NAME}}}</p>",
@@ -155,6 +155,9 @@ func TestRenderPreviewUsesBroadcastContent(t *testing.T) {
 			"NAME": "default",
 		},
 	}, map[string]any{"NAME": "Ada"})
+	if err != nil {
+		t.Fatalf("RenderBroadcast() error = %v", err)
+	}
 
 	if preview.Subject != "Hello Ada" {
 		t.Fatalf("Subject = %q, want %q", preview.Subject, "Hello Ada")
@@ -164,6 +167,18 @@ func TestRenderPreviewUsesBroadcastContent(t *testing.T) {
 	}
 	if preview.Text == nil || *preview.Text != "Welcome Ada" {
 		t.Fatalf("Text = %#v", preview.Text)
+	}
+}
+
+func TestRenderBroadcastRejectsMissingVariable(t *testing.T) {
+	t.Parallel()
+
+	_, err := RenderBroadcast(Broadcast{
+		Subject: "Hello {{{NAME}}}",
+		HTML:    "<p>Hello</p>",
+	}, nil)
+	if err == nil {
+		t.Fatal("RenderBroadcast() error = nil, want missing variable error")
 	}
 }
 
