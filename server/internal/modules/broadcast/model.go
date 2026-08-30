@@ -53,10 +53,8 @@ type Broadcast struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
-// FanoutRecipient contains the snapshotted recipient plus the broadcast
-// message used by the delivery worker. The template fields are temporary
-// compatibility data until the delivery package is moved to the owned content
-// fields below.
+// FanoutRecipient contains the snapshotted recipient plus the exact broadcast
+// message used by the delivery worker.
 type FanoutRecipient struct {
 	ID              uuid.UUID
 	TeamID          uuid.UUID
@@ -77,10 +75,6 @@ type FanoutRecipient struct {
 
 	VariableBindings map[string]any
 	AttemptCount      int32
-
-	// Deprecated: remove when delivery/broadcast renders owned content.
-	TemplateID        uuid.UUID
-	TemplateVersionID uuid.UUID
 }
 
 // CreateRequest creates a draft by default. Name is optional and defaults to
