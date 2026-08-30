@@ -34,10 +34,6 @@ jobs:
           cache: true
           cache-dependency-path: server/go.sum
 
-      - name: Normalize Go formatting
-        working-directory: server
-        run: go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2 fmt --config ../.golangci.yml ./...
-
       - name: Regenerate sqlc
         working-directory: server
         run: go run github.com/sqlc-dev/sqlc/cmd/sqlc@v1.31.1 generate
@@ -53,7 +49,9 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "277023820+github-actions[bot]@users.noreply.github.com"
-          git add server
+          git add \
+            server/migrations/atlas.sum \
+            server/internal/database/sqlc
           if ! git diff --cached --quiet; then
             git commit -m "regenerate domain database artifacts"
             git push origin "HEAD:${{ github.event.pull_request.head.ref }}"
