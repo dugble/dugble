@@ -14,7 +14,6 @@ import (
 
 	broadcastmodule "github.com/dugble/dugble/server/internal/modules/broadcast"
 	emailmodule "github.com/dugble/dugble/server/internal/modules/email"
-	messagetemplate "github.com/dugble/dugble/server/internal/modules/messagetemplate"
 )
 
 type repository interface {
@@ -30,10 +29,6 @@ type fanoutRepository interface {
 	RetryRecipientFanoutTx(context.Context, pgx.Tx, broadcastmodule.FanoutRecipient, time.Time, string, string) error
 	FailRecipientFanoutTx(context.Context, pgx.Tx, broadcastmodule.FanoutRecipient, string, string) error
 	FinalizeBroadcastFanoutTx(context.Context, pgx.Tx, uuid.UUID, uuid.UUID) (broadcastmodule.Broadcast, error)
-}
-
-type templateRenderer interface {
-	RenderVersionTx(context.Context, pgx.Tx, uuid.UUID, uuid.UUID, uuid.UUID, map[string]any) (messagetemplate.PreviewResponse, error)
 }
 
 type emailEnqueuer interface {
@@ -56,7 +51,6 @@ func (systemClock) Now() time.Time { return time.Now().UTC() }
 type Processor struct {
 	repository  repository
 	fanout      fanoutRepository
-	templates   templateRenderer
 	emails      emailEnqueuer
 	unsubscribe unsubscribeLinker
 	clock       clock
@@ -73,9 +67,6 @@ func NewProcessor(repository repository, dependencies ...any) *Processor {
 		processor.fanout = fanout
 	}
 	for _, dependency := range dependencies {
-		if renderer, ok := dependency.(templateRenderer); ok {
-			processor.templates = renderer
-		}
 		if enqueuer, ok := dependency.(emailEnqueuer); ok {
 			processor.emails = enqueuer
 		}
@@ -112,7 +103,7 @@ func (p *Processor) ProcessBatch(ctx context.Context, batchSize int) error {
 }
 
 func (p *Processor) fanoutConfigured() bool {
-	return p != nil && p.fanout != nil && p.templates != nil && p.emails != nil && p.unsubscribe != nil && p.clock != nil
+	return p != nil && p.fanout != nil && p.emails != nil && p.clock != nil
 }
 
 func (p *Processor) queueDueBroadcasts(ctx context.Context, batchSize int) error {
@@ -201,21 +192,18 @@ func (p *Processor) processNextRecipient(ctx context.Context) (bool, error) {
 		return true, nil
 	}
 
-	unsubscribeURL, err := p.unsubscribe.Link(recipient.ID)
-	if err != nil {
-		return false, fmt.Errorf("create managed unsubscribe link: %w", err)
-	}
 	variables := resolveRecipientVariables(recipient)
-	variables["UNSUBSCRIBE_URL"] = unsubscribeURL
-	variables["RESEND_UNSUBSCRIBE_URL"] = unsubscribeURL
-	rendered, err := p.templates.RenderVersionTx(
-		ctx,
-		tx,
-		recipient.TeamID,
-		recipient.TemplateID,
-		recipient.TemplateVersionID,
-		variables,
-	)
+	unsubscribeURL := ""
+	if p.unsubscribe != nil {
+		unsubscribeURL, err = p.unsubscribe.Link(recipient.ID)
+		if err != nil {
+			return false, fmt.Errorf("create managed unsubscribe link: %w", err)
+		}
+		variables["UNSUBSCRIBE_URL"] = unsubscribeURL
+		variables["RESEND_UNSUBSCRIBE_URL"] = unsubscribeURL
+	}
+
+	rendered, err := broadcastmodule.RenderFanoutRecipient(recipient, variables)
 	if err != nil {
 		return p.recordRecipientFailure(ctx, tx, recipient, classifyRenderFailure(err))
 	}
@@ -315,27 +303,29 @@ func resolveRecipientVariables(recipient broadcastmodule.FanoutRecipient) map[st
 	return variables
 }
 
-func buildEmailRequest(recipient broadcastmodule.FanoutRecipient, rendered messagetemplate.PreviewResponse, unsubscribeURL string) emailmodule.SendRequest {
+func buildEmailRequest(recipient broadcastmodule.FanoutRecipient, rendered broadcastmodule.PreviewResponse, unsubscribeURL string) emailmodule.SendRequest {
 	request := emailmodule.SendRequest{
 		To:      emailmodule.EmailAddressList{{Email: recipient.Email, Name: recipientName(recipient)}},
 		Subject: rendered.Subject,
 		HTML:    rendered.HTML,
-		Headers: map[string]string{
+	}
+	if unsubscribeURL != "" {
+		request.Headers = map[string]string{
 			"List-Unsubscribe":      "<" + unsubscribeURL + ">",
 			"List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
-		},
+		}
 	}
 	if rendered.Text != nil {
 		request.Text = *rendered.Text
 	}
-	if rendered.FromEmail != nil {
-		request.From = &emailmodule.EmailAddress{Email: *rendered.FromEmail}
+	if rendered.FromEmail != "" {
+		request.From = &emailmodule.EmailAddress{Email: rendered.FromEmail}
 		if rendered.FromName != nil {
 			request.From.Name = *rendered.FromName
 		}
 	}
-	if rendered.ReplyTo != nil {
-		request.ReplyTo = emailmodule.EmailAddressList{{Email: *rendered.ReplyTo}}
+	if rendered.ReplyToEmail != nil {
+		request.ReplyTo = emailmodule.EmailAddressList{{Email: *rendered.ReplyToEmail}}
 	}
 	return request
 }
