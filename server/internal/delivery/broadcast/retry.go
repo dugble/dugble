@@ -1,11 +1,9 @@
 package broadcastexecution
 
 import (
-	"errors"
 	"strings"
 	"time"
 
-	messagetemplate "github.com/dugble/dugble/server/internal/modules/messagetemplate"
 	apperrors "github.com/dugble/dugble/server/pkg/errors"
 )
 
@@ -62,24 +60,12 @@ type fanoutFailure struct {
 }
 
 func classifyRenderFailure(err error) fanoutFailure {
-	if errors.Is(err, messagetemplate.ErrVersionNotFound) {
-		return fanoutFailure{
-			code:      apperrors.CodeNotFound,
-			message:   "Pinned template version not found",
-			retryable: false,
-			cause:     err,
-		}
+	return fanoutFailure{
+		code:      apperrors.CodeBadRequest,
+		message:   safeFailureMessage(err.Error()),
+		retryable: false,
+		cause:     err,
 	}
-	message := err.Error()
-	if strings.Contains(message, "render pinned message template version") {
-		return fanoutFailure{
-			code:      apperrors.CodeBadRequest,
-			message:   "Pinned template version could not be rendered",
-			retryable: false,
-			cause:     err,
-		}
-	}
-	return classifyFanoutFailure(err)
 }
 
 func classifyFanoutFailure(err error) fanoutFailure {
