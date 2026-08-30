@@ -7,9 +7,10 @@ The routes and schemas in this document are derived from `server/internal/module
 ## Conventions
 
 - All routes are team-scoped through the authenticated tenant context.
-- Access is controlled by sender-domain permissions; callers need read permission for list/get and create permission for create/verify. Delete requires delete permission.
+- Access is controlled by sender-domain permissions; callers need read permission for list/get, create permission for create/update/verify, and delete permission for delete.
 - JSON responses use the standard `{ "success": true, "data": ... }` envelope.
 - `POST /domains` normally returns `201 Created`. It can return `202 Accepted` while the customer's email infrastructure is still being provisioned.
+- `PATCH /domains/:domain_id` updates the domain's mutable configuration and returns the updated domain.
 - `POST /domains/:domain_id/verify` performs a provider/DNS verification check and returns the updated domain.
 - `DELETE /domains/:domain_id` disables the sender domain and returns the updated domain representation.
 - Domain IDs are UUID strings.
@@ -274,6 +275,59 @@ An invalid UUID returns `400 Bad Request`; a valid UUID that does not belong to 
 
 ---
 
+## Update a sender domain
+
+### `PATCH /domains/:domain_id`
+
+Updates the mutable configuration for a sender domain belonging to the current team. The current public update surface intentionally supports **TLS mode only**. The domain name and provider region are immutable after creation.
+
+#### Path parameters
+
+| Parameter | Type | Description |
+| --- | --- | --- |
+| `domain_id` | string (UUID) | Sender domain ID. |
+
+#### Request body
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `tls` | string | No | TLS mode: `opportunistic` or `enforced`. Omitted means leave the current value unchanged. |
+
+```json
+{
+  "tls": "enforced"
+}
+```
+
+Unknown JSON fields are rejected. `name` and `region` are not accepted update fields.
+
+#### Response
+
+`200 OK` with the updated [Sender domain object](#sender-domain-object).
+
+```json
+{
+  "success": true,
+  "data": {
+    "id": "550e8400-e29b-41d4-a716-446655440000",
+    "team_id": "650e8400-e29b-41d4-a716-446655440000",
+    "name": "example.com",
+    "region": "us-east-1",
+    "status": "verified",
+    "records": [],
+    "tls": "enforced",
+    "health_status": "healthy",
+    "consecutive_health_failures": 0,
+    "created_at": "2026-08-25T08:59:58Z",
+    "updated_at": "2026-08-25T09:10:00Z"
+  }
+}
+```
+
+An invalid TLS value returns `400 Bad Request`. A valid domain ID that is not owned by the current team returns `404 Not Found`. Disabled domains cannot be updated and return `409 Conflict`.
+
+---
+
 ## Verify a sender domain
 
 ### `POST /domains/:domain_id/verify`
@@ -409,5 +463,3 @@ The value is normalized to lowercase before validation.
 
 - `opportunistic` — default.
 - `enforced`.
-
-Although the internal domain service contains an update-configuration method, **there is currently no public `PATCH /domains/:domain_id` route registered**. Frontend code should not build against a domain-update endpoint until one is exposed by the route registration.

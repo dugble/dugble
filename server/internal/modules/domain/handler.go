@@ -66,6 +66,18 @@ func (h *Handler) Create(c *echo.Context) error {
 	return httputil.Created(c, result.Domain)
 }
 
+func (h *Handler) Update(c *echo.Context) error {
+	var req UpdateRequest
+	if err := decodeJSON(c, &req); err != nil {
+		return err
+	}
+	domain, err := h.service.Update(c.Request().Context(), c.Param("domain_id"), req)
+	if err != nil {
+		return httputil.Error(c, err)
+	}
+	return httputil.OK(c, domain)
+}
+
 func (h *Handler) Verify(c *echo.Context) error {
 	domain, err := h.service.Verify(c.Request().Context(), c.Param("domain_id"))
 	if err != nil {
