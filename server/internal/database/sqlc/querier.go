@@ -80,6 +80,7 @@ type Querier interface {
 	BackofficeUpdateTeamStatus(ctx context.Context, arg BackofficeUpdateTeamStatusParams) (int64, error)
 	CancelDomainClaim(ctx context.Context, arg CancelDomainClaimParams) (DomainClaim, error)
 	CancelEmailMessage(ctx context.Context, arg CancelEmailMessageParams) error
+	CancelQueuedBroadcast(ctx context.Context, arg CancelQueuedBroadcastParams) (Broadcast, error)
 	CancelSMSCampaign(ctx context.Context, arg CancelSMSCampaignParams) (SmsCampaign, error)
 	CancelScheduledBroadcast(ctx context.Context, arg CancelScheduledBroadcastParams) (Broadcast, error)
 	CancelTeamPlanChange(ctx context.Context, arg CancelTeamPlanChangeParams) (CancelTeamPlanChangeRow, error)
@@ -388,7 +389,7 @@ type Querier interface {
 	SuppressionCursorExists(ctx context.Context, arg SuppressionCursorExistsParams) (bool, error)
 	TouchSession(ctx context.Context, arg TouchSessionParams) error
 	TouchTeamToken(ctx context.Context, arg TouchTeamTokenParams) error
-	UpdateBroadcastDraft(ctx context.Context, arg UpdateBroadcastDraftParams) (Broadcast, error)
+	UpdateBroadcastDraftOrScheduled(ctx context.Context, arg UpdateBroadcastDraftOrScheduledParams) (Broadcast, error)
 	UpdateContact(ctx context.Context, arg UpdateContactParams) (Contact, error)
 	UpdateContactPropertyFallback(ctx context.Context, arg UpdateContactPropertyFallbackParams) (ContactProperty, error)
 	UpdateDomainConfiguration(ctx context.Context, arg UpdateDomainConfigurationParams) (Domain, error)

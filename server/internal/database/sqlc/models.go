@@ -113,7 +113,7 @@ type Broadcast struct {
 	Status                   string             `db:"status" json:"status"`
 	SegmentID                uuid.UUID          `db:"segment_id" json:"segment_id"`
 	TopicID                  *uuid.UUID         `db:"topic_id" json:"topic_id"`
-	TemplateID               uuid.UUID          `db:"template_id" json:"template_id"`
+	TemplateID               *uuid.UUID         `db:"template_id" json:"template_id"`
 	TemplateVersionID        *uuid.UUID         `db:"template_version_id" json:"template_version_id"`
 	VariableBindings         []byte             `db:"variable_bindings" json:"variable_bindings"`
 	ScheduledAt              pgtype.Timestamptz `db:"scheduled_at" json:"scheduled_at"`
@@ -130,6 +130,13 @@ type Broadcast struct {
 	CreatedAt                pgtype.Timestamptz `db:"created_at" json:"created_at"`
 	UpdatedAt                pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
 	DeletedAt                pgtype.Timestamptz `db:"deleted_at" json:"deleted_at"`
+	FromEmail                *string            `db:"from_email" json:"from_email"`
+	FromName                 *string            `db:"from_name" json:"from_name"`
+	ReplyToEmail             *string            `db:"reply_to_email" json:"reply_to_email"`
+	Subject                  string             `db:"subject" json:"subject"`
+	PreviewText              *string            `db:"preview_text" json:"preview_text"`
+	HtmlBody                 string             `db:"html_body" json:"html_body"`
+	TextBody                 *string            `db:"text_body" json:"text_body"`
 }
 
 type BroadcastRecipient struct {

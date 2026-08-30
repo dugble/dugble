@@ -53,7 +53,7 @@ type ClaimNextBroadcastRecipientForFanoutRow struct {
 	FailedAt          pgtype.Timestamptz `db:"failed_at" json:"failed_at"`
 	CreatedAt         pgtype.Timestamptz `db:"created_at" json:"created_at"`
 	QueuedAt          pgtype.Timestamptz `db:"queued_at" json:"queued_at"`
-	TemplateID        uuid.UUID          `db:"template_id" json:"template_id"`
+	TemplateID        *uuid.UUID         `db:"template_id" json:"template_id"`
 	TemplateVersionID *uuid.UUID         `db:"template_version_id" json:"template_version_id"`
 	VariableBindings  []byte             `db:"variable_bindings" json:"variable_bindings"`
 }
