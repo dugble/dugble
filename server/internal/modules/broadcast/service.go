@@ -3,60 +3,61 @@ package broadcast
 import (
 	"context"
 	"errors"
+	"fmt"
+	"html"
+	"regexp"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
 
 	"github.com/dugble/dugble/server/internal/authz"
-	messagetemplate "github.com/dugble/dugble/server/internal/modules/messagetemplate"
 	apperrors "github.com/dugble/dugble/server/pkg/errors"
 )
 
-type TemplateService interface {
-	Get(context.Context, string) (messagetemplate.Template, error)
-	Preview(context.Context, string, messagetemplate.PreviewRequest) (messagetemplate.PreviewResponse, error)
-}
+var broadcastPlaceholderPattern = regexp.MustCompile(`\{\{\{\s*([A-Za-z][A-Za-z0-9_]*)\s*\}\}\}`)
 
 type Service struct {
 	repository *Repository
-	templates  TemplateService
 }
 
-func NewService(repository *Repository, templates TemplateService) *Service {
-	return &Service{repository: repository, templates: templates}
+// NewService accepts ignored compatibility dependencies so existing registry
+// wiring can move independently from the broadcast module rebuild.
+func NewService(repository *Repository, _ ...any) *Service {
+	return &Service{repository: repository}
 }
 
 func requireTenant(ctx context.Context, permission authz.Permission) (authz.Access, error) {
-	tc, decision := authz.ResolveAccess(ctx, permission)
+	access, decision := authz.ResolveAccess(ctx, permission)
 	if !decision.Allowed {
 		return authz.Access{}, apperrors.NewForbidden(decision.Reason)
 	}
-	return tc, nil
+	return access, nil
 }
 
 func (s *Service) Create(ctx context.Context, req CreateRequest) (Broadcast, error) {
-	inline := createHasInlineContent(req)
-	if inline {
-		if strings.TrimSpace(req.Template) != "" {
-			return Broadcast{}, apperrors.NewBadRequest("template cannot be combined with inline broadcast content")
-		}
-		if strings.TrimSpace(req.Subject) == "" {
-			return Broadcast{}, apperrors.NewBadRequest("subject is required for inline broadcast content")
-		}
-		if strings.TrimSpace(req.HTML) == "" {
-			return Broadcast{}, apperrors.NewBadRequest("html is required for inline broadcast content")
-		}
-	}
-
-	tc, err := requireTenant(ctx, authz.PermissionBroadcastsWrite)
+	access, err := requireTenant(ctx, authz.PermissionBroadcastsWrite)
 	if err != nil {
 		return Broadcast{}, err
 	}
+	if s == nil || s.repository == nil {
+		return Broadcast{}, apperrors.NewInternal("Broadcast service is not configured", nil)
+	}
+
+	req.Subject = strings.TrimSpace(req.Subject)
+	req.HTML = strings.TrimSpace(req.HTML)
+	if req.Subject == "" {
+		return Broadcast{}, apperrors.NewBadRequest("Subject is required")
+	}
+	if req.HTML == "" {
+		return Broadcast{}, apperrors.NewBadRequest("HTML is required")
+	}
 	req.Name = strings.TrimSpace(req.Name)
 	if req.Name == "" {
-		return Broadcast{}, apperrors.NewBadRequest("Broadcast name is required")
+		req.Name = req.Subject
 	}
+	normalizeCreateContent(&req)
+
 	segmentID, err := parseID(req.SegmentID, "Segment id")
 	if err != nil {
 		return Broadcast{}, err
@@ -65,43 +66,36 @@ func (s *Service) Create(ctx context.Context, req CreateRequest) (Broadcast, err
 	if err != nil {
 		return Broadcast{}, err
 	}
-
-	template, err := s.resolveCreateTemplate(ctx, tc.Scope.TeamID, req, inline)
-	if err != nil {
-		return Broadcast{}, err
-	}
 	if req.VariableBindings == nil {
 		req.VariableBindings = map[string]any{}
 	}
-	value, err := s.repository.Create(ctx, tc.Scope.TeamID, segmentID, topicID, uuid.MustParse(template.ID), req)
+	if req.ScheduledAt != nil && !req.Send {
+		return Broadcast{}, apperrors.NewBadRequest("scheduled_at requires send=true")
+	}
+	if req.ScheduledAt != nil && !req.ScheduledAt.After(time.Now()) {
+		return Broadcast{}, apperrors.NewBadRequest("scheduled_at must be in the future")
+	}
+
+	value, err := s.repository.Create(ctx, access.Scope.TeamID, segmentID, topicID, req)
 	if err != nil {
-		if inline {
-			s.cleanupBroadcastContent(ctx, tc.Scope.TeamID, template.ID)
-		}
 		return Broadcast{}, apperrors.NewInternal("Unable to create broadcast", err)
+	}
+	if !req.Send {
+		return value, nil
+	}
+
+	value, err = s.repository.Send(ctx, access.Scope.TeamID, uuid.MustParse(value.ID), req.ScheduledAt)
+	if errors.Is(err, ErrConflict) {
+		return Broadcast{}, apperrors.NewConflict("Broadcast could not be queued")
+	}
+	if err != nil {
+		return Broadcast{}, apperrors.NewInternal("Unable to queue broadcast", err)
 	}
 	return value, nil
 }
 
-func (s *Service) resolveCreateTemplate(ctx context.Context, teamID uuid.UUID, req CreateRequest, inline bool) (messagetemplate.Template, error) {
-	if inline {
-		templates, ok := s.templates.(broadcastContentTemplateService)
-		if !ok {
-			return messagetemplate.Template{}, apperrors.NewInternal("Template service does not support broadcast content", nil)
-		}
-		return templates.CreateBroadcastContent(ctx, teamID, messagetemplate.BroadcastContentRequest{
-			Name: req.Name, Subject: req.Subject, HTML: req.HTML, Text: req.Text,
-			FromEmail: req.FromEmail, FromName: req.FromName, PreviewText: req.PreviewText,
-		})
-	}
-	if s.templates == nil {
-		return messagetemplate.Template{}, apperrors.NewInternal("Template service is not configured", nil)
-	}
-	return s.templates.Get(ctx, strings.TrimSpace(req.Template))
-}
-
 func (s *Service) List(ctx context.Context, req ListRequest) ([]Broadcast, error) {
-	tc, err := requireTenant(ctx, authz.PermissionBroadcastsRead)
+	access, err := requireTenant(ctx, authz.PermissionBroadcastsRead)
 	if err != nil {
 		return nil, err
 	}
@@ -111,7 +105,7 @@ func (s *Service) List(ctx context.Context, req ListRequest) ([]Broadcast, error
 	if req.Offset < 0 {
 		req.Offset = 0
 	}
-	values, err := s.repository.List(ctx, tc.Scope.TeamID, req.Limit, req.Offset)
+	values, err := s.repository.List(ctx, access.Scope.TeamID, req.Limit, req.Offset)
 	if err != nil {
 		return nil, apperrors.NewInternal("Unable to list broadcasts", err)
 	}
@@ -119,7 +113,7 @@ func (s *Service) List(ctx context.Context, req ListRequest) ([]Broadcast, error
 }
 
 func (s *Service) Get(ctx context.Context, identifier string) (Broadcast, error) {
-	tc, err := requireTenant(ctx, authz.PermissionBroadcastsRead)
+	access, err := requireTenant(ctx, authz.PermissionBroadcastsRead)
 	if err != nil {
 		return Broadcast{}, err
 	}
@@ -127,7 +121,7 @@ func (s *Service) Get(ctx context.Context, identifier string) (Broadcast, error)
 	if err != nil {
 		return Broadcast{}, err
 	}
-	value, err := s.repository.Get(ctx, tc.Scope.TeamID, id)
+	value, err := s.repository.Get(ctx, access.Scope.TeamID, id)
 	if errors.Is(err, ErrNotFound) {
 		return Broadcast{}, apperrors.NewNotFound("Broadcast not found")
 	}
@@ -138,20 +132,7 @@ func (s *Service) Get(ctx context.Context, identifier string) (Broadcast, error)
 }
 
 func (s *Service) Update(ctx context.Context, identifier string, req UpdateRequest) (Broadcast, error) {
-	inline := updateHasInlineContent(req)
-	if inline {
-		if req.Template != nil && strings.TrimSpace(*req.Template) != "" {
-			return Broadcast{}, apperrors.NewBadRequest("template cannot be combined with inline broadcast content")
-		}
-		if req.Subject == nil || strings.TrimSpace(*req.Subject) == "" {
-			return Broadcast{}, apperrors.NewBadRequest("subject is required when updating inline broadcast content")
-		}
-		if req.HTML == nil || strings.TrimSpace(*req.HTML) == "" {
-			return Broadcast{}, apperrors.NewBadRequest("html is required when updating inline broadcast content")
-		}
-	}
-
-	tc, err := requireTenant(ctx, authz.PermissionBroadcastsWrite)
+	access, err := requireTenant(ctx, authz.PermissionBroadcastsWrite)
 	if err != nil {
 		return Broadcast{}, err
 	}
@@ -162,96 +143,34 @@ func (s *Service) Update(ctx context.Context, identifier string, req UpdateReque
 	if req.Revision <= 0 {
 		return Broadcast{}, apperrors.NewBadRequest("Revision is required")
 	}
-	current, err := s.repository.Get(ctx, tc.Scope.TeamID, id)
+
+	current, err := s.repository.Get(ctx, access.Scope.TeamID, id)
 	if errors.Is(err, ErrNotFound) {
 		return Broadcast{}, apperrors.NewNotFound("Broadcast not found")
 	}
 	if err != nil {
 		return Broadcast{}, apperrors.NewInternal("Unable to get broadcast", err)
 	}
-	if current.Status != StatusDraft {
-		return Broadcast{}, apperrors.NewConflict("Only draft broadcasts can be updated")
+	if current.Status != StatusDraft && current.Status != StatusScheduled {
+		return Broadcast{}, apperrors.NewConflict("Only draft or scheduled broadcasts can be updated")
 	}
 
-	if req.Name != nil {
-		current.Name = strings.TrimSpace(*req.Name)
-		if current.Name == "" {
-			return Broadcast{}, apperrors.NewBadRequest("Broadcast name is required")
-		}
-	}
-	segmentID := uuid.MustParse(current.SegmentID)
-	if req.SegmentID != nil {
-		segmentID, err = parseID(*req.SegmentID, "Segment id")
-		if err != nil {
-			return Broadcast{}, err
-		}
-	}
-	topicID, err := parseOptionalID(current.TopicID, "Topic id")
+	segmentID, topicID, err := applyUpdate(&current, req)
 	if err != nil {
 		return Broadcast{}, err
 	}
-	if req.TopicID != nil {
-		topicID, err = parseOptionalID(*req.TopicID, "Topic id")
-		if err != nil {
-			return Broadcast{}, err
-		}
+	value, err := s.repository.Update(ctx, access.Scope.TeamID, id, segmentID, topicID, req.Revision, current)
+	if errors.Is(err, ErrConflict) {
+		return Broadcast{}, apperrors.NewConflict("Broadcast was modified or is no longer editable")
 	}
-
-	previousTemplateID := current.TemplateID
-	templateID, createdInline, err := s.resolveUpdateTemplate(ctx, tc.Scope.TeamID, current, req, inline)
 	if err != nil {
-		return Broadcast{}, err
-	}
-	if req.VariableBindings != nil {
-		current.VariableBindings = *req.VariableBindings
-	}
-	value, err := s.repository.Update(ctx, tc.Scope.TeamID, id, segmentID, topicID, templateID, req, current)
-	if err != nil {
-		if createdInline {
-			s.cleanupBroadcastContent(ctx, tc.Scope.TeamID, templateID.String())
-		}
-		if errors.Is(err, ErrConflict) {
-			return Broadcast{}, apperrors.NewConflict("Broadcast was modified or is no longer a draft")
-		}
 		return Broadcast{}, apperrors.NewInternal("Unable to update broadcast", err)
-	}
-	if templateID.String() != previousTemplateID {
-		s.cleanupBroadcastContent(ctx, tc.Scope.TeamID, previousTemplateID)
 	}
 	return value, nil
 }
 
-func (s *Service) resolveUpdateTemplate(ctx context.Context, teamID uuid.UUID, current Broadcast, req UpdateRequest, inline bool) (uuid.UUID, bool, error) {
-	if inline {
-		templates, ok := s.templates.(broadcastContentTemplateService)
-		if !ok {
-			return uuid.Nil, false, apperrors.NewInternal("Template service does not support broadcast content", nil)
-		}
-		template, err := templates.CreateBroadcastContent(ctx, teamID, messagetemplate.BroadcastContentRequest{
-			Name: current.Name, Subject: *req.Subject, HTML: *req.HTML,
-			Text: pointerPointerValue(req.Text), FromEmail: pointerPointerValue(req.FromEmail),
-			FromName: pointerPointerValue(req.FromName), PreviewText: pointerPointerValue(req.PreviewText),
-		})
-		if err != nil {
-			return uuid.Nil, false, err
-		}
-		return uuid.MustParse(template.ID), true, nil
-	}
-	if req.Template == nil {
-		return uuid.MustParse(current.TemplateID), false, nil
-	}
-	if s.templates == nil {
-		return uuid.Nil, false, apperrors.NewInternal("Template service is not configured", nil)
-	}
-	template, err := s.templates.Get(ctx, strings.TrimSpace(*req.Template))
-	if err != nil {
-		return uuid.Nil, false, err
-	}
-	return uuid.MustParse(template.ID), false, nil
-}
-
 func (s *Service) Delete(ctx context.Context, identifier string) (Broadcast, error) {
-	tc, err := requireTenant(ctx, authz.PermissionBroadcastsWrite)
+	access, err := requireTenant(ctx, authz.PermissionBroadcastsWrite)
 	if err != nil {
 		return Broadcast{}, err
 	}
@@ -259,7 +178,7 @@ func (s *Service) Delete(ctx context.Context, identifier string) (Broadcast, err
 	if err != nil {
 		return Broadcast{}, err
 	}
-	value, err := s.repository.Delete(ctx, tc.Scope.TeamID, id)
+	value, err := s.repository.Delete(ctx, access.Scope.TeamID, id)
 	if errors.Is(err, ErrConflict) {
 		return Broadcast{}, apperrors.NewConflict("Only draft or canceled broadcasts can be deleted")
 	}
@@ -270,7 +189,7 @@ func (s *Service) Delete(ctx context.Context, identifier string) (Broadcast, err
 }
 
 func (s *Service) Send(ctx context.Context, identifier string, req SendRequest) (Broadcast, error) {
-	tc, err := requireTenant(ctx, authz.PermissionBroadcastsSend)
+	access, err := requireTenant(ctx, authz.PermissionBroadcastsSend)
 	if err != nil {
 		return Broadcast{}, err
 	}
@@ -278,23 +197,15 @@ func (s *Service) Send(ctx context.Context, identifier string, req SendRequest) 
 	if err != nil {
 		return Broadcast{}, err
 	}
-	current, err := s.repository.Get(ctx, tc.Scope.TeamID, id)
-	if errors.Is(err, ErrNotFound) {
-		return Broadcast{}, apperrors.NewNotFound("Broadcast not found")
-	}
-	if err != nil {
-		return Broadcast{}, apperrors.NewInternal("Unable to get broadcast", err)
-	}
-	versionID, err := s.publishedVersionID(ctx, tc.Scope.TeamID, current.TemplateID)
-	if err != nil {
-		return Broadcast{}, err
-	}
 	if req.ScheduledAt != nil && !req.ScheduledAt.After(time.Now()) {
 		return Broadcast{}, apperrors.NewBadRequest("scheduled_at must be in the future")
 	}
-	value, err := s.repository.Send(ctx, tc.Scope.TeamID, id, versionID, req.ScheduledAt)
+	value, err := s.repository.Send(ctx, access.Scope.TeamID, id, req.ScheduledAt)
+	if errors.Is(err, ErrNotFound) {
+		return Broadcast{}, apperrors.NewNotFound("Broadcast not found")
+	}
 	if errors.Is(err, ErrConflict) {
-		return Broadcast{}, apperrors.NewConflict("Only draft broadcasts can be sent")
+		return Broadcast{}, apperrors.NewConflict("Only draft broadcasts can be sent; scheduled broadcasts can only be rescheduled")
 	}
 	if err != nil {
 		return Broadcast{}, apperrors.NewInternal("Unable to send broadcast", err)
@@ -302,31 +213,8 @@ func (s *Service) Send(ctx context.Context, identifier string, req SendRequest) 
 	return value, nil
 }
 
-func (s *Service) publishedVersionID(ctx context.Context, teamID uuid.UUID, templateID string) (uuid.UUID, error) {
-	if templates, ok := s.templates.(broadcastContentTemplateService); ok {
-		versionID, internal, err := templates.BroadcastPublishedVersion(ctx, teamID, templateID)
-		if err != nil {
-			return uuid.Nil, err
-		}
-		if internal {
-			return uuid.MustParse(versionID), nil
-		}
-	}
-	if s.templates == nil {
-		return uuid.Nil, apperrors.NewInternal("Template service is not configured", nil)
-	}
-	template, err := s.templates.Get(ctx, templateID)
-	if err != nil {
-		return uuid.Nil, err
-	}
-	if template.PublishedVersionID == nil {
-		return uuid.Nil, apperrors.NewConflict("Broadcast template must have a published version")
-	}
-	return uuid.MustParse(*template.PublishedVersionID), nil
-}
-
 func (s *Service) Cancel(ctx context.Context, identifier string) (Broadcast, error) {
-	tc, err := requireTenant(ctx, authz.PermissionBroadcastsSend)
+	access, err := requireTenant(ctx, authz.PermissionBroadcastsSend)
 	if err != nil {
 		return Broadcast{}, err
 	}
@@ -334,9 +222,12 @@ func (s *Service) Cancel(ctx context.Context, identifier string) (Broadcast, err
 	if err != nil {
 		return Broadcast{}, err
 	}
-	value, err := s.repository.Cancel(ctx, tc.Scope.TeamID, id)
+	value, err := s.repository.Cancel(ctx, access.Scope.TeamID, id)
+	if errors.Is(err, ErrNotFound) {
+		return Broadcast{}, apperrors.NewNotFound("Broadcast not found")
+	}
 	if errors.Is(err, ErrConflict) {
-		return Broadcast{}, apperrors.NewConflict("Only scheduled broadcasts can be canceled")
+		return Broadcast{}, apperrors.NewConflict("Only scheduled or queued broadcasts can be canceled")
 	}
 	if err != nil {
 		return Broadcast{}, apperrors.NewInternal("Unable to cancel broadcast", err)
@@ -344,16 +235,20 @@ func (s *Service) Cancel(ctx context.Context, identifier string) (Broadcast, err
 	return value, nil
 }
 
-func (s *Service) Preview(ctx context.Context, identifier string, req PreviewRequest) (messagetemplate.PreviewResponse, error) {
+func (s *Service) Preview(ctx context.Context, identifier string, req PreviewRequest) (PreviewResponse, error) {
 	value, err := s.Get(ctx, identifier)
 	if err != nil {
-		return messagetemplate.PreviewResponse{}, err
+		return PreviewResponse{}, err
 	}
-	return s.templates.Preview(ctx, value.TemplateID, messagetemplate.PreviewRequest{VersionID: pointerValue(value.TemplateVersionID), Variables: req.Variables})
+	preview, err := RenderBroadcast(value, req.Variables)
+	if err != nil {
+		return PreviewResponse{}, apperrors.NewBadRequest(err.Error())
+	}
+	return preview, nil
 }
 
 func (s *Service) ListRecipients(ctx context.Context, identifier string, req ListRequest) ([]Recipient, error) {
-	tc, err := requireTenant(ctx, authz.PermissionBroadcastsRead)
+	access, err := requireTenant(ctx, authz.PermissionBroadcastsRead)
 	if err != nil {
 		return nil, err
 	}
@@ -367,10 +262,12 @@ func (s *Service) ListRecipients(ctx context.Context, identifier string, req Lis
 	if req.Offset < 0 {
 		req.Offset = 0
 	}
-	if _, err = s.repository.Get(ctx, tc.Scope.TeamID, id); errors.Is(err, ErrNotFound) {
+	if _, err = s.repository.Get(ctx, access.Scope.TeamID, id); errors.Is(err, ErrNotFound) {
 		return nil, apperrors.NewNotFound("Broadcast not found")
+	} else if err != nil {
+		return nil, apperrors.NewInternal("Unable to get broadcast", err)
 	}
-	values, err := s.repository.ListRecipients(ctx, tc.Scope.TeamID, id, req.Limit, req.Offset)
+	values, err := s.repository.ListRecipients(ctx, access.Scope.TeamID, id, req.Limit, req.Offset)
 	if err != nil {
 		return nil, apperrors.NewInternal("Unable to list broadcast recipients", err)
 	}
@@ -378,7 +275,7 @@ func (s *Service) ListRecipients(ctx context.Context, identifier string, req Lis
 }
 
 func (s *Service) GetExclusionSummary(ctx context.Context, identifier string) (ExclusionSummary, error) {
-	tc, err := requireTenant(ctx, authz.PermissionBroadcastsRead)
+	access, err := requireTenant(ctx, authz.PermissionBroadcastsRead)
 	if err != nil {
 		return ExclusionSummary{}, err
 	}
@@ -386,12 +283,12 @@ func (s *Service) GetExclusionSummary(ctx context.Context, identifier string) (E
 	if err != nil {
 		return ExclusionSummary{}, err
 	}
-	if _, err = s.repository.Get(ctx, tc.Scope.TeamID, id); errors.Is(err, ErrNotFound) {
+	if _, err = s.repository.Get(ctx, access.Scope.TeamID, id); errors.Is(err, ErrNotFound) {
 		return ExclusionSummary{}, apperrors.NewNotFound("Broadcast not found")
 	} else if err != nil {
 		return ExclusionSummary{}, apperrors.NewInternal("Unable to get broadcast", err)
 	}
-	summary, err := s.repository.GetExclusionSummary(ctx, tc.Scope.TeamID, id)
+	summary, err := s.repository.GetExclusionSummary(ctx, access.Scope.TeamID, id)
 	if err != nil {
 		return ExclusionSummary{}, apperrors.NewInternal("Unable to summarize excluded recipients", err)
 	}
@@ -399,7 +296,7 @@ func (s *Service) GetExclusionSummary(ctx context.Context, identifier string) (E
 }
 
 func (s *Service) GetAnalytics(ctx context.Context, identifier string) (Analytics, error) {
-	tc, err := requireTenant(ctx, authz.PermissionBroadcastsRead)
+	access, err := requireTenant(ctx, authz.PermissionBroadcastsRead)
 	if err != nil {
 		return Analytics{}, err
 	}
@@ -407,7 +304,7 @@ func (s *Service) GetAnalytics(ctx context.Context, identifier string) (Analytic
 	if err != nil {
 		return Analytics{}, err
 	}
-	analytics, err := s.repository.GetAnalytics(ctx, tc.Scope.TeamID, id)
+	analytics, err := s.repository.GetAnalytics(ctx, access.Scope.TeamID, id)
 	if errors.Is(err, ErrNotFound) {
 		return Analytics{}, apperrors.NewNotFound("Broadcast not found")
 	}
@@ -418,7 +315,7 @@ func (s *Service) GetAnalytics(ctx context.Context, identifier string) (Analytic
 }
 
 func (s *Service) Duplicate(ctx context.Context, identifier string, req DuplicateRequest) (Broadcast, error) {
-	tc, err := requireTenant(ctx, authz.PermissionBroadcastsWrite)
+	access, err := requireTenant(ctx, authz.PermissionBroadcastsWrite)
 	if err != nil {
 		return Broadcast{}, err
 	}
@@ -428,9 +325,16 @@ func (s *Service) Duplicate(ctx context.Context, identifier string, req Duplicat
 	}
 	name := strings.TrimSpace(req.Name)
 	if name == "" {
-		return Broadcast{}, apperrors.NewBadRequest("Broadcast name is required")
+		source, getErr := s.repository.Get(ctx, access.Scope.TeamID, id)
+		if errors.Is(getErr, ErrNotFound) {
+			return Broadcast{}, apperrors.NewNotFound("Broadcast not found")
+		}
+		if getErr != nil {
+			return Broadcast{}, apperrors.NewInternal("Unable to get broadcast", getErr)
+		}
+		name = source.Name + " Copy"
 	}
-	value, err := s.repository.Duplicate(ctx, tc.Scope.TeamID, id, name)
+	value, err := s.repository.Duplicate(ctx, access.Scope.TeamID, id, name)
 	if errors.Is(err, ErrNotFound) {
 		return Broadcast{}, apperrors.NewNotFound("Broadcast not found")
 	}
@@ -440,34 +344,208 @@ func (s *Service) Duplicate(ctx context.Context, identifier string, req Duplicat
 	return value, nil
 }
 
-type broadcastContentTemplateService interface {
-	CreateBroadcastContent(context.Context, uuid.UUID, messagetemplate.BroadcastContentRequest) (messagetemplate.Template, error)
-	BroadcastPublishedVersion(context.Context, uuid.UUID, string) (string, bool, error)
+func normalizeCreateContent(req *CreateRequest) {
+	req.FromEmail = normalizeOptionalString(req.FromEmail)
+	req.FromName = normalizeOptionalString(req.FromName)
+	req.ReplyToEmail = normalizeOptionalString(req.ReplyToEmail)
+	req.PreviewText = normalizeOptionalString(req.PreviewText)
+	req.Text = normalizeOptionalString(req.Text)
 }
 
-type broadcastContentCleanupService interface {
-	DeleteBroadcastContentIfUnreferenced(context.Context, uuid.UUID, string) error
-}
-
-func (s *Service) cleanupBroadcastContent(ctx context.Context, teamID uuid.UUID, templateID string) {
-	cleanup, ok := s.templates.(broadcastContentCleanupService)
-	if !ok {
-		return
+func applyUpdate(current *Broadcast, req UpdateRequest) (uuid.UUID, *uuid.UUID, error) {
+	if req.Name != nil {
+		name := strings.TrimSpace(*req.Name)
+		if name == "" {
+			return uuid.Nil, nil, apperrors.NewBadRequest("Broadcast name cannot be empty")
+		}
+		current.Name = name
 	}
-	_ = cleanup.DeleteBroadcastContentIfUnreferenced(ctx, teamID, templateID)
+	segmentID := uuid.MustParse(current.SegmentID)
+	var err error
+	if req.SegmentID != nil {
+		segmentID, err = parseID(*req.SegmentID, "Segment id")
+		if err != nil {
+			return uuid.Nil, nil, err
+		}
+		current.SegmentID = segmentID.String()
+	}
+	topicID, err := parseOptionalID(current.TopicID, "Topic id")
+	if err != nil {
+		return uuid.Nil, nil, err
+	}
+	if req.TopicID != nil {
+		topicID, err = parseOptionalID(*req.TopicID, "Topic id")
+		if err != nil {
+			return uuid.Nil, nil, err
+		}
+		current.TopicID = uuidStringPointer(topicID)
+	}
+	if req.FromEmail != nil {
+		current.FromEmail = optionalStringValue(normalizeOptionalString(*req.FromEmail))
+	}
+	if req.FromName != nil {
+		current.FromName = normalizeOptionalString(*req.FromName)
+	}
+	if req.ReplyToEmail != nil {
+		current.ReplyToEmail = normalizeOptionalString(*req.ReplyToEmail)
+	}
+	if req.Subject != nil {
+		current.Subject = strings.TrimSpace(*req.Subject)
+		if current.Subject == "" {
+			return uuid.Nil, nil, apperrors.NewBadRequest("Subject cannot be empty")
+		}
+	}
+	if req.PreviewText != nil {
+		current.PreviewText = normalizeOptionalString(*req.PreviewText)
+	}
+	if req.HTML != nil {
+		current.HTML = strings.TrimSpace(*req.HTML)
+		if current.HTML == "" {
+			return uuid.Nil, nil, apperrors.NewBadRequest("HTML cannot be empty")
+		}
+	}
+	if req.Text != nil {
+		current.Text = normalizeOptionalString(*req.Text)
+	}
+	if req.VariableBindings != nil {
+		current.VariableBindings = *req.VariableBindings
+		if current.VariableBindings == nil {
+			current.VariableBindings = map[string]any{}
+		}
+	}
+	return segmentID, topicID, nil
 }
 
-func createHasInlineContent(req CreateRequest) bool {
-	return strings.TrimSpace(req.Subject) != "" || strings.TrimSpace(req.HTML) != "" || req.Text != nil || req.FromEmail != nil || req.FromName != nil || req.PreviewText != nil
-}
-
-func updateHasInlineContent(req UpdateRequest) bool {
-	return req.Subject != nil || req.HTML != nil || req.Text != nil || req.FromEmail != nil || req.FromName != nil || req.PreviewText != nil
-}
-
-func pointerPointerValue(value **string) *string {
+func normalizeOptionalString(value *string) *string {
 	if value == nil {
 		return nil
 	}
+	trimmed := strings.TrimSpace(*value)
+	if trimmed == "" {
+		return nil
+	}
+	return &trimmed
+}
+
+func optionalStringValue(value *string) string {
+	if value == nil {
+		return ""
+	}
 	return *value
+}
+
+func uuidStringPointer(value *uuid.UUID) *string {
+	if value == nil {
+		return nil
+	}
+	text := value.String()
+	return &text
+}
+
+// RenderBroadcast renders a broadcast-owned message with the supplied values.
+// Broadcast variable bindings provide defaults; supplied values win so fanout
+// can overlay recipient data and managed variables such as unsubscribe links.
+func RenderBroadcast(value Broadcast, supplied map[string]any) (PreviewResponse, error) {
+	bindings := mergeBindings(value.VariableBindings, supplied)
+	return renderContent(
+		optionalString(value.FromEmail), value.FromName, value.ReplyToEmail,
+		value.Subject, value.PreviewText, value.HTML, value.Text, bindings,
+	)
+}
+
+// RenderFanoutRecipient renders the immutable message snapshot claimed together
+// with a recipient. It deliberately performs no template lookup.
+func RenderFanoutRecipient(recipient FanoutRecipient, supplied map[string]any) (PreviewResponse, error) {
+	bindings := mergeBindings(recipient.VariableBindings, supplied)
+	return renderContent(
+		recipient.FromEmail, recipient.FromName, recipient.ReplyToEmail,
+		recipient.Subject, recipient.PreviewText, recipient.HTML, recipient.Text, bindings,
+	)
+}
+
+func renderContent(
+	fromEmail, fromName, replyTo *string,
+	subject string,
+	previewText *string,
+	htmlBody string,
+	textBody *string,
+	bindings map[string]any,
+) (PreviewResponse, error) {
+	renderedSubject, err := renderString(subject, bindings, false)
+	if err != nil {
+		return PreviewResponse{}, err
+	}
+	renderedHTML, err := renderString(htmlBody, bindings, true)
+	if err != nil {
+		return PreviewResponse{}, err
+	}
+	renderedPreview, err := renderOptionalString(previewText, bindings, false)
+	if err != nil {
+		return PreviewResponse{}, err
+	}
+	renderedText, err := renderOptionalString(textBody, bindings, false)
+	if err != nil {
+		return PreviewResponse{}, err
+	}
+	return PreviewResponse{
+		FromEmail:    optionalStringValue(fromEmail),
+		FromName:     fromName,
+		ReplyToEmail: replyTo,
+		Subject:      renderedSubject,
+		PreviewText:  renderedPreview,
+		HTML:         renderedHTML,
+		Text:         renderedText,
+	}, nil
+}
+
+func mergeBindings(base, supplied map[string]any) map[string]any {
+	values := make(map[string]any, len(base)+len(supplied))
+	for key, value := range base {
+		values[key] = value
+	}
+	for key, value := range supplied {
+		values[key] = value
+	}
+	return values
+}
+
+func renderString(input string, values map[string]any, escape bool) (string, error) {
+	var renderErr error
+	output := broadcastPlaceholderPattern.ReplaceAllStringFunc(input, func(match string) string {
+		parts := broadcastPlaceholderPattern.FindStringSubmatch(match)
+		key := strings.TrimSpace(parts[1])
+		value, ok := values[key]
+		if !ok || value == nil {
+			renderErr = fmt.Errorf("broadcast variable %s is required", key)
+			return match
+		}
+		text := fmt.Sprint(value)
+		if escape {
+			return html.EscapeString(text)
+		}
+		return text
+	})
+	if renderErr != nil {
+		return "", renderErr
+	}
+	return output, nil
+}
+
+func renderOptionalString(input *string, values map[string]any, escape bool) (*string, error) {
+	if input == nil {
+		return nil, nil
+	}
+	value, err := renderString(*input, values, escape)
+	if err != nil {
+		return nil, err
+	}
+	return &value, nil
+}
+
+func optionalString(value string) *string {
+	if strings.TrimSpace(value) == "" {
+		return nil
+	}
+	copy := value
+	return &copy
 }

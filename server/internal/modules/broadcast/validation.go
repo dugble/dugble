@@ -26,10 +26,3 @@ func parseOptionalID(value *string, label string) (*uuid.UUID, error) {
 	}
 	return &id, nil
 }
-
-func pointerValue(value *string) string {
-	if value == nil {
-		return ""
-	}
-	return *value
-}

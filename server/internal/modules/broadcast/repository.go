@@ -40,14 +40,16 @@ func NewRepositoryWithEventEmitter(db *pgxpool.Pool, emitter eventEmitter) *Repo
 	return &Repository{db: db, queries: dbsqlc.New(db), emitter: emitter}
 }
 
-func (r *Repository) Create(ctx context.Context, teamID, segmentID uuid.UUID, topicID *uuid.UUID, templateID uuid.UUID, req CreateRequest) (Broadcast, error) {
-	bindings, err := json.Marshal(req.VariableBindings)
+func (r *Repository) Create(ctx context.Context, teamID, segmentID uuid.UUID, topicID *uuid.UUID, req CreateRequest) (Broadcast, error) {
+	bindings, err := encodeBindings(req.VariableBindings)
 	if err != nil {
-		return Broadcast{}, fmt.Errorf("encode broadcast variable bindings: %w", err)
+		return Broadcast{}, err
 	}
 	row, err := r.queries.CreateBroadcast(ctx, dbsqlc.CreateBroadcastParams{
 		TeamID: teamID, Name: req.Name, SegmentID: segmentID, TopicID: topicID,
-		TemplateID: templateID, VariableBindings: bindings,
+		FromEmail: req.FromEmail, FromName: req.FromName, ReplyToEmail: req.ReplyToEmail,
+		Subject: req.Subject, PreviewText: req.PreviewText, HtmlBody: req.HTML, TextBody: req.Text,
+		VariableBindings: bindings,
 	})
 	if err != nil {
 		return Broadcast{}, fmt.Errorf("create broadcast: %w", err)
@@ -93,14 +95,16 @@ func (r *Repository) Get(ctx context.Context, teamID, id uuid.UUID) (Broadcast, 
 	return broadcastFromSQLC(row)
 }
 
-func (r *Repository) Update(ctx context.Context, teamID, id, segmentID uuid.UUID, topicID *uuid.UUID, templateID uuid.UUID, req UpdateRequest, current Broadcast) (Broadcast, error) {
-	bindings, err := json.Marshal(current.VariableBindings)
+func (r *Repository) Update(ctx context.Context, teamID, id, segmentID uuid.UUID, topicID *uuid.UUID, revision int64, current Broadcast) (Broadcast, error) {
+	bindings, err := encodeBindings(current.VariableBindings)
 	if err != nil {
-		return Broadcast{}, fmt.Errorf("encode broadcast variable bindings: %w", err)
+		return Broadcast{}, err
 	}
-	row, err := r.queries.UpdateBroadcastDraft(ctx, dbsqlc.UpdateBroadcastDraftParams{
-		Name: current.Name, SegmentID: segmentID, TopicID: topicID, TemplateID: templateID,
-		VariableBindings: bindings, ID: id, TeamID: teamID, Revision: req.Revision,
+	row, err := r.queries.UpdateBroadcastDraftOrScheduled(ctx, dbsqlc.UpdateBroadcastDraftOrScheduledParams{
+		Name: current.Name, SegmentID: segmentID, TopicID: topicID,
+		FromEmail: stringPointer(current.FromEmail), FromName: current.FromName, ReplyToEmail: current.ReplyToEmail,
+		Subject: current.Subject, PreviewText: current.PreviewText, HtmlBody: current.HTML, TextBody: current.Text,
+		VariableBindings: bindings, ID: id, TeamID: teamID, Revision: revision,
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Broadcast{}, ErrConflict
@@ -111,7 +115,10 @@ func (r *Repository) Update(ctx context.Context, teamID, id, segmentID uuid.UUID
 	return broadcastFromSQLC(row)
 }
 
-func (r *Repository) Send(ctx context.Context, teamID, id, versionID uuid.UUID, scheduledAt any) (Broadcast, error) {
+func (r *Repository) Send(ctx context.Context, teamID, id uuid.UUID, scheduledAt *time.Time) (Broadcast, error) {
+	if r == nil || r.db == nil || r.queries == nil {
+		return Broadcast{}, errors.New("broadcast repository is not configured")
+	}
 	tx, err := r.db.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return Broadcast{}, fmt.Errorf("begin broadcast send: %w", err)
@@ -119,24 +126,35 @@ func (r *Repository) Send(ctx context.Context, teamID, id, versionID uuid.UUID, 
 	defer func() { _ = tx.Rollback(ctx) }()
 	queries := r.queries.WithTx(tx)
 
+	currentRow, err := queries.GetBroadcast(ctx, dbsqlc.GetBroadcastParams{ID: id, TeamID: teamID})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Broadcast{}, ErrNotFound
+	}
+	if err != nil {
+		return Broadcast{}, fmt.Errorf("load broadcast before send: %w", err)
+	}
+	if scheduledAt == nil && currentRow.Status != StatusDraft {
+		return Broadcast{}, ErrConflict
+	}
+	if scheduledAt != nil && currentRow.Status != StatusDraft && currentRow.Status != StatusScheduled {
+		return Broadcast{}, ErrConflict
+	}
+
 	var row dbsqlc.Broadcast
 	eventType := platformevent.TypeBroadcastQueued
 	reason := "immediate_send"
+	fromStatus := currentRow.Status
 	if scheduledAt == nil {
-		row, err = queries.QueueBroadcast(ctx, dbsqlc.QueueBroadcastParams{TemplateVersionID: &versionID, ID: id, TeamID: teamID})
+		row, err = queries.QueueBroadcast(ctx, dbsqlc.QueueBroadcastParams{ID: id, TeamID: teamID})
 	} else {
-		scheduled, ok := scheduledTime(scheduledAt)
-		if !ok {
-			return Broadcast{}, errors.New("invalid scheduled broadcast time")
-		}
 		row, err = queries.ScheduleBroadcast(ctx, dbsqlc.ScheduleBroadcastParams{
-			TemplateVersionID: &versionID,
-			ScheduledAt:       pgconv.TimestamptzFromTime(scheduled),
-			ID:                id,
-			TeamID:            teamID,
+			ScheduledAt: pgconv.TimestamptzFromTime(*scheduledAt), ID: id, TeamID: teamID,
 		})
 		eventType = platformevent.TypeBroadcastScheduled
 		reason = "scheduled_send"
+		if fromStatus == StatusScheduled {
+			reason = "rescheduled"
+		}
 	}
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Broadcast{}, ErrConflict
@@ -148,7 +166,7 @@ func (r *Repository) Send(ctx context.Context, teamID, id, versionID uuid.UUID, 
 	if err != nil {
 		return Broadcast{}, err
 	}
-	if err := emitBroadcastEvent(ctx, tx, r.emitter, eventType, value, StatusDraft, reason, nil); err != nil {
+	if err := emitBroadcastEvent(ctx, tx, r.emitter, eventType, value, fromStatus, reason, nil); err != nil {
 		return Broadcast{}, fmt.Errorf("emit broadcast lifecycle event: %w", err)
 	}
 	if err := tx.Commit(ctx); err != nil {
@@ -203,9 +221,22 @@ func (r *Repository) MarkFailed(ctx context.Context, teamID, id uuid.UUID, phase
 }
 
 func (r *Repository) Cancel(ctx context.Context, teamID, id uuid.UUID) (Broadcast, error) {
-	return r.transition(ctx, platformevent.TypeBroadcastCanceled, StatusScheduled, "user_canceled", nil, func(q *dbsqlc.Queries) (dbsqlc.Broadcast, error) {
-		return q.CancelScheduledBroadcast(ctx, dbsqlc.CancelScheduledBroadcastParams{ID: id, TeamID: teamID})
-	})
+	current, err := r.Get(ctx, teamID, id)
+	if err != nil {
+		return Broadcast{}, err
+	}
+	switch current.Status {
+	case StatusScheduled:
+		return r.transition(ctx, platformevent.TypeBroadcastCanceled, StatusScheduled, "schedule_canceled", nil, func(q *dbsqlc.Queries) (dbsqlc.Broadcast, error) {
+			return q.CancelScheduledBroadcast(ctx, dbsqlc.CancelScheduledBroadcastParams{ID: id, TeamID: teamID})
+		})
+	case StatusQueued:
+		return r.transition(ctx, platformevent.TypeBroadcastCanceled, StatusQueued, "execution_canceled", nil, func(q *dbsqlc.Queries) (dbsqlc.Broadcast, error) {
+			return q.CancelQueuedBroadcast(ctx, dbsqlc.CancelQueuedBroadcastParams{ID: id, TeamID: teamID})
+		})
+	default:
+		return Broadcast{}, ErrConflict
+	}
 }
 
 func (r *Repository) transition(ctx context.Context, eventType platformevent.Type, from, reason string, failure map[string]any, update func(*dbsqlc.Queries) (dbsqlc.Broadcast, error)) (Broadcast, error) {
@@ -246,9 +277,7 @@ func (r *Repository) Delete(ctx context.Context, teamID, id uuid.UUID) (Broadcas
 }
 
 func (r *Repository) ListRecipients(ctx context.Context, teamID, broadcastID uuid.UUID, limit, offset int32) ([]Recipient, error) {
-	rows, err := r.queries.ListBroadcastRecipients(ctx, dbsqlc.ListBroadcastRecipientsParams{
-		TeamID: teamID, BroadcastID: broadcastID, PageLimit: limit, PageOffset: offset,
-	})
+	rows, err := r.queries.ListBroadcastRecipients(ctx, dbsqlc.ListBroadcastRecipientsParams{TeamID: teamID, BroadcastID: broadcastID, PageLimit: limit, PageOffset: offset})
 	if err != nil {
 		return nil, fmt.Errorf("list broadcast recipients: %w", err)
 	}
@@ -264,17 +293,11 @@ func (r *Repository) ListRecipients(ctx context.Context, teamID, broadcastID uui
 }
 
 func (r *Repository) GetExclusionSummary(ctx context.Context, teamID, broadcastID uuid.UUID) (ExclusionSummary, error) {
-	rows, err := r.queries.GetBroadcastExclusionSummary(ctx, dbsqlc.GetBroadcastExclusionSummaryParams{
-		TeamID: teamID, BroadcastID: broadcastID,
-	})
+	rows, err := r.queries.GetBroadcastExclusionSummary(ctx, dbsqlc.GetBroadcastExclusionSummaryParams{TeamID: teamID, BroadcastID: broadcastID})
 	if err != nil {
 		return ExclusionSummary{}, fmt.Errorf("query broadcast exclusion summary: %w", err)
 	}
-	summary := ExclusionSummary{
-		Object:      "broadcast.exclusion_summary",
-		BroadcastID: broadcastID.String(),
-		Reasons:     make(map[string]int64),
-	}
+	summary := ExclusionSummary{Object: "broadcast.exclusion_summary", BroadcastID: broadcastID.String(), Reasons: make(map[string]int64)}
 	for _, row := range rows {
 		summary.Reasons[row.Reason] = row.RecipientCount
 		summary.Total += row.RecipientCount
@@ -283,27 +306,18 @@ func (r *Repository) GetExclusionSummary(ctx context.Context, teamID, broadcastI
 }
 
 func (r *Repository) GetAnalytics(ctx context.Context, teamID, broadcastID uuid.UUID) (Analytics, error) {
-	analytics := Analytics{Object: "broadcast.analytics", BroadcastID: broadcastID.String()}
-	row, err := r.queries.GetBroadcastAnalytics(ctx, dbsqlc.GetBroadcastAnalyticsParams{
-		BroadcastID: broadcastID, TeamID: teamID,
-	})
+	row, err := r.queries.GetBroadcastAnalytics(ctx, dbsqlc.GetBroadcastAnalyticsParams{BroadcastID: broadcastID, TeamID: teamID})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Analytics{}, ErrNotFound
 	}
 	if err != nil {
 		return Analytics{}, fmt.Errorf("get broadcast analytics: %w", err)
 	}
-	analytics.Audience = row.AudienceCount
-	analytics.Eligible = row.EligibleCount
-	analytics.Excluded = row.Excluded
-	analytics.Queued = row.Queued
-	analytics.Delivered = row.Delivered
-	analytics.Bounced = row.Bounced
-	analytics.Complained = row.Complained
-	analytics.Failed = row.Failed
-	analytics.Opened = row.Opened
-	analytics.Clicked = row.Clicked
-	return analytics, nil
+	return Analytics{
+		Object: "broadcast.analytics", BroadcastID: broadcastID.String(), Audience: row.AudienceCount,
+		Eligible: row.EligibleCount, Excluded: row.Excluded, Queued: row.Queued, Delivered: row.Delivered,
+		Bounced: row.Bounced, Complained: row.Complained, Failed: row.Failed, Opened: row.Opened, Clicked: row.Clicked,
+	}, nil
 }
 
 func (r *Repository) BeginFanoutTx(ctx context.Context) (pgx.Tx, error) {
@@ -328,38 +342,25 @@ func (r *Repository) ClaimNextRecipientForFanoutTx(ctx context.Context, tx pgx.T
 	if err != nil {
 		return FanoutRecipient{}, false, fmt.Errorf("claim broadcast recipient for fanout: %w", err)
 	}
-	if row.TemplateVersionID == nil {
-		return FanoutRecipient{}, false, errors.New("broadcast recipient has no pinned template version")
+	snapshot, err := decodeObject(row.ContactSnapshot, "broadcast recipient snapshot")
+	if err != nil {
+		return FanoutRecipient{}, false, err
 	}
-	snapshot := map[string]any{}
-	if len(row.ContactSnapshot) > 0 {
-		decoder := json.NewDecoder(bytes.NewReader(row.ContactSnapshot))
-		decoder.UseNumber()
-		if err := decoder.Decode(&snapshot); err != nil {
-			return FanoutRecipient{}, false, fmt.Errorf("decode broadcast recipient snapshot: %w", err)
-		}
-	}
-	bindings := map[string]any{}
-	if len(row.VariableBindings) > 0 {
-		decoder := json.NewDecoder(bytes.NewReader(row.VariableBindings))
-		decoder.UseNumber()
-		if err := decoder.Decode(&bindings); err != nil {
-			return FanoutRecipient{}, false, fmt.Errorf("decode broadcast variable bindings: %w", err)
-		}
+	bindings, err := decodeObject(row.VariableBindings, "broadcast variable bindings")
+	if err != nil {
+		return FanoutRecipient{}, false, err
 	}
 	return FanoutRecipient{
 		ID: row.ID, TeamID: row.TeamID, BroadcastID: row.BroadcastID, ContactID: row.ContactID,
-		Email: row.Email, FirstName: row.FirstName, LastName: row.LastName,
-		ContactSnapshot: snapshot, TemplateID: row.TemplateID,
-		TemplateVersionID: *row.TemplateVersionID, VariableBindings: bindings,
-		AttemptCount: row.AttemptCount,
+		Email: row.Email, FirstName: row.FirstName, LastName: row.LastName, ContactSnapshot: snapshot,
+		FromEmail: row.FromEmail, FromName: row.FromName, ReplyToEmail: row.ReplyToEmail,
+		Subject: row.Subject, PreviewText: row.PreviewText, HTML: row.HtmlBody, Text: row.TextBody,
+		VariableBindings: bindings, AttemptCount: row.AttemptCount,
 	}, true, nil
 }
 
 func (r *Repository) SetRecipientQueuedTx(ctx context.Context, tx pgx.Tx, recipient FanoutRecipient, emailMessageID uuid.UUID) error {
-	_, err := r.queries.WithTx(tx).SetBroadcastRecipientQueued(ctx, dbsqlc.SetBroadcastRecipientQueuedParams{
-		EmailMessageID: &emailMessageID, ID: recipient.ID, TeamID: recipient.TeamID, BroadcastID: recipient.BroadcastID,
-	})
+	_, err := r.queries.WithTx(tx).SetBroadcastRecipientQueued(ctx, dbsqlc.SetBroadcastRecipientQueuedParams{EmailMessageID: &emailMessageID, ID: recipient.ID, TeamID: recipient.TeamID, BroadcastID: recipient.BroadcastID})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return ErrConflict
 	}
@@ -369,16 +370,11 @@ func (r *Repository) SetRecipientQueuedTx(ctx context.Context, tx pgx.Tx, recipi
 	return nil
 }
 
-// RecheckRecipientEligibilityTx closes the window between audience
-// materialization and fanout. A contact that unsubscribes or is suppressed
-// after the broadcast audience was snapshotted must never be enqueued.
 func (r *Repository) RecheckRecipientEligibilityTx(ctx context.Context, tx pgx.Tx, recipient FanoutRecipient) (string, bool, error) {
 	if tx == nil {
 		return "", false, errors.New("broadcast recipient eligibility transaction is required")
 	}
-	reason, err := r.queries.WithTx(tx).RecheckBroadcastRecipientEligibility(ctx, dbsqlc.RecheckBroadcastRecipientEligibilityParams{
-		ID: recipient.ID, TeamID: recipient.TeamID, BroadcastID: recipient.BroadcastID,
-	})
+	reason, err := r.queries.WithTx(tx).RecheckBroadcastRecipientEligibility(ctx, dbsqlc.RecheckBroadcastRecipientEligibilityParams{ID: recipient.ID, TeamID: recipient.TeamID, BroadcastID: recipient.BroadcastID})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return "", false, nil
 	}
@@ -393,8 +389,7 @@ func (r *Repository) RecheckRecipientEligibilityTx(ctx context.Context, tx pgx.T
 
 func (r *Repository) RetryRecipientFanoutTx(ctx context.Context, tx pgx.Tx, recipient FanoutRecipient, nextAttemptAt time.Time, code, message string) error {
 	_, err := r.queries.WithTx(tx).RetryBroadcastRecipientFanout(ctx, dbsqlc.RetryBroadcastRecipientFanoutParams{
-		NextAttemptAt: pgconv.TimestamptzFromTime(nextAttemptAt),
-		ErrorCode:     stringPointer(code), ErrorMessage: stringPointer(message),
+		NextAttemptAt: pgconv.TimestamptzFromTime(nextAttemptAt), ErrorCode: stringPointer(code), ErrorMessage: stringPointer(message),
 		ID: recipient.ID, TeamID: recipient.TeamID, BroadcastID: recipient.BroadcastID,
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -408,8 +403,7 @@ func (r *Repository) RetryRecipientFanoutTx(ctx context.Context, tx pgx.Tx, reci
 
 func (r *Repository) FailRecipientFanoutTx(ctx context.Context, tx pgx.Tx, recipient FanoutRecipient, code, message string) error {
 	_, err := r.queries.WithTx(tx).FailBroadcastRecipientFanout(ctx, dbsqlc.FailBroadcastRecipientFanoutParams{
-		ErrorCode: stringPointer(code), ErrorMessage: stringPointer(message),
-		ID: recipient.ID, TeamID: recipient.TeamID, BroadcastID: recipient.BroadcastID,
+		ErrorCode: stringPointer(code), ErrorMessage: stringPointer(message), ID: recipient.ID, TeamID: recipient.TeamID, BroadcastID: recipient.BroadcastID,
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return ErrConflict
@@ -421,9 +415,7 @@ func (r *Repository) FailRecipientFanoutTx(ctx context.Context, tx pgx.Tx, recip
 }
 
 func (r *Repository) FinalizeBroadcastFanoutTx(ctx context.Context, tx pgx.Tx, teamID, broadcastID uuid.UUID) (Broadcast, error) {
-	row, err := r.queries.WithTx(tx).FinalizeBroadcastFanout(ctx, dbsqlc.FinalizeBroadcastFanoutParams{
-		BroadcastID: broadcastID, TeamID: teamID,
-	})
+	row, err := r.queries.WithTx(tx).FinalizeBroadcastFanout(ctx, dbsqlc.FinalizeBroadcastFanoutParams{BroadcastID: broadcastID, TeamID: teamID})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Broadcast{}, ErrConflict
 	}
@@ -431,13 +423,6 @@ func (r *Repository) FinalizeBroadcastFanoutTx(ctx context.Context, tx pgx.Tx, t
 		return Broadcast{}, fmt.Errorf("finalize broadcast fanout: %w", err)
 	}
 	return broadcastFromSQLC(row)
-}
-
-func stringPointer(value string) *string {
-	if value == "" {
-		return nil
-	}
-	return &value
 }
 
 type MaterializationResult struct {
@@ -466,27 +451,17 @@ func (r *Repository) MaterializeNextQueuedRecipients(ctx context.Context) (Mater
 	if err != nil {
 		return MaterializationResult{}, false, fmt.Errorf("claim queued broadcast: %w", err)
 	}
-	if err := queries.MaterializeBroadcastRecipients(ctx, dbsqlc.MaterializeBroadcastRecipientsParams{
-		TopicID: candidate.TopicID, TeamID: candidate.TeamID, SegmentID: candidate.SegmentID, BroadcastID: candidate.ID,
-	}); err != nil {
+	if err := queries.MaterializeBroadcastRecipients(ctx, dbsqlc.MaterializeBroadcastRecipientsParams{TopicID: candidate.TopicID, TeamID: candidate.TeamID, SegmentID: candidate.SegmentID, BroadcastID: candidate.ID}); err != nil {
 		return MaterializationResult{}, false, fmt.Errorf("insert broadcast recipients: %w", err)
 	}
-	completed, err := queries.CompleteBroadcastRecipientMaterialization(ctx, dbsqlc.CompleteBroadcastRecipientMaterializationParams{
-		BroadcastID: candidate.ID, TeamID: candidate.TeamID,
-	})
+	completed, err := queries.CompleteBroadcastRecipientMaterialization(ctx, dbsqlc.CompleteBroadcastRecipientMaterializationParams{BroadcastID: candidate.ID, TeamID: candidate.TeamID})
 	if err != nil {
 		return MaterializationResult{}, false, fmt.Errorf("complete recipient materialization: %w", err)
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return MaterializationResult{}, false, fmt.Errorf("commit recipient materialization: %w", err)
 	}
-	return MaterializationResult{
-		BroadcastID:   completed.BroadcastID,
-		TeamID:        completed.TeamID,
-		AudienceCount: completed.AudienceCount,
-		EligibleCount: completed.EligibleCount,
-		ExcludedCount: completed.ExcludedCount,
-	}, true, nil
+	return MaterializationResult{BroadcastID: completed.BroadcastID, TeamID: completed.TeamID, AudienceCount: completed.AudienceCount, EligibleCount: completed.EligibleCount, ExcludedCount: completed.ExcludedCount}, true, nil
 }
 
 type broadcastTransition struct {
@@ -521,11 +496,7 @@ func emitBroadcastEvent(ctx context.Context, tx pgx.Tx, emitter eventEmitter, ev
 	payload := map[string]any{
 		"broadcast":  value,
 		"transition": broadcastTransition{From: from, To: value.Status, Reason: reason},
-		"summary": broadcastSummary{
-			AudienceCount: value.AudienceCount, EligibleCount: value.EligibleCount,
-			SuppressedCount: value.SuppressedCount, QueuedCount: value.QueuedCount,
-			FailedCount: value.FailedCount,
-		},
+		"summary":    broadcastSummary{AudienceCount: value.AudienceCount, EligibleCount: value.EligibleCount, SuppressedCount: value.SuppressedCount, QueuedCount: value.QueuedCount, FailedCount: value.FailedCount},
 	}
 	if failure != nil {
 		payload["failure"] = failure
@@ -534,38 +505,32 @@ func emitBroadcastEvent(ctx context.Context, tx pgx.Tx, emitter eventEmitter, ev
 	if err != nil {
 		return fmt.Errorf("encode broadcast event: %w", err)
 	}
-	_, err = emitter.EmitTx(ctx, tx, platformevent.Envelope{
-		Type: eventType, TeamID: teamID, ObjectType: "broadcast", ObjectID: &objectID, Data: data,
-	})
+	_, err = emitter.EmitTx(ctx, tx, platformevent.Envelope{Type: eventType, TeamID: teamID, ObjectType: "broadcast", ObjectID: &objectID, Data: data})
 	return err
 }
 
 func broadcastFromSQLC(row dbsqlc.Broadcast) (Broadcast, error) {
-	bindings := map[string]any{}
-	if len(row.VariableBindings) > 0 {
-		if err := json.Unmarshal(row.VariableBindings, &bindings); err != nil {
-			return Broadcast{}, fmt.Errorf("decode broadcast variable bindings: %w", err)
-		}
+	bindings, err := decodeObject(row.VariableBindings, "broadcast variable bindings")
+	if err != nil {
+		return Broadcast{}, err
 	}
 	return Broadcast{
 		ID: row.ID.String(), TeamID: row.TeamID.String(), Name: row.Name, Status: row.Status,
 		SegmentID: row.SegmentID.String(), TopicID: pgconv.UUIDStringPtr(row.TopicID),
-		TemplateID: row.TemplateID.String(), TemplateVersionID: pgconv.UUIDStringPtr(row.TemplateVersionID),
+		FromEmail: pointerString(row.FromEmail), FromName: row.FromName, ReplyToEmail: row.ReplyToEmail,
+		Subject: row.Subject, PreviewText: row.PreviewText, HTML: row.HtmlBody, Text: row.TextBody,
 		VariableBindings: bindings, ScheduledAt: pgconv.TimestamptzToTimePtr(row.ScheduledAt),
 		QueuedAt: pgconv.TimestamptzToTimePtr(row.QueuedAt), SentAt: pgconv.TimestamptzToTimePtr(row.SentAt),
 		CanceledAt: pgconv.TimestamptzToTimePtr(row.CanceledAt), AudienceCount: row.AudienceCount,
-		EligibleCount: row.EligibleCount, SuppressedCount: row.SuppressedCount,
-		QueuedCount: row.QueuedCount, FailedCount: row.FailedCount, Revision: row.Revision,
-		CreatedAt: row.CreatedAt.Time, UpdatedAt: row.UpdatedAt.Time,
+		EligibleCount: row.EligibleCount, SuppressedCount: row.SuppressedCount, QueuedCount: row.QueuedCount,
+		FailedCount: row.FailedCount, Revision: row.Revision, CreatedAt: row.CreatedAt.Time, UpdatedAt: row.UpdatedAt.Time,
 	}, nil
 }
 
 func recipientFromSQLC(row dbsqlc.BroadcastRecipient) (Recipient, error) {
-	snapshot := map[string]any{}
-	if len(row.ContactSnapshot) > 0 {
-		if err := json.Unmarshal(row.ContactSnapshot, &snapshot); err != nil {
-			return Recipient{}, fmt.Errorf("decode broadcast recipient snapshot: %w", err)
-		}
+	snapshot, err := decodeObject(row.ContactSnapshot, "broadcast recipient snapshot")
+	if err != nil {
+		return Recipient{}, err
 	}
 	return Recipient{
 		ID: row.ID.String(), BroadcastID: row.BroadcastID.String(), ContactID: pgconv.UUIDStringPtr(row.ContactID),
@@ -575,14 +540,40 @@ func recipientFromSQLC(row dbsqlc.BroadcastRecipient) (Recipient, error) {
 	}, nil
 }
 
-func scheduledTime(value any) (time.Time, bool) {
-	switch scheduled := value.(type) {
-	case time.Time:
-		return scheduled, true
-	case *time.Time:
-		if scheduled != nil {
-			return *scheduled, true
-		}
+func encodeBindings(bindings map[string]any) ([]byte, error) {
+	if bindings == nil {
+		bindings = map[string]any{}
 	}
-	return time.Time{}, false
+	encoded, err := json.Marshal(bindings)
+	if err != nil {
+		return nil, fmt.Errorf("encode broadcast variable bindings: %w", err)
+	}
+	return encoded, nil
+}
+
+func decodeObject(data []byte, label string) (map[string]any, error) {
+	value := map[string]any{}
+	if len(data) == 0 {
+		return value, nil
+	}
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.UseNumber()
+	if err := decoder.Decode(&value); err != nil {
+		return nil, fmt.Errorf("decode %s: %w", label, err)
+	}
+	return value, nil
+}
+
+func stringPointer(value string) *string {
+	if value == "" {
+		return nil
+	}
+	return &value
+}
+
+func pointerString(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return *value
 }

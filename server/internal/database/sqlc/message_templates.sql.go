@@ -74,28 +74,6 @@ func (q *Queries) CreateMessageTemplatePublication(ctx context.Context, arg Crea
 	return i, err
 }
 
-const deleteUnreferencedBroadcastTemplate = `-- name: DeleteUnreferencedBroadcastTemplate :exec
-DELETE FROM message_templates AS mt
-WHERE mt.id = $1
-  AND mt.team_id = $2
-  AND left(mt.alias, length('__broadcast_')) = '__broadcast_'
-  AND NOT EXISTS (
-      SELECT 1
-      FROM broadcasts AS b
-      WHERE b.template_id = mt.id
-  )
-`
-
-type DeleteUnreferencedBroadcastTemplateParams struct {
-	TemplateID uuid.UUID `db:"template_id" json:"template_id"`
-	TeamID     uuid.UUID `db:"team_id" json:"team_id"`
-}
-
-func (q *Queries) DeleteUnreferencedBroadcastTemplate(ctx context.Context, arg DeleteUnreferencedBroadcastTemplateParams) error {
-	_, err := q.db.Exec(ctx, deleteUnreferencedBroadcastTemplate, arg.TemplateID, arg.TeamID)
-	return err
-}
-
 const getMessageTemplateByAlias = `-- name: GetMessageTemplateByAlias :one
 SELECT mt.id, mt.team_id, mt.name, mt.alias, mt.current_version_id, mt.published_version_id, mt.next_version_number, mt.published_at, mt.created_at, mt.updated_at, mt.deleted_at, mt.category
 FROM message_templates AS mt
@@ -167,7 +145,6 @@ SELECT mt.id, mt.team_id, mt.name, mt.alias, mt.current_version_id, mt.published
 FROM message_templates AS mt
 WHERE mt.team_id = $1
   AND mt.deleted_at IS NULL
-  AND (mt.alias IS NULL OR left(mt.alias, length('__broadcast_')) <> '__broadcast_')
 ORDER BY mt.created_at DESC, mt.id DESC
 LIMIT $3
 OFFSET $2

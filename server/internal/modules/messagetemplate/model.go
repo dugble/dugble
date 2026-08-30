@@ -116,18 +116,6 @@ type TestSendRequest struct {
 	Variables map[string]any `json:"variables,omitempty"`
 }
 
-// BroadcastContentRequest carries composer content used to create an internal,
-// immutable template snapshot for a broadcast.
-type BroadcastContentRequest struct {
-	Name        string
-	Subject     string
-	HTML        string
-	Text        *string
-	FromEmail   *string
-	FromName    *string
-	PreviewText *string
-}
-
 type ListRequest struct{ Limit, Offset int32 }
 
 func encodeVariables(value []Variable) ([]byte, error) {

@@ -12,18 +12,72 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const cancelScheduledBroadcast = `-- name: CancelScheduledBroadcast :one
+const cancelQueuedBroadcast = `-- name: CancelQueuedBroadcast :one
 UPDATE broadcasts
 SET status = 'canceled',
-    scheduled_at = NULL,
     canceled_at = now(),
+    revision = revision + 1,
+    updated_at = now()
+WHERE id = $1
+  AND team_id = $2
+  AND status = 'queued'
+  AND deleted_at IS NULL
+RETURNING id, team_id, name, status, segment_id, topic_id, from_email, from_name, reply_to_email, subject, preview_text, html_body, text_body, variable_bindings, scheduled_at, queued_at, sent_at, canceled_at, recipients_materialized_at, audience_count, eligible_count, suppressed_count, queued_count, failed_count, revision, created_at, updated_at, deleted_at
+`
+
+type CancelQueuedBroadcastParams struct {
+	ID     uuid.UUID `db:"id" json:"id"`
+	TeamID uuid.UUID `db:"team_id" json:"team_id"`
+}
+
+func (q *Queries) CancelQueuedBroadcast(ctx context.Context, arg CancelQueuedBroadcastParams) (Broadcast, error) {
+	row := q.db.QueryRow(ctx, cancelQueuedBroadcast, arg.ID, arg.TeamID)
+	var i Broadcast
+	err := row.Scan(
+		&i.ID,
+		&i.TeamID,
+		&i.Name,
+		&i.Status,
+		&i.SegmentID,
+		&i.TopicID,
+		&i.FromEmail,
+		&i.FromName,
+		&i.ReplyToEmail,
+		&i.Subject,
+		&i.PreviewText,
+		&i.HtmlBody,
+		&i.TextBody,
+		&i.VariableBindings,
+		&i.ScheduledAt,
+		&i.QueuedAt,
+		&i.SentAt,
+		&i.CanceledAt,
+		&i.RecipientsMaterializedAt,
+		&i.AudienceCount,
+		&i.EligibleCount,
+		&i.SuppressedCount,
+		&i.QueuedCount,
+		&i.FailedCount,
+		&i.Revision,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+	)
+	return i, err
+}
+
+const cancelScheduledBroadcast = `-- name: CancelScheduledBroadcast :one
+UPDATE broadcasts
+SET status = 'draft',
+    scheduled_at = NULL,
+    canceled_at = NULL,
     revision = revision + 1,
     updated_at = now()
 WHERE id = $1
   AND team_id = $2
   AND status = 'scheduled'
   AND deleted_at IS NULL
-RETURNING id, team_id, name, status, segment_id, topic_id, template_id, template_version_id, variable_bindings, scheduled_at, queued_at, sent_at, canceled_at, recipients_materialized_at, audience_count, eligible_count, suppressed_count, queued_count, failed_count, revision, created_at, updated_at, deleted_at
+RETURNING id, team_id, name, status, segment_id, topic_id, from_email, from_name, reply_to_email, subject, preview_text, html_body, text_body, variable_bindings, scheduled_at, queued_at, sent_at, canceled_at, recipients_materialized_at, audience_count, eligible_count, suppressed_count, queued_count, failed_count, revision, created_at, updated_at, deleted_at
 `
 
 type CancelScheduledBroadcastParams struct {
@@ -41,8 +95,13 @@ func (q *Queries) CancelScheduledBroadcast(ctx context.Context, arg CancelSchedu
 		&i.Status,
 		&i.SegmentID,
 		&i.TopicID,
-		&i.TemplateID,
-		&i.TemplateVersionID,
+		&i.FromEmail,
+		&i.FromName,
+		&i.ReplyToEmail,
+		&i.Subject,
+		&i.PreviewText,
+		&i.HtmlBody,
+		&i.TextBody,
 		&i.VariableBindings,
 		&i.ScheduledAt,
 		&i.QueuedAt,
@@ -148,12 +207,33 @@ func (q *Queries) CompleteBroadcastRecipientMaterialization(ctx context.Context,
 
 const createBroadcast = `-- name: CreateBroadcast :one
 INSERT INTO broadcasts (
-    team_id, name, segment_id, topic_id, template_id, variable_bindings
+    team_id,
+    name,
+    segment_id,
+    topic_id,
+    from_email,
+    from_name,
+    reply_to_email,
+    subject,
+    preview_text,
+    html_body,
+    text_body,
+    variable_bindings
 ) VALUES (
-    $1, $2, $3, $4,
-    $5, $6
+    $1,
+    $2,
+    $3,
+    $4,
+    $5,
+    $6,
+    $7,
+    $8,
+    $9,
+    $10,
+    $11,
+    $12
 )
-RETURNING id, team_id, name, status, segment_id, topic_id, template_id, template_version_id, variable_bindings, scheduled_at, queued_at, sent_at, canceled_at, recipients_materialized_at, audience_count, eligible_count, suppressed_count, queued_count, failed_count, revision, created_at, updated_at, deleted_at
+RETURNING id, team_id, name, status, segment_id, topic_id, from_email, from_name, reply_to_email, subject, preview_text, html_body, text_body, variable_bindings, scheduled_at, queued_at, sent_at, canceled_at, recipients_materialized_at, audience_count, eligible_count, suppressed_count, queued_count, failed_count, revision, created_at, updated_at, deleted_at
 `
 
 type CreateBroadcastParams struct {
@@ -161,7 +241,13 @@ type CreateBroadcastParams struct {
 	Name             string     `db:"name" json:"name"`
 	SegmentID        uuid.UUID  `db:"segment_id" json:"segment_id"`
 	TopicID          *uuid.UUID `db:"topic_id" json:"topic_id"`
-	TemplateID       uuid.UUID  `db:"template_id" json:"template_id"`
+	FromEmail        *string    `db:"from_email" json:"from_email"`
+	FromName         *string    `db:"from_name" json:"from_name"`
+	ReplyToEmail     *string    `db:"reply_to_email" json:"reply_to_email"`
+	Subject          string     `db:"subject" json:"subject"`
+	PreviewText      *string    `db:"preview_text" json:"preview_text"`
+	HtmlBody         string     `db:"html_body" json:"html_body"`
+	TextBody         *string    `db:"text_body" json:"text_body"`
 	VariableBindings []byte     `db:"variable_bindings" json:"variable_bindings"`
 }
 
@@ -171,7 +257,13 @@ func (q *Queries) CreateBroadcast(ctx context.Context, arg CreateBroadcastParams
 		arg.Name,
 		arg.SegmentID,
 		arg.TopicID,
-		arg.TemplateID,
+		arg.FromEmail,
+		arg.FromName,
+		arg.ReplyToEmail,
+		arg.Subject,
+		arg.PreviewText,
+		arg.HtmlBody,
+		arg.TextBody,
 		arg.VariableBindings,
 	)
 	var i Broadcast
@@ -182,8 +274,13 @@ func (q *Queries) CreateBroadcast(ctx context.Context, arg CreateBroadcastParams
 		&i.Status,
 		&i.SegmentID,
 		&i.TopicID,
-		&i.TemplateID,
-		&i.TemplateVersionID,
+		&i.FromEmail,
+		&i.FromName,
+		&i.ReplyToEmail,
+		&i.Subject,
+		&i.PreviewText,
+		&i.HtmlBody,
+		&i.TextBody,
 		&i.VariableBindings,
 		&i.ScheduledAt,
 		&i.QueuedAt,
@@ -205,20 +302,37 @@ func (q *Queries) CreateBroadcast(ctx context.Context, arg CreateBroadcastParams
 
 const duplicateBroadcast = `-- name: DuplicateBroadcast :one
 INSERT INTO broadcasts (
-    team_id, name, segment_id, topic_id, template_id, variable_bindings
+    team_id,
+    name,
+    segment_id,
+    topic_id,
+    from_email,
+    from_name,
+    reply_to_email,
+    subject,
+    preview_text,
+    html_body,
+    text_body,
+    variable_bindings
 )
 SELECT
     source.team_id,
     $1,
     source.segment_id,
     source.topic_id,
-    source.template_id,
+    source.from_email,
+    source.from_name,
+    source.reply_to_email,
+    source.subject,
+    source.preview_text,
+    source.html_body,
+    source.text_body,
     source.variable_bindings
 FROM broadcasts AS source
 WHERE source.id = $2
   AND source.team_id = $3
   AND source.deleted_at IS NULL
-RETURNING id, team_id, name, status, segment_id, topic_id, template_id, template_version_id, variable_bindings, scheduled_at, queued_at, sent_at, canceled_at, recipients_materialized_at, audience_count, eligible_count, suppressed_count, queued_count, failed_count, revision, created_at, updated_at, deleted_at
+RETURNING id, team_id, name, status, segment_id, topic_id, from_email, from_name, reply_to_email, subject, preview_text, html_body, text_body, variable_bindings, scheduled_at, queued_at, sent_at, canceled_at, recipients_materialized_at, audience_count, eligible_count, suppressed_count, queued_count, failed_count, revision, created_at, updated_at, deleted_at
 `
 
 type DuplicateBroadcastParams struct {
@@ -237,8 +351,13 @@ func (q *Queries) DuplicateBroadcast(ctx context.Context, arg DuplicateBroadcast
 		&i.Status,
 		&i.SegmentID,
 		&i.TopicID,
-		&i.TemplateID,
-		&i.TemplateVersionID,
+		&i.FromEmail,
+		&i.FromName,
+		&i.ReplyToEmail,
+		&i.Subject,
+		&i.PreviewText,
+		&i.HtmlBody,
+		&i.TextBody,
 		&i.VariableBindings,
 		&i.ScheduledAt,
 		&i.QueuedAt,
@@ -289,7 +408,7 @@ FROM counts
 WHERE broadcast.id = $1
   AND broadcast.team_id = $2
   AND broadcast.status = 'queued'
-RETURNING broadcast.id, broadcast.team_id, broadcast.name, broadcast.status, broadcast.segment_id, broadcast.topic_id, broadcast.template_id, broadcast.template_version_id, broadcast.variable_bindings, broadcast.scheduled_at, broadcast.queued_at, broadcast.sent_at, broadcast.canceled_at, broadcast.recipients_materialized_at, broadcast.audience_count, broadcast.eligible_count, broadcast.suppressed_count, broadcast.queued_count, broadcast.failed_count, broadcast.revision, broadcast.created_at, broadcast.updated_at, broadcast.deleted_at
+RETURNING broadcast.id, broadcast.team_id, broadcast.name, broadcast.status, broadcast.segment_id, broadcast.topic_id, broadcast.from_email, broadcast.from_name, broadcast.reply_to_email, broadcast.subject, broadcast.preview_text, broadcast.html_body, broadcast.text_body, broadcast.variable_bindings, broadcast.scheduled_at, broadcast.queued_at, broadcast.sent_at, broadcast.canceled_at, broadcast.recipients_materialized_at, broadcast.audience_count, broadcast.eligible_count, broadcast.suppressed_count, broadcast.queued_count, broadcast.failed_count, broadcast.revision, broadcast.created_at, broadcast.updated_at, broadcast.deleted_at
 `
 
 type FinalizeBroadcastFanoutParams struct {
@@ -307,8 +426,13 @@ func (q *Queries) FinalizeBroadcastFanout(ctx context.Context, arg FinalizeBroad
 		&i.Status,
 		&i.SegmentID,
 		&i.TopicID,
-		&i.TemplateID,
-		&i.TemplateVersionID,
+		&i.FromEmail,
+		&i.FromName,
+		&i.ReplyToEmail,
+		&i.Subject,
+		&i.PreviewText,
+		&i.HtmlBody,
+		&i.TextBody,
 		&i.VariableBindings,
 		&i.ScheduledAt,
 		&i.QueuedAt,
@@ -329,7 +453,7 @@ func (q *Queries) FinalizeBroadcastFanout(ctx context.Context, arg FinalizeBroad
 }
 
 const getBroadcast = `-- name: GetBroadcast :one
-SELECT id, team_id, name, status, segment_id, topic_id, template_id, template_version_id, variable_bindings, scheduled_at, queued_at, sent_at, canceled_at, recipients_materialized_at, audience_count, eligible_count, suppressed_count, queued_count, failed_count, revision, created_at, updated_at, deleted_at
+SELECT id, team_id, name, status, segment_id, topic_id, from_email, from_name, reply_to_email, subject, preview_text, html_body, text_body, variable_bindings, scheduled_at, queued_at, sent_at, canceled_at, recipients_materialized_at, audience_count, eligible_count, suppressed_count, queued_count, failed_count, revision, created_at, updated_at, deleted_at
 FROM broadcasts
 WHERE id = $1
   AND team_id = $2
@@ -351,8 +475,13 @@ func (q *Queries) GetBroadcast(ctx context.Context, arg GetBroadcastParams) (Bro
 		&i.Status,
 		&i.SegmentID,
 		&i.TopicID,
-		&i.TemplateID,
-		&i.TemplateVersionID,
+		&i.FromEmail,
+		&i.FromName,
+		&i.ReplyToEmail,
+		&i.Subject,
+		&i.PreviewText,
+		&i.HtmlBody,
+		&i.TextBody,
 		&i.VariableBindings,
 		&i.ScheduledAt,
 		&i.QueuedAt,
@@ -436,7 +565,7 @@ func (q *Queries) GetBroadcastAnalytics(ctx context.Context, arg GetBroadcastAna
 }
 
 const listBroadcasts = `-- name: ListBroadcasts :many
-SELECT id, team_id, name, status, segment_id, topic_id, template_id, template_version_id, variable_bindings, scheduled_at, queued_at, sent_at, canceled_at, recipients_materialized_at, audience_count, eligible_count, suppressed_count, queued_count, failed_count, revision, created_at, updated_at, deleted_at
+SELECT id, team_id, name, status, segment_id, topic_id, from_email, from_name, reply_to_email, subject, preview_text, html_body, text_body, variable_bindings, scheduled_at, queued_at, sent_at, canceled_at, recipients_materialized_at, audience_count, eligible_count, suppressed_count, queued_count, failed_count, revision, created_at, updated_at, deleted_at
 FROM broadcasts
 WHERE team_id = $1
   AND deleted_at IS NULL
@@ -467,8 +596,13 @@ func (q *Queries) ListBroadcasts(ctx context.Context, arg ListBroadcastsParams) 
 			&i.Status,
 			&i.SegmentID,
 			&i.TopicID,
-			&i.TemplateID,
-			&i.TemplateVersionID,
+			&i.FromEmail,
+			&i.FromName,
+			&i.ReplyToEmail,
+			&i.Subject,
+			&i.PreviewText,
+			&i.HtmlBody,
+			&i.TextBody,
 			&i.VariableBindings,
 			&i.ScheduledAt,
 			&i.QueuedAt,
@@ -504,7 +638,7 @@ WHERE id = $1
   AND team_id = $2
   AND status = 'queued'
   AND deleted_at IS NULL
-RETURNING id, team_id, name, status, segment_id, topic_id, template_id, template_version_id, variable_bindings, scheduled_at, queued_at, sent_at, canceled_at, recipients_materialized_at, audience_count, eligible_count, suppressed_count, queued_count, failed_count, revision, created_at, updated_at, deleted_at
+RETURNING id, team_id, name, status, segment_id, topic_id, from_email, from_name, reply_to_email, subject, preview_text, html_body, text_body, variable_bindings, scheduled_at, queued_at, sent_at, canceled_at, recipients_materialized_at, audience_count, eligible_count, suppressed_count, queued_count, failed_count, revision, created_at, updated_at, deleted_at
 `
 
 type MarkBroadcastFailedParams struct {
@@ -522,8 +656,13 @@ func (q *Queries) MarkBroadcastFailed(ctx context.Context, arg MarkBroadcastFail
 		&i.Status,
 		&i.SegmentID,
 		&i.TopicID,
-		&i.TemplateID,
-		&i.TemplateVersionID,
+		&i.FromEmail,
+		&i.FromName,
+		&i.ReplyToEmail,
+		&i.Subject,
+		&i.PreviewText,
+		&i.HtmlBody,
+		&i.TextBody,
 		&i.VariableBindings,
 		&i.ScheduledAt,
 		&i.QueuedAt,
@@ -553,7 +692,7 @@ WHERE id = $1
   AND team_id = $2
   AND status = 'queued'
   AND deleted_at IS NULL
-RETURNING id, team_id, name, status, segment_id, topic_id, template_id, template_version_id, variable_bindings, scheduled_at, queued_at, sent_at, canceled_at, recipients_materialized_at, audience_count, eligible_count, suppressed_count, queued_count, failed_count, revision, created_at, updated_at, deleted_at
+RETURNING id, team_id, name, status, segment_id, topic_id, from_email, from_name, reply_to_email, subject, preview_text, html_body, text_body, variable_bindings, scheduled_at, queued_at, sent_at, canceled_at, recipients_materialized_at, audience_count, eligible_count, suppressed_count, queued_count, failed_count, revision, created_at, updated_at, deleted_at
 `
 
 type MarkBroadcastSentParams struct {
@@ -571,8 +710,13 @@ func (q *Queries) MarkBroadcastSent(ctx context.Context, arg MarkBroadcastSentPa
 		&i.Status,
 		&i.SegmentID,
 		&i.TopicID,
-		&i.TemplateID,
-		&i.TemplateVersionID,
+		&i.FromEmail,
+		&i.FromName,
+		&i.ReplyToEmail,
+		&i.Subject,
+		&i.PreviewText,
+		&i.HtmlBody,
+		&i.TextBody,
 		&i.VariableBindings,
 		&i.ScheduledAt,
 		&i.QueuedAt,
@@ -595,27 +739,25 @@ func (q *Queries) MarkBroadcastSent(ctx context.Context, arg MarkBroadcastSentPa
 const queueBroadcast = `-- name: QueueBroadcast :one
 UPDATE broadcasts
 SET status = 'queued',
-    template_version_id = $1,
     scheduled_at = NULL,
     queued_at = now(),
     canceled_at = NULL,
     revision = revision + 1,
     updated_at = now()
-WHERE id = $2
-  AND team_id = $3
+WHERE id = $1
+  AND team_id = $2
   AND status = 'draft'
   AND deleted_at IS NULL
-RETURNING id, team_id, name, status, segment_id, topic_id, template_id, template_version_id, variable_bindings, scheduled_at, queued_at, sent_at, canceled_at, recipients_materialized_at, audience_count, eligible_count, suppressed_count, queued_count, failed_count, revision, created_at, updated_at, deleted_at
+RETURNING id, team_id, name, status, segment_id, topic_id, from_email, from_name, reply_to_email, subject, preview_text, html_body, text_body, variable_bindings, scheduled_at, queued_at, sent_at, canceled_at, recipients_materialized_at, audience_count, eligible_count, suppressed_count, queued_count, failed_count, revision, created_at, updated_at, deleted_at
 `
 
 type QueueBroadcastParams struct {
-	TemplateVersionID *uuid.UUID `db:"template_version_id" json:"template_version_id"`
-	ID                uuid.UUID  `db:"id" json:"id"`
-	TeamID            uuid.UUID  `db:"team_id" json:"team_id"`
+	ID     uuid.UUID `db:"id" json:"id"`
+	TeamID uuid.UUID `db:"team_id" json:"team_id"`
 }
 
 func (q *Queries) QueueBroadcast(ctx context.Context, arg QueueBroadcastParams) (Broadcast, error) {
-	row := q.db.QueryRow(ctx, queueBroadcast, arg.TemplateVersionID, arg.ID, arg.TeamID)
+	row := q.db.QueryRow(ctx, queueBroadcast, arg.ID, arg.TeamID)
 	var i Broadcast
 	err := row.Scan(
 		&i.ID,
@@ -624,8 +766,13 @@ func (q *Queries) QueueBroadcast(ctx context.Context, arg QueueBroadcastParams) 
 		&i.Status,
 		&i.SegmentID,
 		&i.TopicID,
-		&i.TemplateID,
-		&i.TemplateVersionID,
+		&i.FromEmail,
+		&i.FromName,
+		&i.ReplyToEmail,
+		&i.Subject,
+		&i.PreviewText,
+		&i.HtmlBody,
+		&i.TextBody,
 		&i.VariableBindings,
 		&i.ScheduledAt,
 		&i.QueuedAt,
@@ -663,7 +810,7 @@ SET status = 'queued',
     updated_at = now()
 FROM candidate
 WHERE broadcast.id = candidate.id
-RETURNING broadcast.id, broadcast.team_id, broadcast.name, broadcast.status, broadcast.segment_id, broadcast.topic_id, broadcast.template_id, broadcast.template_version_id, broadcast.variable_bindings, broadcast.scheduled_at, broadcast.queued_at, broadcast.sent_at, broadcast.canceled_at, broadcast.recipients_materialized_at, broadcast.audience_count, broadcast.eligible_count, broadcast.suppressed_count, broadcast.queued_count, broadcast.failed_count, broadcast.revision, broadcast.created_at, broadcast.updated_at, broadcast.deleted_at
+RETURNING broadcast.id, broadcast.team_id, broadcast.name, broadcast.status, broadcast.segment_id, broadcast.topic_id, broadcast.from_email, broadcast.from_name, broadcast.reply_to_email, broadcast.subject, broadcast.preview_text, broadcast.html_body, broadcast.text_body, broadcast.variable_bindings, broadcast.scheduled_at, broadcast.queued_at, broadcast.sent_at, broadcast.canceled_at, broadcast.recipients_materialized_at, broadcast.audience_count, broadcast.eligible_count, broadcast.suppressed_count, broadcast.queued_count, broadcast.failed_count, broadcast.revision, broadcast.created_at, broadcast.updated_at, broadcast.deleted_at
 `
 
 func (q *Queries) QueueNextDueBroadcast(ctx context.Context) (Broadcast, error) {
@@ -676,8 +823,13 @@ func (q *Queries) QueueNextDueBroadcast(ctx context.Context) (Broadcast, error) 
 		&i.Status,
 		&i.SegmentID,
 		&i.TopicID,
-		&i.TemplateID,
-		&i.TemplateVersionID,
+		&i.FromEmail,
+		&i.FromName,
+		&i.ReplyToEmail,
+		&i.Subject,
+		&i.PreviewText,
+		&i.HtmlBody,
+		&i.TextBody,
 		&i.VariableBindings,
 		&i.ScheduledAt,
 		&i.QueuedAt,
@@ -707,7 +859,7 @@ WHERE id = $1
   AND team_id = $2
   AND status = 'scheduled'
   AND deleted_at IS NULL
-RETURNING id, team_id, name, status, segment_id, topic_id, template_id, template_version_id, variable_bindings, scheduled_at, queued_at, sent_at, canceled_at, recipients_materialized_at, audience_count, eligible_count, suppressed_count, queued_count, failed_count, revision, created_at, updated_at, deleted_at
+RETURNING id, team_id, name, status, segment_id, topic_id, from_email, from_name, reply_to_email, subject, preview_text, html_body, text_body, variable_bindings, scheduled_at, queued_at, sent_at, canceled_at, recipients_materialized_at, audience_count, eligible_count, suppressed_count, queued_count, failed_count, revision, created_at, updated_at, deleted_at
 `
 
 type QueueScheduledBroadcastParams struct {
@@ -725,8 +877,13 @@ func (q *Queries) QueueScheduledBroadcast(ctx context.Context, arg QueueSchedule
 		&i.Status,
 		&i.SegmentID,
 		&i.TopicID,
-		&i.TemplateID,
-		&i.TemplateVersionID,
+		&i.FromEmail,
+		&i.FromName,
+		&i.ReplyToEmail,
+		&i.Subject,
+		&i.PreviewText,
+		&i.HtmlBody,
+		&i.TextBody,
 		&i.VariableBindings,
 		&i.ScheduledAt,
 		&i.QueuedAt,
@@ -749,32 +906,26 @@ func (q *Queries) QueueScheduledBroadcast(ctx context.Context, arg QueueSchedule
 const scheduleBroadcast = `-- name: ScheduleBroadcast :one
 UPDATE broadcasts
 SET status = 'scheduled',
-    template_version_id = $1,
-    scheduled_at = $2,
+    scheduled_at = $1,
+    queued_at = NULL,
     canceled_at = NULL,
     revision = revision + 1,
     updated_at = now()
-WHERE id = $3
-  AND team_id = $4
-  AND status = 'draft'
+WHERE id = $2
+  AND team_id = $3
+  AND status IN ('draft', 'scheduled')
   AND deleted_at IS NULL
-RETURNING id, team_id, name, status, segment_id, topic_id, template_id, template_version_id, variable_bindings, scheduled_at, queued_at, sent_at, canceled_at, recipients_materialized_at, audience_count, eligible_count, suppressed_count, queued_count, failed_count, revision, created_at, updated_at, deleted_at
+RETURNING id, team_id, name, status, segment_id, topic_id, from_email, from_name, reply_to_email, subject, preview_text, html_body, text_body, variable_bindings, scheduled_at, queued_at, sent_at, canceled_at, recipients_materialized_at, audience_count, eligible_count, suppressed_count, queued_count, failed_count, revision, created_at, updated_at, deleted_at
 `
 
 type ScheduleBroadcastParams struct {
-	TemplateVersionID *uuid.UUID         `db:"template_version_id" json:"template_version_id"`
-	ScheduledAt       pgtype.Timestamptz `db:"scheduled_at" json:"scheduled_at"`
-	ID                uuid.UUID          `db:"id" json:"id"`
-	TeamID            uuid.UUID          `db:"team_id" json:"team_id"`
+	ScheduledAt pgtype.Timestamptz `db:"scheduled_at" json:"scheduled_at"`
+	ID          uuid.UUID          `db:"id" json:"id"`
+	TeamID      uuid.UUID          `db:"team_id" json:"team_id"`
 }
 
 func (q *Queries) ScheduleBroadcast(ctx context.Context, arg ScheduleBroadcastParams) (Broadcast, error) {
-	row := q.db.QueryRow(ctx, scheduleBroadcast,
-		arg.TemplateVersionID,
-		arg.ScheduledAt,
-		arg.ID,
-		arg.TeamID,
-	)
+	row := q.db.QueryRow(ctx, scheduleBroadcast, arg.ScheduledAt, arg.ID, arg.TeamID)
 	var i Broadcast
 	err := row.Scan(
 		&i.ID,
@@ -783,8 +934,13 @@ func (q *Queries) ScheduleBroadcast(ctx context.Context, arg ScheduleBroadcastPa
 		&i.Status,
 		&i.SegmentID,
 		&i.TopicID,
-		&i.TemplateID,
-		&i.TemplateVersionID,
+		&i.FromEmail,
+		&i.FromName,
+		&i.ReplyToEmail,
+		&i.Subject,
+		&i.PreviewText,
+		&i.HtmlBody,
+		&i.TextBody,
 		&i.VariableBindings,
 		&i.ScheduledAt,
 		&i.QueuedAt,
@@ -811,7 +967,7 @@ WHERE id = $1
   AND team_id = $2
   AND status IN ('draft','canceled')
   AND deleted_at IS NULL
-RETURNING id, team_id, name, status, segment_id, topic_id, template_id, template_version_id, variable_bindings, scheduled_at, queued_at, sent_at, canceled_at, recipients_materialized_at, audience_count, eligible_count, suppressed_count, queued_count, failed_count, revision, created_at, updated_at, deleted_at
+RETURNING id, team_id, name, status, segment_id, topic_id, from_email, from_name, reply_to_email, subject, preview_text, html_body, text_body, variable_bindings, scheduled_at, queued_at, sent_at, canceled_at, recipients_materialized_at, audience_count, eligible_count, suppressed_count, queued_count, failed_count, revision, created_at, updated_at, deleted_at
 `
 
 type SoftDeleteBroadcastParams struct {
@@ -829,8 +985,13 @@ func (q *Queries) SoftDeleteBroadcast(ctx context.Context, arg SoftDeleteBroadca
 		&i.Status,
 		&i.SegmentID,
 		&i.TopicID,
-		&i.TemplateID,
-		&i.TemplateVersionID,
+		&i.FromEmail,
+		&i.FromName,
+		&i.ReplyToEmail,
+		&i.Subject,
+		&i.PreviewText,
+		&i.HtmlBody,
+		&i.TextBody,
 		&i.VariableBindings,
 		&i.ScheduledAt,
 		&i.QueuedAt,
@@ -850,40 +1011,58 @@ func (q *Queries) SoftDeleteBroadcast(ctx context.Context, arg SoftDeleteBroadca
 	return i, err
 }
 
-const updateBroadcastDraft = `-- name: UpdateBroadcastDraft :one
+const updateBroadcastDraftOrScheduled = `-- name: UpdateBroadcastDraftOrScheduled :one
 UPDATE broadcasts
 SET name = $1,
     segment_id = $2,
     topic_id = $3,
-    template_id = $4,
-    variable_bindings = $5,
+    from_email = $4,
+    from_name = $5,
+    reply_to_email = $6,
+    subject = $7,
+    preview_text = $8,
+    html_body = $9,
+    text_body = $10,
+    variable_bindings = $11,
     revision = revision + 1,
     updated_at = now()
-WHERE id = $6
-  AND team_id = $7
-  AND status = 'draft'
-  AND revision = $8
+WHERE id = $12
+  AND team_id = $13
+  AND status IN ('draft', 'scheduled')
+  AND revision = $14
   AND deleted_at IS NULL
-RETURNING id, team_id, name, status, segment_id, topic_id, template_id, template_version_id, variable_bindings, scheduled_at, queued_at, sent_at, canceled_at, recipients_materialized_at, audience_count, eligible_count, suppressed_count, queued_count, failed_count, revision, created_at, updated_at, deleted_at
+RETURNING id, team_id, name, status, segment_id, topic_id, from_email, from_name, reply_to_email, subject, preview_text, html_body, text_body, variable_bindings, scheduled_at, queued_at, sent_at, canceled_at, recipients_materialized_at, audience_count, eligible_count, suppressed_count, queued_count, failed_count, revision, created_at, updated_at, deleted_at
 `
 
-type UpdateBroadcastDraftParams struct {
+type UpdateBroadcastDraftOrScheduledParams struct {
 	Name             string     `db:"name" json:"name"`
 	SegmentID        uuid.UUID  `db:"segment_id" json:"segment_id"`
 	TopicID          *uuid.UUID `db:"topic_id" json:"topic_id"`
-	TemplateID       uuid.UUID  `db:"template_id" json:"template_id"`
+	FromEmail        *string    `db:"from_email" json:"from_email"`
+	FromName         *string    `db:"from_name" json:"from_name"`
+	ReplyToEmail     *string    `db:"reply_to_email" json:"reply_to_email"`
+	Subject          string     `db:"subject" json:"subject"`
+	PreviewText      *string    `db:"preview_text" json:"preview_text"`
+	HtmlBody         string     `db:"html_body" json:"html_body"`
+	TextBody         *string    `db:"text_body" json:"text_body"`
 	VariableBindings []byte     `db:"variable_bindings" json:"variable_bindings"`
 	ID               uuid.UUID  `db:"id" json:"id"`
 	TeamID           uuid.UUID  `db:"team_id" json:"team_id"`
 	Revision         int64      `db:"revision" json:"revision"`
 }
 
-func (q *Queries) UpdateBroadcastDraft(ctx context.Context, arg UpdateBroadcastDraftParams) (Broadcast, error) {
-	row := q.db.QueryRow(ctx, updateBroadcastDraft,
+func (q *Queries) UpdateBroadcastDraftOrScheduled(ctx context.Context, arg UpdateBroadcastDraftOrScheduledParams) (Broadcast, error) {
+	row := q.db.QueryRow(ctx, updateBroadcastDraftOrScheduled,
 		arg.Name,
 		arg.SegmentID,
 		arg.TopicID,
-		arg.TemplateID,
+		arg.FromEmail,
+		arg.FromName,
+		arg.ReplyToEmail,
+		arg.Subject,
+		arg.PreviewText,
+		arg.HtmlBody,
+		arg.TextBody,
 		arg.VariableBindings,
 		arg.ID,
 		arg.TeamID,
@@ -897,8 +1076,13 @@ func (q *Queries) UpdateBroadcastDraft(ctx context.Context, arg UpdateBroadcastD
 		&i.Status,
 		&i.SegmentID,
 		&i.TopicID,
-		&i.TemplateID,
-		&i.TemplateVersionID,
+		&i.FromEmail,
+		&i.FromName,
+		&i.ReplyToEmail,
+		&i.Subject,
+		&i.PreviewText,
+		&i.HtmlBody,
+		&i.TextBody,
 		&i.VariableBindings,
 		&i.ScheduledAt,
 		&i.QueuedAt,

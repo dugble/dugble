@@ -15,8 +15,13 @@ import (
 const claimNextBroadcastRecipientForFanout = `-- name: ClaimNextBroadcastRecipientForFanout :one
 SELECT
     recipient.id, recipient.team_id, recipient.broadcast_id, recipient.contact_id, recipient.email, recipient.normalized_email, recipient.first_name, recipient.last_name, recipient.contact_snapshot, recipient.status, recipient.exclusion_reason, recipient.email_message_id, recipient.attempt_count, recipient.next_attempt_at, recipient.last_error_code, recipient.last_error_message, recipient.failed_at, recipient.created_at, recipient.queued_at,
-    broadcast.template_id,
-    broadcast.template_version_id,
+    broadcast.from_email,
+    broadcast.from_name,
+    broadcast.reply_to_email,
+    broadcast.subject,
+    broadcast.preview_text,
+    broadcast.html_body,
+    broadcast.text_body,
     broadcast.variable_bindings
 FROM broadcast_recipients AS recipient
 JOIN broadcasts AS broadcast
@@ -26,7 +31,6 @@ WHERE recipient.status = 'pending'
   AND (recipient.next_attempt_at IS NULL OR recipient.next_attempt_at <= now())
   AND broadcast.status = 'queued'
   AND broadcast.recipients_materialized_at IS NOT NULL
-  AND broadcast.template_version_id IS NOT NULL
   AND broadcast.deleted_at IS NULL
 ORDER BY recipient.next_attempt_at NULLS FIRST, recipient.broadcast_id, recipient.id
 FOR UPDATE OF recipient SKIP LOCKED
@@ -34,28 +38,33 @@ LIMIT 1
 `
 
 type ClaimNextBroadcastRecipientForFanoutRow struct {
-	ID                uuid.UUID          `db:"id" json:"id"`
-	TeamID            uuid.UUID          `db:"team_id" json:"team_id"`
-	BroadcastID       uuid.UUID          `db:"broadcast_id" json:"broadcast_id"`
-	ContactID         *uuid.UUID         `db:"contact_id" json:"contact_id"`
-	Email             string             `db:"email" json:"email"`
-	NormalizedEmail   string             `db:"normalized_email" json:"normalized_email"`
-	FirstName         *string            `db:"first_name" json:"first_name"`
-	LastName          *string            `db:"last_name" json:"last_name"`
-	ContactSnapshot   []byte             `db:"contact_snapshot" json:"contact_snapshot"`
-	Status            string             `db:"status" json:"status"`
-	ExclusionReason   *string            `db:"exclusion_reason" json:"exclusion_reason"`
-	EmailMessageID    *uuid.UUID         `db:"email_message_id" json:"email_message_id"`
-	AttemptCount      int32              `db:"attempt_count" json:"attempt_count"`
-	NextAttemptAt     pgtype.Timestamptz `db:"next_attempt_at" json:"next_attempt_at"`
-	LastErrorCode     *string            `db:"last_error_code" json:"last_error_code"`
-	LastErrorMessage  *string            `db:"last_error_message" json:"last_error_message"`
-	FailedAt          pgtype.Timestamptz `db:"failed_at" json:"failed_at"`
-	CreatedAt         pgtype.Timestamptz `db:"created_at" json:"created_at"`
-	QueuedAt          pgtype.Timestamptz `db:"queued_at" json:"queued_at"`
-	TemplateID        uuid.UUID          `db:"template_id" json:"template_id"`
-	TemplateVersionID *uuid.UUID         `db:"template_version_id" json:"template_version_id"`
-	VariableBindings  []byte             `db:"variable_bindings" json:"variable_bindings"`
+	ID               uuid.UUID          `db:"id" json:"id"`
+	TeamID           uuid.UUID          `db:"team_id" json:"team_id"`
+	BroadcastID      uuid.UUID          `db:"broadcast_id" json:"broadcast_id"`
+	ContactID        *uuid.UUID         `db:"contact_id" json:"contact_id"`
+	Email            string             `db:"email" json:"email"`
+	NormalizedEmail  string             `db:"normalized_email" json:"normalized_email"`
+	FirstName        *string            `db:"first_name" json:"first_name"`
+	LastName         *string            `db:"last_name" json:"last_name"`
+	ContactSnapshot  []byte             `db:"contact_snapshot" json:"contact_snapshot"`
+	Status           string             `db:"status" json:"status"`
+	ExclusionReason  *string            `db:"exclusion_reason" json:"exclusion_reason"`
+	EmailMessageID   *uuid.UUID         `db:"email_message_id" json:"email_message_id"`
+	AttemptCount     int32              `db:"attempt_count" json:"attempt_count"`
+	NextAttemptAt    pgtype.Timestamptz `db:"next_attempt_at" json:"next_attempt_at"`
+	LastErrorCode    *string            `db:"last_error_code" json:"last_error_code"`
+	LastErrorMessage *string            `db:"last_error_message" json:"last_error_message"`
+	FailedAt         pgtype.Timestamptz `db:"failed_at" json:"failed_at"`
+	CreatedAt        pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	QueuedAt         pgtype.Timestamptz `db:"queued_at" json:"queued_at"`
+	FromEmail        *string            `db:"from_email" json:"from_email"`
+	FromName         *string            `db:"from_name" json:"from_name"`
+	ReplyToEmail     *string            `db:"reply_to_email" json:"reply_to_email"`
+	Subject          string             `db:"subject" json:"subject"`
+	PreviewText      *string            `db:"preview_text" json:"preview_text"`
+	HtmlBody         string             `db:"html_body" json:"html_body"`
+	TextBody         *string            `db:"text_body" json:"text_body"`
+	VariableBindings []byte             `db:"variable_bindings" json:"variable_bindings"`
 }
 
 func (q *Queries) ClaimNextBroadcastRecipientForFanout(ctx context.Context) (ClaimNextBroadcastRecipientForFanoutRow, error) {
@@ -81,8 +90,13 @@ func (q *Queries) ClaimNextBroadcastRecipientForFanout(ctx context.Context) (Cla
 		&i.FailedAt,
 		&i.CreatedAt,
 		&i.QueuedAt,
-		&i.TemplateID,
-		&i.TemplateVersionID,
+		&i.FromEmail,
+		&i.FromName,
+		&i.ReplyToEmail,
+		&i.Subject,
+		&i.PreviewText,
+		&i.HtmlBody,
+		&i.TextBody,
 		&i.VariableBindings,
 	)
 	return i, err

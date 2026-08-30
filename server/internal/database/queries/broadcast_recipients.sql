@@ -36,8 +36,13 @@ RETURNING *;
 -- name: ClaimNextBroadcastRecipientForFanout :one
 SELECT
     recipient.*,
-    broadcast.template_id,
-    broadcast.template_version_id,
+    broadcast.from_email,
+    broadcast.from_name,
+    broadcast.reply_to_email,
+    broadcast.subject,
+    broadcast.preview_text,
+    broadcast.html_body,
+    broadcast.text_body,
     broadcast.variable_bindings
 FROM broadcast_recipients AS recipient
 JOIN broadcasts AS broadcast
@@ -47,7 +52,6 @@ WHERE recipient.status = 'pending'
   AND (recipient.next_attempt_at IS NULL OR recipient.next_attempt_at <= now())
   AND broadcast.status = 'queued'
   AND broadcast.recipients_materialized_at IS NOT NULL
-  AND broadcast.template_version_id IS NOT NULL
   AND broadcast.deleted_at IS NULL
 ORDER BY recipient.next_attempt_at NULLS FIRST, recipient.broadcast_id, recipient.id
 FOR UPDATE OF recipient SKIP LOCKED

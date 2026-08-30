@@ -1,22 +1,60 @@
 -- name: CreateBroadcast :one
 INSERT INTO broadcasts (
-    team_id, name, segment_id, topic_id, template_id, variable_bindings
+    team_id,
+    name,
+    segment_id,
+    topic_id,
+    from_email,
+    from_name,
+    reply_to_email,
+    subject,
+    preview_text,
+    html_body,
+    text_body,
+    variable_bindings
 ) VALUES (
-    sqlc.arg(team_id), sqlc.arg(name), sqlc.arg(segment_id), sqlc.narg(topic_id),
-    sqlc.arg(template_id), sqlc.arg(variable_bindings)
+    sqlc.arg(team_id),
+    sqlc.arg(name),
+    sqlc.arg(segment_id),
+    sqlc.narg(topic_id),
+    sqlc.narg(from_email),
+    sqlc.narg(from_name),
+    sqlc.narg(reply_to_email),
+    sqlc.arg(subject),
+    sqlc.narg(preview_text),
+    sqlc.arg(html_body),
+    sqlc.narg(text_body),
+    sqlc.arg(variable_bindings)
 )
 RETURNING *;
 
 -- name: DuplicateBroadcast :one
 INSERT INTO broadcasts (
-    team_id, name, segment_id, topic_id, template_id, variable_bindings
+    team_id,
+    name,
+    segment_id,
+    topic_id,
+    from_email,
+    from_name,
+    reply_to_email,
+    subject,
+    preview_text,
+    html_body,
+    text_body,
+    variable_bindings
 )
 SELECT
     source.team_id,
     sqlc.arg(name),
     source.segment_id,
     source.topic_id,
-    source.template_id,
+    source.from_email,
+    source.from_name,
+    source.reply_to_email,
+    source.subject,
+    source.preview_text,
+    source.html_body,
+    source.text_body,
     source.variable_bindings
 FROM broadcasts AS source
 WHERE source.id = sqlc.arg(source_id)
@@ -40,18 +78,24 @@ WHERE id = sqlc.arg(id)
   AND team_id = sqlc.arg(team_id)
   AND deleted_at IS NULL;
 
--- name: UpdateBroadcastDraft :one
+-- name: UpdateBroadcastDraftOrScheduled :one
 UPDATE broadcasts
 SET name = sqlc.arg(name),
     segment_id = sqlc.arg(segment_id),
     topic_id = sqlc.narg(topic_id),
-    template_id = sqlc.arg(template_id),
+    from_email = sqlc.narg(from_email),
+    from_name = sqlc.narg(from_name),
+    reply_to_email = sqlc.narg(reply_to_email),
+    subject = sqlc.arg(subject),
+    preview_text = sqlc.narg(preview_text),
+    html_body = sqlc.arg(html_body),
+    text_body = sqlc.narg(text_body),
     variable_bindings = sqlc.arg(variable_bindings),
     revision = revision + 1,
     updated_at = now()
 WHERE id = sqlc.arg(id)
   AND team_id = sqlc.arg(team_id)
-  AND status = 'draft'
+  AND status IN ('draft', 'scheduled')
   AND revision = sqlc.arg(revision)
   AND deleted_at IS NULL
 RETURNING *;
@@ -59,21 +103,20 @@ RETURNING *;
 -- name: ScheduleBroadcast :one
 UPDATE broadcasts
 SET status = 'scheduled',
-    template_version_id = sqlc.arg(template_version_id),
     scheduled_at = sqlc.arg(scheduled_at),
+    queued_at = NULL,
     canceled_at = NULL,
     revision = revision + 1,
     updated_at = now()
 WHERE id = sqlc.arg(id)
   AND team_id = sqlc.arg(team_id)
-  AND status = 'draft'
+  AND status IN ('draft', 'scheduled')
   AND deleted_at IS NULL
 RETURNING *;
 
 -- name: QueueBroadcast :one
 UPDATE broadcasts
 SET status = 'queued',
-    template_version_id = sqlc.arg(template_version_id),
     scheduled_at = NULL,
     queued_at = now(),
     canceled_at = NULL,
@@ -119,14 +162,26 @@ RETURNING broadcast.*;
 
 -- name: CancelScheduledBroadcast :one
 UPDATE broadcasts
-SET status = 'canceled',
+SET status = 'draft',
     scheduled_at = NULL,
-    canceled_at = now(),
+    canceled_at = NULL,
     revision = revision + 1,
     updated_at = now()
 WHERE id = sqlc.arg(id)
   AND team_id = sqlc.arg(team_id)
   AND status = 'scheduled'
+  AND deleted_at IS NULL
+RETURNING *;
+
+-- name: CancelQueuedBroadcast :one
+UPDATE broadcasts
+SET status = 'canceled',
+    canceled_at = now(),
+    revision = revision + 1,
+    updated_at = now()
+WHERE id = sqlc.arg(id)
+  AND team_id = sqlc.arg(team_id)
+  AND status = 'queued'
   AND deleted_at IS NULL
 RETURNING *;
 
