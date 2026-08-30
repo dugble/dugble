@@ -3,7 +3,6 @@ package broadcast
 import (
 	"context"
 	"errors"
-	"fmt"
 	"strings"
 	"time"
 
@@ -236,7 +235,11 @@ func (s *Service) Preview(ctx context.Context, identifier string, req PreviewReq
 	if err != nil {
 		return PreviewResponse{}, err
 	}
-	return renderPreview(value, req.Variables), nil
+	preview, err := RenderBroadcast(value, req.Variables)
+	if err != nil {
+		return PreviewResponse{}, apperrors.NewBadRequest(err.Error())
+	}
+	return preview, nil
 }
 
 func (s *Service) ListRecipients(ctx context.Context, identifier string, req ListRequest) ([]Recipient, error) {
@@ -406,41 +409,6 @@ func applyUpdate(current *Broadcast, req UpdateRequest) (uuid.UUID, *uuid.UUID, 
 		}
 	}
 	return segmentID, topicID, nil
-}
-
-func renderPreview(value Broadcast, supplied map[string]any) PreviewResponse {
-	bindings := make(map[string]any, len(value.VariableBindings)+len(supplied))
-	for key, item := range value.VariableBindings {
-		bindings[key] = item
-	}
-	for key, item := range supplied {
-		bindings[key] = item
-	}
-	return PreviewResponse{
-		FromEmail: value.FromEmail,
-		FromName: value.FromName,
-		ReplyToEmail: value.ReplyToEmail,
-		Subject: renderBindings(value.Subject, bindings),
-		PreviewText: renderOptionalBindings(value.PreviewText, bindings),
-		HTML: renderBindings(value.HTML, bindings),
-		Text: renderOptionalBindings(value.Text, bindings),
-	}
-}
-
-func renderBindings(input string, values map[string]any) string {
-	result := input
-	for key, value := range values {
-		result = strings.ReplaceAll(result, "{{{"+key+"}}}", fmt.Sprint(value))
-	}
-	return result
-}
-
-func renderOptionalBindings(input *string, values map[string]any) *string {
-	if input == nil {
-		return nil
-	}
-	value := renderBindings(*input, values)
-	return &value
 }
 
 func normalizeOptionalString(value *string) *string {
