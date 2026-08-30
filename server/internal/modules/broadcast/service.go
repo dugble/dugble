@@ -3,6 +3,7 @@ package broadcast
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -23,15 +24,15 @@ func NewService(repository *Repository, _ ...any) *Service {
 }
 
 func requireTenant(ctx context.Context, permission authz.Permission) (authz.Access, error) {
-	tc, decision := authz.ResolveAccess(ctx, permission)
+	access, decision := authz.ResolveAccess(ctx, permission)
 	if !decision.Allowed {
 		return authz.Access{}, apperrors.NewForbidden(decision.Reason)
 	}
-	return tc, nil
+	return access, nil
 }
 
 func (s *Service) Create(ctx context.Context, req CreateRequest) (Broadcast, error) {
-	tc, err := requireTenant(ctx, authz.PermissionBroadcastsWrite)
+	access, err := requireTenant(ctx, authz.PermissionBroadcastsWrite)
 	if err != nil {
 		return Broadcast{}, err
 	}
@@ -71,7 +72,7 @@ func (s *Service) Create(ctx context.Context, req CreateRequest) (Broadcast, err
 		return Broadcast{}, apperrors.NewBadRequest("scheduled_at must be in the future")
 	}
 
-	value, err := s.repository.Create(ctx, tc.Scope.TeamID, segmentID, topicID, req)
+	value, err := s.repository.Create(ctx, access.Scope.TeamID, segmentID, topicID, req)
 	if err != nil {
 		return Broadcast{}, apperrors.NewInternal("Unable to create broadcast", err)
 	}
@@ -79,8 +80,7 @@ func (s *Service) Create(ctx context.Context, req CreateRequest) (Broadcast, err
 		return value, nil
 	}
 
-	id := uuid.MustParse(value.ID)
-	value, err = s.repository.Send(ctx, tc.Scope.TeamID, id, req.ScheduledAt)
+	value, err = s.repository.Send(ctx, access.Scope.TeamID, uuid.MustParse(value.ID), req.ScheduledAt)
 	if errors.Is(err, ErrConflict) {
 		return Broadcast{}, apperrors.NewConflict("Broadcast could not be queued")
 	}
@@ -91,7 +91,7 @@ func (s *Service) Create(ctx context.Context, req CreateRequest) (Broadcast, err
 }
 
 func (s *Service) List(ctx context.Context, req ListRequest) ([]Broadcast, error) {
-	tc, err := requireTenant(ctx, authz.PermissionBroadcastsRead)
+	access, err := requireTenant(ctx, authz.PermissionBroadcastsRead)
 	if err != nil {
 		return nil, err
 	}
@@ -101,7 +101,7 @@ func (s *Service) List(ctx context.Context, req ListRequest) ([]Broadcast, error
 	if req.Offset < 0 {
 		req.Offset = 0
 	}
-	values, err := s.repository.List(ctx, tc.Scope.TeamID, req.Limit, req.Offset)
+	values, err := s.repository.List(ctx, access.Scope.TeamID, req.Limit, req.Offset)
 	if err != nil {
 		return nil, apperrors.NewInternal("Unable to list broadcasts", err)
 	}
@@ -109,7 +109,7 @@ func (s *Service) List(ctx context.Context, req ListRequest) ([]Broadcast, error
 }
 
 func (s *Service) Get(ctx context.Context, identifier string) (Broadcast, error) {
-	tc, err := requireTenant(ctx, authz.PermissionBroadcastsRead)
+	access, err := requireTenant(ctx, authz.PermissionBroadcastsRead)
 	if err != nil {
 		return Broadcast{}, err
 	}
@@ -117,7 +117,7 @@ func (s *Service) Get(ctx context.Context, identifier string) (Broadcast, error)
 	if err != nil {
 		return Broadcast{}, err
 	}
-	value, err := s.repository.Get(ctx, tc.Scope.TeamID, id)
+	value, err := s.repository.Get(ctx, access.Scope.TeamID, id)
 	if errors.Is(err, ErrNotFound) {
 		return Broadcast{}, apperrors.NewNotFound("Broadcast not found")
 	}
@@ -128,7 +128,7 @@ func (s *Service) Get(ctx context.Context, identifier string) (Broadcast, error)
 }
 
 func (s *Service) Update(ctx context.Context, identifier string, req UpdateRequest) (Broadcast, error) {
-	tc, err := requireTenant(ctx, authz.PermissionBroadcastsWrite)
+	access, err := requireTenant(ctx, authz.PermissionBroadcastsWrite)
 	if err != nil {
 		return Broadcast{}, err
 	}
@@ -140,7 +140,7 @@ func (s *Service) Update(ctx context.Context, identifier string, req UpdateReque
 		return Broadcast{}, apperrors.NewBadRequest("Revision is required")
 	}
 
-	current, err := s.repository.Get(ctx, tc.Scope.TeamID, id)
+	current, err := s.repository.Get(ctx, access.Scope.TeamID, id)
 	if errors.Is(err, ErrNotFound) {
 		return Broadcast{}, apperrors.NewNotFound("Broadcast not found")
 	}
@@ -155,7 +155,7 @@ func (s *Service) Update(ctx context.Context, identifier string, req UpdateReque
 	if err != nil {
 		return Broadcast{}, err
 	}
-	value, err := s.repository.Update(ctx, tc.Scope.TeamID, id, segmentID, topicID, req.Revision, current)
+	value, err := s.repository.Update(ctx, access.Scope.TeamID, id, segmentID, topicID, req.Revision, current)
 	if errors.Is(err, ErrConflict) {
 		return Broadcast{}, apperrors.NewConflict("Broadcast was modified or is no longer editable")
 	}
@@ -166,7 +166,7 @@ func (s *Service) Update(ctx context.Context, identifier string, req UpdateReque
 }
 
 func (s *Service) Delete(ctx context.Context, identifier string) (Broadcast, error) {
-	tc, err := requireTenant(ctx, authz.PermissionBroadcastsWrite)
+	access, err := requireTenant(ctx, authz.PermissionBroadcastsWrite)
 	if err != nil {
 		return Broadcast{}, err
 	}
@@ -174,7 +174,7 @@ func (s *Service) Delete(ctx context.Context, identifier string) (Broadcast, err
 	if err != nil {
 		return Broadcast{}, err
 	}
-	value, err := s.repository.Delete(ctx, tc.Scope.TeamID, id)
+	value, err := s.repository.Delete(ctx, access.Scope.TeamID, id)
 	if errors.Is(err, ErrConflict) {
 		return Broadcast{}, apperrors.NewConflict("Only draft or canceled broadcasts can be deleted")
 	}
@@ -185,7 +185,7 @@ func (s *Service) Delete(ctx context.Context, identifier string) (Broadcast, err
 }
 
 func (s *Service) Send(ctx context.Context, identifier string, req SendRequest) (Broadcast, error) {
-	tc, err := requireTenant(ctx, authz.PermissionBroadcastsSend)
+	access, err := requireTenant(ctx, authz.PermissionBroadcastsSend)
 	if err != nil {
 		return Broadcast{}, err
 	}
@@ -196,7 +196,7 @@ func (s *Service) Send(ctx context.Context, identifier string, req SendRequest) 
 	if req.ScheduledAt != nil && !req.ScheduledAt.After(time.Now()) {
 		return Broadcast{}, apperrors.NewBadRequest("scheduled_at must be in the future")
 	}
-	value, err := s.repository.Send(ctx, tc.Scope.TeamID, id, req.ScheduledAt)
+	value, err := s.repository.Send(ctx, access.Scope.TeamID, id, req.ScheduledAt)
 	if errors.Is(err, ErrNotFound) {
 		return Broadcast{}, apperrors.NewNotFound("Broadcast not found")
 	}
@@ -210,7 +210,7 @@ func (s *Service) Send(ctx context.Context, identifier string, req SendRequest) 
 }
 
 func (s *Service) Cancel(ctx context.Context, identifier string) (Broadcast, error) {
-	tc, err := requireTenant(ctx, authz.PermissionBroadcastsSend)
+	access, err := requireTenant(ctx, authz.PermissionBroadcastsSend)
 	if err != nil {
 		return Broadcast{}, err
 	}
@@ -218,7 +218,7 @@ func (s *Service) Cancel(ctx context.Context, identifier string) (Broadcast, err
 	if err != nil {
 		return Broadcast{}, err
 	}
-	value, err := s.repository.Cancel(ctx, tc.Scope.TeamID, id)
+	value, err := s.repository.Cancel(ctx, access.Scope.TeamID, id)
 	if errors.Is(err, ErrNotFound) {
 		return Broadcast{}, apperrors.NewNotFound("Broadcast not found")
 	}
@@ -240,7 +240,7 @@ func (s *Service) Preview(ctx context.Context, identifier string, req PreviewReq
 }
 
 func (s *Service) ListRecipients(ctx context.Context, identifier string, req ListRequest) ([]Recipient, error) {
-	tc, err := requireTenant(ctx, authz.PermissionBroadcastsRead)
+	access, err := requireTenant(ctx, authz.PermissionBroadcastsRead)
 	if err != nil {
 		return nil, err
 	}
@@ -254,12 +254,12 @@ func (s *Service) ListRecipients(ctx context.Context, identifier string, req Lis
 	if req.Offset < 0 {
 		req.Offset = 0
 	}
-	if _, err = s.repository.Get(ctx, tc.Scope.TeamID, id); errors.Is(err, ErrNotFound) {
+	if _, err = s.repository.Get(ctx, access.Scope.TeamID, id); errors.Is(err, ErrNotFound) {
 		return nil, apperrors.NewNotFound("Broadcast not found")
 	} else if err != nil {
 		return nil, apperrors.NewInternal("Unable to get broadcast", err)
 	}
-	values, err := s.repository.ListRecipients(ctx, tc.Scope.TeamID, id, req.Limit, req.Offset)
+	values, err := s.repository.ListRecipients(ctx, access.Scope.TeamID, id, req.Limit, req.Offset)
 	if err != nil {
 		return nil, apperrors.NewInternal("Unable to list broadcast recipients", err)
 	}
@@ -267,7 +267,7 @@ func (s *Service) ListRecipients(ctx context.Context, identifier string, req Lis
 }
 
 func (s *Service) GetExclusionSummary(ctx context.Context, identifier string) (ExclusionSummary, error) {
-	tc, err := requireTenant(ctx, authz.PermissionBroadcastsRead)
+	access, err := requireTenant(ctx, authz.PermissionBroadcastsRead)
 	if err != nil {
 		return ExclusionSummary{}, err
 	}
@@ -275,12 +275,12 @@ func (s *Service) GetExclusionSummary(ctx context.Context, identifier string) (E
 	if err != nil {
 		return ExclusionSummary{}, err
 	}
-	if _, err = s.repository.Get(ctx, tc.Scope.TeamID, id); errors.Is(err, ErrNotFound) {
+	if _, err = s.repository.Get(ctx, access.Scope.TeamID, id); errors.Is(err, ErrNotFound) {
 		return ExclusionSummary{}, apperrors.NewNotFound("Broadcast not found")
 	} else if err != nil {
 		return ExclusionSummary{}, apperrors.NewInternal("Unable to get broadcast", err)
 	}
-	summary, err := s.repository.GetExclusionSummary(ctx, tc.Scope.TeamID, id)
+	summary, err := s.repository.GetExclusionSummary(ctx, access.Scope.TeamID, id)
 	if err != nil {
 		return ExclusionSummary{}, apperrors.NewInternal("Unable to summarize excluded recipients", err)
 	}
@@ -288,7 +288,7 @@ func (s *Service) GetExclusionSummary(ctx context.Context, identifier string) (E
 }
 
 func (s *Service) GetAnalytics(ctx context.Context, identifier string) (Analytics, error) {
-	tc, err := requireTenant(ctx, authz.PermissionBroadcastsRead)
+	access, err := requireTenant(ctx, authz.PermissionBroadcastsRead)
 	if err != nil {
 		return Analytics{}, err
 	}
@@ -296,7 +296,7 @@ func (s *Service) GetAnalytics(ctx context.Context, identifier string) (Analytic
 	if err != nil {
 		return Analytics{}, err
 	}
-	analytics, err := s.repository.GetAnalytics(ctx, tc.Scope.TeamID, id)
+	analytics, err := s.repository.GetAnalytics(ctx, access.Scope.TeamID, id)
 	if errors.Is(err, ErrNotFound) {
 		return Analytics{}, apperrors.NewNotFound("Broadcast not found")
 	}
@@ -307,7 +307,7 @@ func (s *Service) GetAnalytics(ctx context.Context, identifier string) (Analytic
 }
 
 func (s *Service) Duplicate(ctx context.Context, identifier string, req DuplicateRequest) (Broadcast, error) {
-	tc, err := requireTenant(ctx, authz.PermissionBroadcastsWrite)
+	access, err := requireTenant(ctx, authz.PermissionBroadcastsWrite)
 	if err != nil {
 		return Broadcast{}, err
 	}
@@ -317,7 +317,7 @@ func (s *Service) Duplicate(ctx context.Context, identifier string, req Duplicat
 	}
 	name := strings.TrimSpace(req.Name)
 	if name == "" {
-		source, getErr := s.repository.Get(ctx, tc.Scope.TeamID, id)
+		source, getErr := s.repository.Get(ctx, access.Scope.TeamID, id)
 		if errors.Is(getErr, ErrNotFound) {
 			return Broadcast{}, apperrors.NewNotFound("Broadcast not found")
 		}
@@ -326,7 +326,7 @@ func (s *Service) Duplicate(ctx context.Context, identifier string, req Duplicat
 		}
 		name = source.Name + " Copy"
 	}
-	value, err := s.repository.Duplicate(ctx, tc.Scope.TeamID, id, name)
+	value, err := s.repository.Duplicate(ctx, access.Scope.TeamID, id, name)
 	if errors.Is(err, ErrNotFound) {
 		return Broadcast{}, apperrors.NewNotFound("Broadcast not found")
 	}
@@ -417,16 +417,20 @@ func renderPreview(value Broadcast, supplied map[string]any) PreviewResponse {
 		bindings[key] = item
 	}
 	return PreviewResponse{
-		FromEmail: value.FromEmail, FromName: value.FromName, ReplyToEmail: value.ReplyToEmail,
-		Subject: renderBindings(value.Subject, bindings), PreviewText: renderOptionalBindings(value.PreviewText, bindings),
-		HTML: renderBindings(value.HTML, bindings), Text: renderOptionalBindings(value.Text, bindings),
+		FromEmail: value.FromEmail,
+		FromName: value.FromName,
+		ReplyToEmail: value.ReplyToEmail,
+		Subject: renderBindings(value.Subject, bindings),
+		PreviewText: renderOptionalBindings(value.PreviewText, bindings),
+		HTML: renderBindings(value.HTML, bindings),
+		Text: renderOptionalBindings(value.Text, bindings),
 	}
 }
 
 func renderBindings(input string, values map[string]any) string {
 	result := input
 	for key, value := range values {
-		result = strings.ReplaceAll(result, "{{{"+key+"}}}", stringifyBinding(value))
+		result = strings.ReplaceAll(result, "{{{"+key+"}}}", fmt.Sprint(value))
 	}
 	return result
 }
@@ -437,16 +441,6 @@ func renderOptionalBindings(input *string, values map[string]any) *string {
 	}
 	value := renderBindings(*input, values)
 	return &value
-}
-
-func stringifyBinding(value any) string {
-	if value == nil {
-		return ""
-	}
-	if text, ok := value.(string); ok {
-		return text
-	}
-	return strings.TrimSpace(strings.ReplaceAll(strings.TrimSpace(toString(value)), "\n", " "))
 }
 
 func normalizeOptionalString(value *string) *string {
@@ -473,12 +467,4 @@ func uuidStringPointer(value *uuid.UUID) *string {
 	}
 	text := value.String()
 	return &text
-}
-
-func toString(value any) string {
-	return strings.TrimSpace(strings.ReplaceAll(strings.TrimSpace(fmtSprint(value)), "\t", " "))
-}
-
-var fmtSprint = func(value any) string {
-	return fmt.Sprint(value)
 }
