@@ -74,7 +74,7 @@ type FanoutRecipient struct {
 	Text         *string
 
 	VariableBindings map[string]any
-	AttemptCount      int32
+	AttemptCount     int32
 }
 
 // CreateRequest creates a draft by default. Name is optional and defaults to

@@ -494,9 +494,9 @@ func emitBroadcastEvent(ctx context.Context, tx pgx.Tx, emitter eventEmitter, ev
 		return fmt.Errorf("parse broadcast id: %w", err)
 	}
 	payload := map[string]any{
-		"broadcast": value,
+		"broadcast":  value,
 		"transition": broadcastTransition{From: from, To: value.Status, Reason: reason},
-		"summary": broadcastSummary{AudienceCount: value.AudienceCount, EligibleCount: value.EligibleCount, SuppressedCount: value.SuppressedCount, QueuedCount: value.QueuedCount, FailedCount: value.FailedCount},
+		"summary":    broadcastSummary{AudienceCount: value.AudienceCount, EligibleCount: value.EligibleCount, SuppressedCount: value.SuppressedCount, QueuedCount: value.QueuedCount, FailedCount: value.FailedCount},
 	}
 	if failure != nil {
 		payload["failure"] = failure
