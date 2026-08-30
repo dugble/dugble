@@ -113,8 +113,6 @@ type Broadcast struct {
 	Status                   string             `db:"status" json:"status"`
 	SegmentID                uuid.UUID          `db:"segment_id" json:"segment_id"`
 	TopicID                  *uuid.UUID         `db:"topic_id" json:"topic_id"`
-	TemplateID               *uuid.UUID         `db:"template_id" json:"template_id"`
-	TemplateVersionID        *uuid.UUID         `db:"template_version_id" json:"template_version_id"`
 	FromEmail                *string            `db:"from_email" json:"from_email"`
 	FromName                 *string            `db:"from_name" json:"from_name"`
 	ReplyToEmail             *string            `db:"reply_to_email" json:"reply_to_email"`

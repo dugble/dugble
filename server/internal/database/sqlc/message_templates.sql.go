@@ -75,15 +75,10 @@ func (q *Queries) CreateMessageTemplatePublication(ctx context.Context, arg Crea
 }
 
 const deleteUnreferencedBroadcastTemplate = `-- name: DeleteUnreferencedBroadcastTemplate :exec
-DELETE FROM message_templates AS mt
-WHERE mt.id = $1
-  AND mt.team_id = $2
-  AND left(mt.alias, length('__broadcast_')) = '__broadcast_'
-  AND NOT EXISTS (
-      SELECT 1
-      FROM broadcasts AS b
-      WHERE b.template_id = mt.id
-  )
+DELETE FROM message_templates
+WHERE id = $1
+  AND team_id = $2
+  AND false
 `
 
 type DeleteUnreferencedBroadcastTemplateParams struct {
@@ -91,6 +86,9 @@ type DeleteUnreferencedBroadcastTemplateParams struct {
 	TeamID     uuid.UUID `db:"team_id" json:"team_id"`
 }
 
+// Deprecated compatibility query. Broadcasts no longer reference message
+// templates, so generated cleanup calls intentionally have no effect until the
+// old helper methods are removed from the template package.
 func (q *Queries) DeleteUnreferencedBroadcastTemplate(ctx context.Context, arg DeleteUnreferencedBroadcastTemplateParams) error {
 	_, err := q.db.Exec(ctx, deleteUnreferencedBroadcastTemplate, arg.TemplateID, arg.TeamID)
 	return err

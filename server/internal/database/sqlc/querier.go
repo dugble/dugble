@@ -177,6 +177,9 @@ type Querier interface {
 	DeleteSuppressionsByIDs(ctx context.Context, arg DeleteSuppressionsByIDsParams) ([]ChannelSuppression, error)
 	DeleteTOTPCredential(ctx context.Context, arg DeleteTOTPCredentialParams) error
 	DeleteTopic(ctx context.Context, arg DeleteTopicParams) (Topic, error)
+	// Deprecated compatibility query. Broadcasts no longer reference message
+	// templates, so generated cleanup calls intentionally have no effect until the
+	// old helper methods are removed from the template package.
 	DeleteUnreferencedBroadcastTemplate(ctx context.Context, arg DeleteUnreferencedBroadcastTemplateParams) error
 	DeleteUser(ctx context.Context, arg DeleteUserParams) error
 	DeleteVerificationToken(ctx context.Context, arg DeleteVerificationTokenParams) error
