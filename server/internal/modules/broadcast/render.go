@@ -55,13 +55,13 @@ func renderContent(
 		return PreviewResponse{}, err
 	}
 	return PreviewResponse{
-		FromEmail: optionalStringValue(fromEmail),
-		FromName: fromName,
+		FromEmail:    optionalStringValue(fromEmail),
+		FromName:     fromName,
 		ReplyToEmail: replyTo,
-		Subject: renderedSubject,
-		PreviewText: renderedPreview,
-		HTML: renderedHTML,
-		Text: renderedText,
+		Subject:      renderedSubject,
+		PreviewText:  renderedPreview,
+		HTML:         renderedHTML,
+		Text:         renderedText,
 	}, nil
 }
 
