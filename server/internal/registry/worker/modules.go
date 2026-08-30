@@ -33,6 +33,7 @@ import (
 	smscampaignmodule "github.com/dugble/dugble/server/internal/modules/campaign"
 	domainmodule "github.com/dugble/dugble/server/internal/modules/domain"
 	domainclaimmodule "github.com/dugble/dugble/server/internal/modules/domainclaim"
+	emailmodule "github.com/dugble/dugble/server/internal/modules/email"
 	"github.com/dugble/dugble/server/internal/modules/emailtenant"
 	senderidmodule "github.com/dugble/dugble/server/internal/modules/senderid"
 	smsmodule "github.com/dugble/dugble/server/internal/modules/sms"
@@ -79,8 +80,18 @@ func (registry *Registry) newModules(startupCtx context.Context) (modules, error
 		db,
 		platformevent.NewEmitter(platformwebhook.NewEventSink(webhookEmitter)),
 	)
+	broadcastEmailService := emailmodule.NewService(
+		emailmodule.NewRepository(db),
+		emaildelivery.NewQueue(outboxRepository),
+		emailmodule.ServiceConfig{
+			DefaultFromEmail: cfg.AWS.FromEmail,
+			DefaultProvider:  domainmodule.DefaultProvider,
+			DefaultRegion:    cfg.AWS.Region,
+		},
+		platformbilling.NewService(platformbilling.NewRepository(db)),
+	).WithDatabase(db)
 	broadcastExecutionJob := broadcastmodule.NewJob(
-		broadcastexecution.NewProcessor(broadcastExecutionRepository),
+		broadcastexecution.NewProcessor(broadcastExecutionRepository, broadcastEmailService),
 		broadcastmodule.JobConfig{PollInterval: time.Second, BatchSize: 100},
 	)
 
