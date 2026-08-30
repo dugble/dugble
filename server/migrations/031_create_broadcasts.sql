@@ -5,8 +5,15 @@ CREATE TABLE IF NOT EXISTS broadcasts (
     status TEXT NOT NULL DEFAULT 'draft',
     segment_id UUID NOT NULL,
     topic_id UUID,
-    template_id UUID NOT NULL,
+    template_id UUID,
     template_version_id UUID,
+    from_email TEXT,
+    from_name TEXT,
+    reply_to_email TEXT,
+    subject TEXT NOT NULL,
+    preview_text TEXT,
+    html_body TEXT NOT NULL,
+    text_body TEXT,
     variable_bindings JSONB NOT NULL DEFAULT '{}'::jsonb,
     scheduled_at TIMESTAMPTZ,
     queued_at TIMESTAMPTZ,
@@ -33,6 +40,8 @@ CREATE TABLE IF NOT EXISTS broadcasts (
     CONSTRAINT fk_broadcasts_template_version FOREIGN KEY (template_version_id)
         REFERENCES message_template_versions (id) ON DELETE RESTRICT,
     CONSTRAINT chk_broadcasts_name_not_empty CHECK (length(btrim(name)) > 0),
+    CONSTRAINT chk_broadcasts_subject_not_empty CHECK (length(btrim(subject)) > 0),
+    CONSTRAINT chk_broadcasts_html_not_empty CHECK (length(btrim(html_body)) > 0),
     CONSTRAINT chk_broadcasts_status CHECK (status IN ('draft','scheduled','queued','sent','failed','canceled')),
     CONSTRAINT chk_broadcasts_revision CHECK (revision > 0)
 );
