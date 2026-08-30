@@ -131,15 +131,20 @@ func testRecipient() broadcastmodule.FanoutRecipient {
 	fromName := "Dugble"
 	text := "Hello {{{FIRST_NAME}}}, your plan is {{{plan}}}."
 	return broadcastmodule.FanoutRecipient{
-		ID: uuid.New(), TeamID: uuid.New(), BroadcastID: uuid.New(),
-		Email: "ada@example.com", FirstName: &firstName, LastName: &lastName,
+		ID:          uuid.New(),
+		TeamID:      uuid.New(),
+		BroadcastID: uuid.New(),
+		Email:       "ada@example.com",
+		FirstName:   &firstName,
+		LastName:    &lastName,
 		ContactSnapshot: map[string]any{
 			"properties": map[string]any{"FIRST_NAME": "property", "plan": "pro"},
 		},
-		FromEmail: &fromEmail, FromName: &fromName,
-		Subject: "Hello {{{FIRST_NAME}}}",
-		HTML: "<p>Hello {{{FIRST_NAME}}}, plan {{{plan}}}</p><a href=\"{{{UNSUBSCRIBE_URL}}}\">unsubscribe</a>",
-		Text: &text,
+		FromEmail:        &fromEmail,
+		FromName:         &fromName,
+		Subject:          "Hello {{{FIRST_NAME}}}",
+		HTML:             "<p>Hello {{{FIRST_NAME}}}, plan {{{plan}}}</p><a href=\"{{{UNSUBSCRIBE_URL}}}\">unsubscribe</a>",
+		Text:             &text,
 		VariableBindings: map[string]any{"plan": "enterprise", "campaign": "august"},
 	}
 }
