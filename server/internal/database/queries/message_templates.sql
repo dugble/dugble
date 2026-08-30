@@ -79,14 +79,3 @@ RETURNING *;
 INSERT INTO message_template_publications (team_id, template_id, version_id)
 VALUES (sqlc.arg(team_id), sqlc.arg(template_id), sqlc.arg(version_id))
 RETURNING id, team_id, template_id, version_id, published_at;
-
--- name: DeleteUnreferencedBroadcastTemplate :exec
-DELETE FROM message_templates AS mt
-WHERE mt.id = sqlc.arg(template_id)
-  AND mt.team_id = sqlc.arg(team_id)
-  AND left(mt.alias, length('__broadcast_')) = '__broadcast_'
-  AND NOT EXISTS (
-      SELECT 1
-      FROM broadcasts AS b
-      WHERE b.template_id = mt.id
-  );
