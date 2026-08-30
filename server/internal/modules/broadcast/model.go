@@ -16,11 +16,9 @@ const (
 	StatusCanceled  = "canceled"
 )
 
-// Broadcast is the materialized message delivered to a segment.
-//
-// The public resource owns its delivery content. Template fields below are
-// temporary internal compatibility fields while the old repository/fanout path
-// is removed; they are deliberately excluded from JSON.
+// Broadcast is the exact email message and audience definition that will be
+// delivered to a segment. Reusable templates are intentionally not part of the
+// resource; callers copy template content into a broadcast before creation.
 type Broadcast struct {
 	ID        string  `json:"id"`
 	TeamID    string  `json:"team_id"`
@@ -53,38 +51,47 @@ type Broadcast struct {
 	Revision  int64     `json:"revision"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
-
-	// Deprecated: remove with the old template-backed repository/fanout path.
-	TemplateID        string  `json:"-"`
-	TemplateVersionID *string `json:"-"`
 }
 
-// FanoutRecipient is kept temporarily for the existing fanout implementation.
-// Its template fields disappear when the worker is moved to broadcast-owned
-// content.
+// FanoutRecipient contains the snapshotted recipient plus the broadcast
+// message used by the delivery worker. The template fields are temporary
+// compatibility data until the delivery package is moved to the owned content
+// fields below.
 type FanoutRecipient struct {
-	ID                uuid.UUID
-	TeamID            uuid.UUID
-	BroadcastID       uuid.UUID
-	ContactID         *uuid.UUID
-	Email             string
-	FirstName         *string
-	LastName          *string
-	ContactSnapshot   map[string]any
+	ID              uuid.UUID
+	TeamID          uuid.UUID
+	BroadcastID     uuid.UUID
+	ContactID       *uuid.UUID
+	Email           string
+	FirstName       *string
+	LastName        *string
+	ContactSnapshot map[string]any
+
+	FromEmail    *string
+	FromName     *string
+	ReplyToEmail *string
+	Subject      string
+	PreviewText  *string
+	HTML         string
+	Text         *string
+
+	VariableBindings map[string]any
+	AttemptCount      int32
+
+	// Deprecated: remove when delivery/broadcast renders owned content.
 	TemplateID        uuid.UUID
 	TemplateVersionID uuid.UUID
-	VariableBindings  map[string]any
-	AttemptCount      int32
 }
 
-// CreateRequest creates a draft by default. Name is optional at the API
-// boundary; service validation derives it from Subject when it is blank.
+// CreateRequest creates a draft by default. Name is optional and defaults to
+// Subject. Set Send to true to queue immediately or combine Send with
+// ScheduledAt to create a scheduled broadcast.
 type CreateRequest struct {
 	Name      string  `json:"name,omitempty"`
 	SegmentID string  `json:"segment_id"`
 	TopicID   *string `json:"topic_id,omitempty"`
 
-	FromEmail    *string `json:"from_email,omitempty"`
+	FromEmail    *string `json:"from_email"`
 	FromName     *string `json:"from_name,omitempty"`
 	ReplyToEmail *string `json:"reply_to_email,omitempty"`
 	Subject      string  `json:"subject"`
@@ -95,14 +102,11 @@ type CreateRequest struct {
 	VariableBindings map[string]any `json:"variable_bindings,omitempty"`
 	Send             bool           `json:"send,omitempty"`
 	ScheduledAt      *time.Time     `json:"scheduled_at,omitempty"`
-
-	// Deprecated compatibility input. The rebuilt public API does not require a
-	// template to create a broadcast.
-	Template string `json:"template,omitempty"`
 }
 
-// UpdateRequest supports partial updates. Nullable fields use pointer-to-pointer
-// values so omitted means leave unchanged while JSON null means clear.
+// UpdateRequest supports partial edits while a broadcast is draft or
+// scheduled. Nullable fields use pointer-to-pointer values so omitted means
+// leave unchanged while JSON null means clear.
 type UpdateRequest struct {
 	Revision int64 `json:"revision"`
 
@@ -119,9 +123,6 @@ type UpdateRequest struct {
 	Text         **string `json:"text,omitempty"`
 
 	VariableBindings *map[string]any `json:"variable_bindings,omitempty"`
-
-	// Deprecated compatibility input during repository/service replacement.
-	Template *string `json:"template,omitempty"`
 }
 
 func (r *UpdateRequest) UnmarshalJSON(data []byte) error {
@@ -170,7 +171,7 @@ func decodeNullableString(fields map[string]json.RawMessage, key string, dst ***
 }
 
 type DuplicateRequest struct {
-	Name string `json:"name"`
+	Name string `json:"name,omitempty"`
 }
 
 type SendRequest struct {
