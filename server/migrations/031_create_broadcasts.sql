@@ -5,8 +5,6 @@ CREATE TABLE IF NOT EXISTS broadcasts (
     status TEXT NOT NULL DEFAULT 'draft',
     segment_id UUID NOT NULL,
     topic_id UUID,
-    template_id UUID,
-    template_version_id UUID,
     from_email TEXT,
     from_name TEXT,
     reply_to_email TEXT,
@@ -35,10 +33,6 @@ CREATE TABLE IF NOT EXISTS broadcasts (
         REFERENCES segments (id, team_id) ON DELETE RESTRICT,
     CONSTRAINT fk_broadcasts_topic_team FOREIGN KEY (topic_id, team_id)
         REFERENCES topics (id, team_id) ON DELETE RESTRICT,
-    CONSTRAINT fk_broadcasts_template_team FOREIGN KEY (template_id, team_id)
-        REFERENCES message_templates (id, team_id) ON DELETE RESTRICT,
-    CONSTRAINT fk_broadcasts_template_version FOREIGN KEY (template_version_id)
-        REFERENCES message_template_versions (id) ON DELETE RESTRICT,
     CONSTRAINT chk_broadcasts_name_not_empty CHECK (length(btrim(name)) > 0),
     CONSTRAINT chk_broadcasts_subject_not_empty CHECK (length(btrim(subject)) > 0),
     CONSTRAINT chk_broadcasts_html_not_empty CHECK (length(btrim(html_body)) > 0),
