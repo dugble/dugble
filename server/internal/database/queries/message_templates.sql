@@ -79,3 +79,12 @@ RETURNING *;
 INSERT INTO message_template_publications (team_id, template_id, version_id)
 VALUES (sqlc.arg(team_id), sqlc.arg(template_id), sqlc.arg(version_id))
 RETURNING id, team_id, template_id, version_id, published_at;
+
+-- Deprecated compatibility query. Broadcasts no longer reference message
+-- templates, so generated cleanup calls intentionally have no effect until the
+-- old helper methods are removed from the template package.
+-- name: DeleteUnreferencedBroadcastTemplate :exec
+DELETE FROM message_templates
+WHERE id = sqlc.arg(template_id)
+  AND team_id = sqlc.arg(team_id)
+  AND false;
