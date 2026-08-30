@@ -342,9 +342,6 @@ func (r *Repository) ClaimNextRecipientForFanoutTx(ctx context.Context, tx pgx.T
 	if err != nil {
 		return FanoutRecipient{}, false, fmt.Errorf("claim broadcast recipient for fanout: %w", err)
 	}
-	if row.TemplateID == nil || row.TemplateVersionID == nil {
-		return FanoutRecipient{}, false, errors.New("broadcast fanout still requires legacy template compatibility data")
-	}
 	snapshot, err := decodeObject(row.ContactSnapshot, "broadcast recipient snapshot")
 	if err != nil {
 		return FanoutRecipient{}, false, err
@@ -356,8 +353,9 @@ func (r *Repository) ClaimNextRecipientForFanoutTx(ctx context.Context, tx pgx.T
 	return FanoutRecipient{
 		ID: row.ID, TeamID: row.TeamID, BroadcastID: row.BroadcastID, ContactID: row.ContactID,
 		Email: row.Email, FirstName: row.FirstName, LastName: row.LastName, ContactSnapshot: snapshot,
+		FromEmail: row.FromEmail, FromName: row.FromName, ReplyToEmail: row.ReplyToEmail,
+		Subject: row.Subject, PreviewText: row.PreviewText, HTML: row.HtmlBody, Text: row.TextBody,
 		VariableBindings: bindings, AttemptCount: row.AttemptCount,
-		TemplateID: *row.TemplateID, TemplateVersionID: *row.TemplateVersionID,
 	}, true, nil
 }
 
