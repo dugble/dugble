@@ -1,8 +1,23 @@
 # Broadcasts
 
-Customer dashboard HTTP contract for email broadcasts.
+Customer dashboard HTTP contract and implementation notes for email broadcasts.
 
 A broadcast owns the exact email content that it sends. Reusable message templates are separate resources: a client may copy template content into a broadcast, but the Broadcast API does not accept or persist `template_id` or `template_version_id`, and delivery never dereferences a message template.
+
+## Architecture
+
+The Broadcast module follows these invariants:
+
+1. A broadcast is a complete, sendable marketing email.
+2. Reusable message templates are separate resources.
+3. `name` is an internal label; `subject` is recipient-facing.
+4. Preview, scheduling, recipient fanout, retries, and analytics operate on broadcast-owned content.
+5. Message content is editable only while status is `draft` or `scheduled`.
+6. Once a broadcast reaches `queued`, delivery uses the owned-content snapshot and does not consult mutable reusable templates.
+
+Broadcast-owned content is stored directly on the `broadcasts` record, including sender fields, subject, preview text, HTML/text bodies, and variable bindings. Recipient fanout claims those message fields together with each materialized recipient, so the worker can render and enqueue email without reading `message_templates` or `message_template_versions`.
+
+There are no `template_id`, `template_version_id`, `source_template_id`, or `source_template_version_id` fields on the Broadcast resource or persistence model.
 
 ## Broadcast resource
 
@@ -62,6 +77,8 @@ Creates a broadcast. By default the result is a `draft`.
 ```
 
 `segment_id`, `subject`, and `html` are required. `name` is optional and defaults to `subject` when omitted or blank. `topic_id`, `from_email`, `from_name`, `reply_to_email`, `preview_text`, `text`, and `variable_bindings` are optional. When `from_email` is omitted, delivery may use the configured default sender.
+
+Reusable templates are intentionally not accepted as Broadcast API references. A caller that wants to use a template must resolve or copy the desired template content before creating the broadcast.
 
 Creation can also queue or schedule the broadcast in the same request. Set `send` to `true` to queue immediately:
 
@@ -263,6 +280,20 @@ Returns aggregate delivery and engagement counts for the broadcast:
 
 Returns `200 OK`.
 
+## Recipient materialization and fanout
+
+When a broadcast is queued, recipient materialization snapshots the target audience into `broadcast_recipients`, including excluded recipients. Materialization records audience, eligible, and suppressed counts on the Broadcast.
+
+Fanout then claims pending recipients together with the exact broadcast-owned sender and content fields. For each recipient it:
+
+1. overlays recipient-specific variables onto `variable_bindings`;
+2. renders the owned subject and body fields;
+3. enqueues an email message;
+4. records the resulting email message ID or a retryable/terminal failure;
+5. finalizes the Broadcast to `sent` or `failed` when no pending recipients remain.
+
+This path is independent of reusable message templates.
+
 ## Lifecycle
 
 ```text
@@ -280,3 +311,13 @@ scheduled -- due ---------------------> queued
 The supported statuses are `draft`, `scheduled`, `queued`, `sent`, `failed`, and `canceled`.
 
 Message content is editable only while the broadcast is `draft` or `scheduled`. Once the broadcast enters `queued`, fanout uses the broadcast-owned content snapshot and does not depend on a reusable template.
+
+## Message-template boundary
+
+The old hidden broadcast-template compatibility layer has been removed from the message-template module. Broadcast creation, update, preview, scheduling, fanout, and cleanup no longer use hidden `__broadcast_` templates or broadcast-specific template helpers.
+
+The message-template module serves reusable templates only. Applications that want to start a broadcast from a reusable template should copy the desired template content into the Broadcast API payload before creating or updating the broadcast.
+
+## Compliance integration
+
+Managed unsubscribe link generation is a separate delivery/compliance integration. The broadcast renderer can consume managed variables supplied during fanout, but this document does not claim that a production unsubscribe endpoint/linker is available until that integration is implemented and wired.
