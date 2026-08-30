@@ -11,7 +11,6 @@ import (
 
 	broadcastmodule "github.com/dugble/dugble/server/internal/modules/broadcast"
 	emailmodule "github.com/dugble/dugble/server/internal/modules/email"
-	messagetemplate "github.com/dugble/dugble/server/internal/modules/messagetemplate"
 	apperrors "github.com/dugble/dugble/server/pkg/errors"
 )
 
@@ -97,17 +96,6 @@ func (repository *processorRepository) FinalizeBroadcastFanoutTx(context.Context
 	return broadcastmodule.Broadcast{Status: broadcastmodule.StatusQueued}, nil
 }
 
-type processorRenderer struct {
-	result    messagetemplate.PreviewResponse
-	err       error
-	variables map[string]any
-}
-
-func (renderer *processorRenderer) RenderVersionTx(_ context.Context, _ pgx.Tx, _, _, _ uuid.UUID, variables map[string]any) (messagetemplate.PreviewResponse, error) {
-	renderer.variables = variables
-	return renderer.result, renderer.err
-}
-
 type processorEmail struct {
 	result       emailmodule.QueuedMessage
 	err          error
@@ -139,13 +127,19 @@ func (testUnsubscribeLinker) Link(recipientID uuid.UUID) (string, error) {
 func testRecipient() broadcastmodule.FanoutRecipient {
 	firstName := "Ada"
 	lastName := "Lovelace"
+	fromEmail := "hello@example.com"
+	fromName := "Dugble"
+	text := "Hello {{{FIRST_NAME}}}, your plan is {{{plan}}}."
 	return broadcastmodule.FanoutRecipient{
 		ID: uuid.New(), TeamID: uuid.New(), BroadcastID: uuid.New(),
 		Email: "ada@example.com", FirstName: &firstName, LastName: &lastName,
 		ContactSnapshot: map[string]any{
 			"properties": map[string]any{"FIRST_NAME": "property", "plan": "pro"},
 		},
-		TemplateID: uuid.New(), TemplateVersionID: uuid.New(),
+		FromEmail: &fromEmail, FromName: &fromName,
+		Subject: "Hello {{{FIRST_NAME}}}",
+		HTML: "<p>Hello {{{FIRST_NAME}}}, plan {{{plan}}}</p><a href=\"{{{UNSUBSCRIBE_URL}}}\">unsubscribe</a>",
+		Text: &text,
 		VariableBindings: map[string]any{"plan": "enterprise", "campaign": "august"},
 	}
 }
@@ -187,15 +181,12 @@ func TestClassifyFanoutFailure(t *testing.T) {
 	}
 }
 
-func TestProcessorQueuesRenderedRecipient(t *testing.T) {
+func TestProcessorQueuesOwnedBroadcastContent(t *testing.T) {
 	recipient := testRecipient()
 	messageID := uuid.New()
 	repository := &processorRepository{recipients: []broadcastmodule.FanoutRecipient{recipient}}
-	renderer := &processorRenderer{result: messagetemplate.PreviewResponse{
-		Subject: "Hello Ada", HTML: "<p>Hello Ada</p>",
-	}}
 	email := &processorEmail{result: emailmodule.QueuedMessage{Message: emailmodule.Message{ID: messageID.String()}}}
-	processor := NewProcessor(repository, renderer, email, testUnsubscribeLinker{})
+	processor := NewProcessor(repository, email, testUnsubscribeLinker{})
 
 	if err := processor.ProcessBatch(context.Background(), 10); err != nil {
 		t.Fatalf("ProcessBatch returned error: %v", err)
@@ -209,8 +200,11 @@ func TestProcessorQueuesRenderedRecipient(t *testing.T) {
 	if email.observeCalls != 1 {
 		t.Fatalf("observe calls = %d, want 1", email.observeCalls)
 	}
-	if renderer.variables["UNSUBSCRIBE_URL"] == "" || renderer.variables["RESEND_UNSUBSCRIBE_URL"] == "" {
-		t.Fatalf("unsubscribe variables = %+v", renderer.variables)
+	if email.request.Subject != "Hello Ada" {
+		t.Fatalf("subject = %q, want Hello Ada", email.request.Subject)
+	}
+	if email.request.HTML == recipient.HTML || email.request.HTML == "" {
+		t.Fatalf("html was not rendered: %q", email.request.HTML)
 	}
 	if email.request.Headers["List-Unsubscribe"] == "" {
 		t.Fatal("List-Unsubscribe header is missing")
@@ -228,15 +222,11 @@ func TestProcessorExcludesRecipientWhoUnsubscribedAfterMaterialization(t *testin
 		recipients:      []broadcastmodule.FanoutRecipient{testRecipient()},
 		exclusionReason: "global_unsubscribe",
 	}
-	renderer := &processorRenderer{}
 	email := &processorEmail{}
-	processor := NewProcessor(repository, renderer, email, testUnsubscribeLinker{})
+	processor := NewProcessor(repository, email, testUnsubscribeLinker{})
 
 	if err := processor.ProcessBatch(context.Background(), 10); err != nil {
 		t.Fatalf("ProcessBatch returned error: %v", err)
-	}
-	if renderer.variables != nil {
-		t.Fatal("excluded recipient should not be rendered")
 	}
 	if email.enqueueCalls != 0 {
 		t.Fatalf("email enqueue calls = %d, want 0", email.enqueueCalls)
@@ -250,10 +240,11 @@ func TestProcessorExcludesRecipientWhoUnsubscribedAfterMaterialization(t *testin
 }
 
 func TestProcessorRecordsTerminalRenderFailure(t *testing.T) {
-	repository := &processorRepository{recipients: []broadcastmodule.FanoutRecipient{testRecipient()}}
-	renderer := &processorRenderer{err: errors.New("render pinned message template version: missing required variable")}
+	recipient := testRecipient()
+	recipient.Subject = "Hello {{{MISSING}}}"
+	repository := &processorRepository{recipients: []broadcastmodule.FanoutRecipient{recipient}}
 	email := &processorEmail{}
-	processor := NewProcessor(repository, renderer, email, testUnsubscribeLinker{})
+	processor := NewProcessor(repository, email, testUnsubscribeLinker{})
 
 	if err := processor.ProcessBatch(context.Background(), 10); err != nil {
 		t.Fatalf("ProcessBatch returned error: %v", err)
@@ -272,9 +263,8 @@ func TestProcessorRecordsTerminalRenderFailure(t *testing.T) {
 func TestProcessorSchedulesRetryAfterTransientEmailFailure(t *testing.T) {
 	now := time.Date(2026, time.August, 7, 12, 0, 0, 0, time.UTC)
 	repository := &processorRepository{recipients: []broadcastmodule.FanoutRecipient{testRecipient()}}
-	renderer := &processorRenderer{result: messagetemplate.PreviewResponse{Subject: "Hello", HTML: "<p>Hello</p>"}}
 	email := &processorEmail{err: apperrors.NewServiceUnavailable("Email pricing is unavailable", errors.New("offline"))}
-	processor := NewProcessor(repository, renderer, email, testUnsubscribeLinker{}, fixedClock{value: now})
+	processor := NewProcessor(repository, email, testUnsubscribeLinker{}, fixedClock{value: now})
 
 	if err := processor.ProcessBatch(context.Background(), 10); err != nil {
 		t.Fatalf("ProcessBatch returned error: %v", err)
