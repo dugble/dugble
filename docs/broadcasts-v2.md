@@ -1,27 +1,27 @@
 # Broadcasts v2
 
-This document defines the target model for Dugble email broadcasts.
+This document records the implemented Dugble email broadcast architecture.
 
-The current implementation stores inline broadcast content by creating an internal message template and then making the broadcast point at that template. That couples a one-off marketing campaign to the reusable-template lifecycle and makes broadcast create, update, preview, send, and fanout depend on template-specific behavior.
-
-Broadcasts v2 removes that coupling.
+Broadcasts v2 removes the old runtime coupling between one-off marketing broadcasts and reusable message templates. A Broadcast is now the sendable message resource: it owns its audience definition, sender fields, subject, preview text, HTML/text bodies, variable bindings, lifecycle state, and delivery counters.
 
 ## Design principles
 
 1. A broadcast is a complete, sendable marketing email.
-2. A message template is reusable content and is optional when creating a broadcast.
-3. Selecting a template copies a snapshot into the broadcast; sending does not dereference a mutable template.
-4. `name` is an internal label. The recipient-facing subject is `subject`.
-5. The API exposes broadcast content directly, regardless of how it is stored internally.
-6. Content becomes immutable once delivery has started.
+2. Reusable message templates are separate resources.
+3. A client may copy reusable template content into a broadcast before creation, but the Broadcast API does not persist template references.
+4. Sending, preview, recipient fanout, retries, and analytics operate on broadcast-owned content.
+5. `name` is an internal label; `subject` is recipient-facing.
+6. Broadcast message content is editable only while status is `draft` or `scheduled`.
+7. Once a broadcast reaches `queued`, delivery uses the immutable owned-content snapshot and never dereferences a mutable template.
 
 ## Resource model
 
-A broadcast owns:
+A Broadcast owns:
 
-- `name` — internal label
-- `segment_id` — target audience
-- `topic_id` — optional subscription topic
+- `name`
+- `status`
+- `segment_id`
+- `topic_id`
 - `from_email`
 - `from_name`
 - `reply_to_email`
@@ -30,18 +30,57 @@ A broadcast owns:
 - `html`
 - `text`
 - `variable_bindings`
-- lifecycle timestamps and delivery counters
+- `scheduled_at`
+- `queued_at`
+- `sent_at`
+- `canceled_at`
+- audience / eligible / suppressed / queued / failed counters
+- `revision`
+- created / updated timestamps
 
-A broadcast may also retain optional source provenance:
+There are no `template_id`, `template_version_id`, `source_template_id`, or `source_template_version_id` fields on the Broadcast resource or Broadcast persistence model.
 
-- `source_template_id`
-- `source_template_version_id`
+## Storage
 
-These source fields are informational. They are not the content source at send time.
+Broadcast-owned message content is stored directly on `broadcasts`:
 
-## Create API
+```text
+broadcasts
+  id
+  team_id
+  name
+  status
+  segment_id
+  topic_id
+  from_email
+  from_name
+  reply_to_email
+  subject
+  preview_text
+  html_body
+  text_body
+  variable_bindings
+  scheduled_at
+  queued_at
+  sent_at
+  canceled_at
+  recipients_materialized_at
+  audience_count
+  eligible_count
+  suppressed_count
+  queued_count
+  failed_count
+  revision
+  created_at
+  updated_at
+  deleted_at
+```
 
-Inline content is the default path:
+Recipient fanout claims the broadcast message fields together with each materialized recipient. The delivery worker therefore renders and queues email from the claimed broadcast snapshot without consulting `message_templates` or `message_template_versions`.
+
+## Create
+
+`POST /broadcasts` accepts owned message content directly.
 
 ```json
 {
@@ -49,32 +88,43 @@ Inline content is the default path:
   "name": "August product update",
   "from_email": "updates@example.com",
   "from_name": "Dugble",
+  "reply_to_email": "support@example.com",
   "subject": "Everything we shipped in August",
-  "html": "<h1>What's new</h1>",
-  "text": "What's new",
+  "preview_text": "A quick recap",
+  "html": "<h1>Hello {{{FIRST_NAME}}}</h1>",
+  "text": "Hello {{{FIRST_NAME}}}",
+  "variable_bindings": {
+    "FIRST_NAME": "there"
+  },
   "topic_id": "topic-id"
 }
 ```
 
-`name` is optional at the API boundary for inline broadcasts. If omitted or blank, the server defaults it to `subject`.
+`name` is optional and defaults to `subject`. `segment_id`, `subject`, and `html` are required by the service. The same create request can queue immediately with `send: true`, or schedule with `send: true` plus future `scheduled_at`.
 
-A reusable template can be used as a source, but its selected version must be copied into broadcast-owned content before the broadcast is persisted as sendable:
+Reusable templates are intentionally not accepted as Broadcast API references. A caller that wants to use a template must resolve/copy its desired content before creating or updating the broadcast.
 
-```json
-{
-  "segment_id": "segment-id",
-  "name": "August product update",
-  "template": "product-update"
-}
+## Update
+
+`PATCH /broadcasts/:broadcast` edits audience and owned content directly. The request requires the current positive `revision` for optimistic concurrency.
+
+Both `draft` and `scheduled` broadcasts are editable. Updating a scheduled broadcast preserves the existing schedule. Nullable fields distinguish omission from explicit `null`, so clients can either leave a field unchanged or clear it.
+
+`queued`, `sent`, `failed`, and `canceled` broadcasts are not editable through the update path.
+
+## Preview and rendering
+
+`POST /broadcasts/:broadcast/preview` renders directly from the Broadcast resource.
+
+Broadcast `variable_bindings` provide base values and supplied preview/fanout variables override them. Current placeholder syntax is triple-brace identifier keys such as:
+
+```text
+{{{FIRST_NAME}}}
 ```
 
-After creation, both forms produce the same broadcast resource and follow the same send path.
+HTML substitutions are escaped. Subject, preview-text, and plain-text substitutions are not HTML-escaped. Missing referenced variables are render errors.
 
-## Update API
-
-Draft and scheduled broadcasts can update their audience and content directly. Updating a scheduled broadcast must preserve the scheduled send unless it is explicitly canceled or rescheduled.
-
-After a broadcast enters `queued`, message content is immutable. A sent broadcast may still allow its internal `name` to be changed.
+The broadcast renderer intentionally performs no message-template lookup.
 
 ## Lifecycle
 
@@ -84,22 +134,23 @@ draft
   v
 queued -------- cancel --------> canceled
   |
-  | complete
+  | complete with no failures
   v
 sent
+  |
+  +-- terminal fanout failures produce failed instead
 
 
 draft -- schedule --> scheduled
                        | cancel schedule
                        v
                       draft
-                       
-                       | due
-                       v
-                     queued
+
+scheduled -- due ----------------> queued
+scheduled -- reschedule ---------> scheduled
 ```
 
-Target statuses:
+Statuses:
 
 - `draft`
 - `scheduled`
@@ -110,82 +161,60 @@ Target statuses:
 
 Cancel semantics:
 
-- canceling `scheduled` removes the schedule and returns the broadcast to `draft`;
-- canceling `queued` stops remaining deliveries and moves the broadcast to `canceled`;
-- already delivered emails cannot be recalled.
+- canceling `scheduled` clears the schedule and returns the broadcast to `draft`;
+- canceling `queued` moves the broadcast to `canceled` and prevents remaining fanout work;
+- email already queued into the email delivery subsystem cannot be recalled.
 
-## Storage direction
+Delete semantics:
 
-The public resource stays flat even if storage is normalized.
+- only `draft` and `canceled` broadcasts can be soft-deleted.
 
-Preferred storage is a one-to-one content row so list queries do not fetch large HTML bodies:
+## Recipient materialization and fanout
 
-```text
-broadcasts
-  id
-  team_id
-  name
-  status
-  segment_id
-  topic_id
-  source_template_id nullable
-  source_template_version_id nullable
-  scheduled_at
-  queued_at
-  sent_at
-  canceled_at
-  counters...
-  revision
-  created_at
-  updated_at
+When a broadcast is queued, recipient materialization snapshots the target audience into `broadcast_recipients`, including exclusions. Materialization records audience, eligible, and suppressed counts on the Broadcast.
 
-broadcast_contents
-  broadcast_id primary key
-  team_id
-  from_email
-  from_name
-  reply_to_email
-  subject
-  preview_text
-  html_body
-  text_body
-  variable_bindings
-  created_at
-  updated_at
-```
+Fanout then claims pending recipients together with the exact broadcast-owned sender/content fields. For each recipient it:
 
-If implementation complexity favors keeping the content columns directly on `broadcasts`, the API and domain rules above remain unchanged.
+1. overlays recipient-specific variables onto `variable_bindings`;
+2. renders the owned subject/body fields;
+3. enqueues an email message;
+4. records the resulting email message ID or a terminal/retryable failure;
+5. finalizes the Broadcast to `sent` or `failed` when no pending recipients remain.
 
-## Send snapshot invariant
+This path is independent of reusable templates.
 
-Before a broadcast can transition from `draft` or `scheduled` to `queued`, it must have a complete content snapshot:
+## Message-template boundary
 
-- non-empty `subject`;
-- non-empty `html` (or another supported body representation in the future);
-- valid sender information;
-- a valid segment;
-- any required topic/compliance checks.
+The old hidden broadcast-template compatibility layer has been removed from `messagetemplate`:
 
-The worker must fan out from that broadcast-owned snapshot. It must not fetch the current version of a reusable template during delivery.
+- no `CreateBroadcastContent` helper;
+- no `BroadcastPublishedVersion` helper;
+- no broadcast-specific cleanup helper;
+- no `__broadcast_` alias convention;
+- no special template-list filtering for hidden broadcast content;
+- no broadcast-specific SQL cleanup query.
 
-## Template migration
+`messagetemplate` now serves reusable templates only.
 
-The existing `CreateBroadcastContent`, `BroadcastPublishedVersion`, hidden broadcast-template alias, and cleanup path in the message-template module are transitional implementation details and should be removed once all inline broadcasts use broadcast-owned content.
+## API surface
 
-Existing template-based broadcasts should be migrated by copying the pinned/published template version into the broadcast content snapshot and retaining the template IDs only as source provenance where useful.
+The Broadcast routes are:
 
-## Implementation sequence
+- `POST /broadcasts`
+- `GET /broadcasts`
+- `GET /broadcasts/:broadcast`
+- `PATCH /broadcasts/:broadcast`
+- `DELETE /broadcasts/:broadcast`
+- `POST /broadcasts/:broadcast/send`
+- `POST /broadcasts/:broadcast/cancel`
+- `POST /broadcasts/:broadcast/duplicate`
+- `POST /broadcasts/:broadcast/preview`
+- `GET /broadcasts/:broadcast/recipients`
+- `GET /broadcasts/:broadcast/exclusions`
+- `GET /broadcasts/:broadcast/analytics`
 
-1. Add broadcast-owned content storage and backfill existing broadcasts from their pinned/published template versions.
-2. Update SQL queries and repository models to read/write broadcast content.
-3. Make inline `POST /broadcasts` persist content directly; default blank `name` to `subject`.
-4. Change template-based creation to snapshot the selected template version.
-5. Change preview to render from broadcast content.
-6. Change send/fanout to use the broadcast snapshot rather than `template_id`/`template_version_id`.
-7. Remove hidden broadcast-template creation and cleanup behavior from `messagetemplate`.
-8. Align scheduled edit/cancel semantics with the lifecycle above.
-9. Update the public broadcast documentation and frontend contract.
+The detailed request/response contract is documented in `docs/broadcasts.md`.
 
-## Compatibility strategy
+## Remaining compliance integration
 
-During the transition, keep the existing `template` create/update input as an optional source to avoid breaking clients. The runtime dependency on templates should disappear before the compatibility field is considered for removal.
+Managed unsubscribe link generation is a separate delivery/compliance integration. The broadcast content model and fanout architecture support managed variables, but this document does not claim a production unsubscribe linker exists until that endpoint/linker is implemented and wired.
