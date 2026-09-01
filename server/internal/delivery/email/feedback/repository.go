@@ -16,10 +16,10 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	awsses "github.com/dugble/dugble/server/internal/adapters/amazon/ses"
-	awssns "github.com/dugble/dugble/server/internal/adapters/amazon/sns"
-	"github.com/dugble/dugble/server/internal/platform/outbox"
-	platformwebhook "github.com/dugble/dugble/server/internal/platform/webhook"
+	awsses "github.com/dugble/dugble/server/internal/integrations/amazon/ses"
+	awssns "github.com/dugble/dugble/server/internal/integrations/amazon/sns"
+	"github.com/dugble/dugble/server/internal/modules/outbox"
+	platformwebhook "github.com/dugble/dugble/server/internal/modules/webhooks/events"
 )
 
 var ErrProviderEventUnlinked = errors.New("email provider event is not linked to a message")

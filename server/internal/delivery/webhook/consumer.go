@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	sentrymonitoring "github.com/dugble/dugble/server/internal/adapters/monitoring/sentry"
+	sentrymonitoring "github.com/dugble/dugble/server/internal/integrations/monitoring/sentry"
 )
 
 type deliveryProcessor interface {

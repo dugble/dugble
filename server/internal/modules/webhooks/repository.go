@@ -11,7 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	dbsqlc "github.com/dugble/dugble/server/internal/database/sqlc"
-	platformwebhook "github.com/dugble/dugble/server/internal/platform/webhook"
+	platformwebhook "github.com/dugble/dugble/server/internal/modules/webhooks/events"
 	"github.com/dugble/dugble/server/pkg/pgconv"
 )
 

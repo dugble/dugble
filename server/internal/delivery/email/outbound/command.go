@@ -5,7 +5,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/dugble/dugble/server/internal/platform/outbox"
+	"github.com/dugble/dugble/server/internal/modules/outbox"
 )
 
 const (

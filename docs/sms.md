@@ -2,7 +2,7 @@
 
 Dashboard-facing HTTP contract for the SMS API.
 
-The routes and payloads in this document are based on `server/internal/modules/sms`. Request and response shapes below reflect the public Go types used by the handlers, not internal database-only fields.
+The routes and payloads in this document are based on `server/internal/messaging/sms`. Request and response shapes below reflect the public Go types used by the handlers, not internal database-only fields.
 
 ## Conventions
 

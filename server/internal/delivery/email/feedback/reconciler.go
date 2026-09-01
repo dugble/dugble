@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	sentrymonitoring "github.com/dugble/dugble/server/internal/adapters/monitoring/sentry"
+	sentrymonitoring "github.com/dugble/dugble/server/internal/integrations/monitoring/sentry"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"

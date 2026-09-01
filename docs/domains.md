@@ -2,7 +2,7 @@
 
 Dashboard-facing HTTP contract for managing customer sender domains used by email delivery.
 
-The routes and schemas in this document are derived from `server/internal/modules/domain` and the provider verification types used by that module. Internal persistence/provider fields that are not exposed by the HTTP handler are not documented as API fields.
+The routes and schemas in this document are derived from `server/internal/messaging/domains` and the provider verification types used by that module. Internal persistence/provider fields that are not exposed by the HTTP handler are not documented as API fields.
 
 ## Conventions
 

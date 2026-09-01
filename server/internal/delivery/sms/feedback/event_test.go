@@ -8,7 +8,7 @@ import (
 
 	"github.com/google/uuid"
 
-	smsapi "github.com/dugble/dugble/server/internal/platform/sms"
+	smsapi "github.com/dugble/dugble/server/internal/messaging/sms/provider"
 )
 
 func TestStatusEventMapsProviderStates(t *testing.T) {

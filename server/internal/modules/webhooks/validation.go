@@ -5,7 +5,7 @@ import (
 	"slices"
 	"strings"
 
-	platformwebhook "github.com/dugble/dugble/server/internal/platform/webhook"
+	platformwebhook "github.com/dugble/dugble/server/internal/modules/webhooks/events"
 	apperrors "github.com/dugble/dugble/server/pkg/errors"
 )
 

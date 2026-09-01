@@ -7,7 +7,7 @@ import (
 
 	attempt "github.com/dugble/dugble/server/internal/delivery/attempt"
 
-	awsses "github.com/dugble/dugble/server/internal/adapters/amazon/ses"
+	awsses "github.com/dugble/dugble/server/internal/integrations/amazon/ses"
 )
 
 func TestNormalizeSESFeedbackEventUsesAggregateState(t *testing.T) {

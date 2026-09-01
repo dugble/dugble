@@ -5,7 +5,7 @@ import (
 
 	"github.com/labstack/echo/v5"
 
-	"github.com/dugble/dugble/server/internal/authn"
+	"github.com/dugble/dugble/server/internal/security/authn"
 	apperrors "github.com/dugble/dugble/server/pkg/errors"
 	"github.com/dugble/dugble/server/pkg/httputil"
 )

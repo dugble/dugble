@@ -3,9 +3,9 @@ package main
 import (
 	"os"
 
-	sentrymonitoring "github.com/dugble/dugble/server/internal/adapters/monitoring/sentry"
+	sentrymonitoring "github.com/dugble/dugble/server/internal/integrations/monitoring/sentry"
 
-	workerregistry "github.com/dugble/dugble/server/internal/registry/worker"
+	workerregistry "github.com/dugble/dugble/server/internal/runtime/worker"
 )
 
 func main() {

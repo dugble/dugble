@@ -3,7 +3,7 @@ package systememail
 import (
 	"context"
 
-	platformemail "github.com/dugble/dugble/server/internal/platform/awsses"
+	platformemail "github.com/dugble/dugble/server/internal/messaging/email/provider"
 )
 
 type Processor struct {
