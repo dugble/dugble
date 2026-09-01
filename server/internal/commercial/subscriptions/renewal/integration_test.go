@@ -51,7 +51,7 @@ func TestRenewalIntegration(t *testing.T) {
 		assertRenewalState(t, pool, fixture, "active", "scale", 151_000_000, 1, 1)
 		assertSubscriptionCredit(t, pool, fixture.teamID, 1, 349_000_000)
 
-		if _, err := pool.Exec(context.Background(), `INSERT INTO product_rates(id,product,meter,billing_market,tier,currency,cost_units,effective_from) VALUES(gen_random_uuid(),'email','email_recipient','GH','scale','GHS',7044,'2026-08-01')`); err != nil {
+		if _, err := pool.Exec(context.Background(), `INSERT INTO product_rates(id,product,meter,billing_market,tier,currency,cost_units,effective_from) VALUES(gen_random_uuid(),'email','email_recipient','GH','scale','GHS',7044,$1)`, fixture.periodEnd); err != nil {
 			t.Fatal(err)
 		}
 		emailCharge := processEmailCharge(t, pool, usagecharges.NewService(usagecharges.NewRepository(pool)), usagecharges.EmailChargeInput{
@@ -81,10 +81,13 @@ func TestRenewalIntegration(t *testing.T) {
 		}
 		if _, err := pool.Exec(context.Background(), `
 			INSERT INTO sms_rates(id,destination_country,route_type,tier,currency,cost_units,effective_from)
-			VALUES(gen_random_uuid(),'GH','local','scale','GHS',55000,'2026-08-01'),
-			      (gen_random_uuid(),'NG','intl','scale','USD',15000,'2026-08-01');
+			VALUES(gen_random_uuid(),'GH','local','scale','GHS',55000,$1),
+			      (gen_random_uuid(),'NG','intl','scale','USD',15000,$1)`, fixture.periodEnd); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := pool.Exec(context.Background(), `
 			INSERT INTO fx_rates(id,base_currency,quote_currency,rate,effective_from)
-			VALUES(gen_random_uuid(),'USD','GHS',11.74,'2026-08-01')`); err != nil {
+			VALUES(gen_random_uuid(),'USD','GHS',11.74,$1)`, fixture.periodEnd); err != nil {
 			t.Fatal(err)
 		}
 		charger := usagecharges.NewService(usagecharges.NewRepository(pool))
@@ -267,7 +270,13 @@ func seedRenewal(t *testing.T, pool *pgxpool.Pool, options seedOptions) renewalF
 	t.Helper()
 	ctx := context.Background()
 	teamID := uuid.New()
-	periodEnd := time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC)
+	// Use the database clock, as renewal eligibility and usage entitlements do.
+	// A recently expired period renews into an active period on any test date.
+	var periodEnd time.Time
+	if err := pool.QueryRow(ctx, `SELECT now() - interval '1 day'`).Scan(&periodEnd); err != nil {
+		t.Fatal(err)
+	}
+	periodEnd = periodEnd.UTC()
 	periodStart := periodEnd.AddDate(0, -1, 0)
 	for _, plan := range []string{"growth", "scale"} {
 		if _, err := pool.Exec(ctx, `INSERT INTO plans(code) VALUES ($1) ON CONFLICT DO NOTHING`, plan); err != nil {
