@@ -12,7 +12,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	platformemail "github.com/dugble/dugble/server/internal/platform/awsses"
+	platformemail "github.com/dugble/dugble/server/internal/messaging/email/provider"
 )
 
 var ErrMessageNotDeliverable = errors.New("email message is not deliverable")

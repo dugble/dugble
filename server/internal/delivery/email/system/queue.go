@@ -8,8 +8,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
-	platformemail "github.com/dugble/dugble/server/internal/platform/awsses"
-	"github.com/dugble/dugble/server/internal/platform/outbox"
+	platformemail "github.com/dugble/dugble/server/internal/messaging/email/provider"
+	"github.com/dugble/dugble/server/internal/modules/outbox"
 )
 
 type eventStore interface {

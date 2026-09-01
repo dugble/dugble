@@ -7,13 +7,13 @@ import (
 	"strings"
 	"time"
 
-	sentrymonitoring "github.com/dugble/dugble/server/internal/adapters/monitoring/sentry"
+	sentrymonitoring "github.com/dugble/dugble/server/internal/integrations/monitoring/sentry"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
-	broadcastmodule "github.com/dugble/dugble/server/internal/modules/broadcast"
-	emailmodule "github.com/dugble/dugble/server/internal/modules/email"
+	broadcastmodule "github.com/dugble/dugble/server/internal/campaigns/broadcasts"
+	emailmodule "github.com/dugble/dugble/server/internal/messaging/email"
 )
 
 type repository interface {

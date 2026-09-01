@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	smsapi "github.com/dugble/dugble/server/internal/platform/sms"
+	smsapi "github.com/dugble/dugble/server/internal/messaging/sms/provider"
 )
 
 type pendingRepository interface {

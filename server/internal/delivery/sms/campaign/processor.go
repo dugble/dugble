@@ -13,8 +13,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
-	smscampaign "github.com/dugble/dugble/server/internal/modules/campaign"
-	smsmodule "github.com/dugble/dugble/server/internal/modules/sms"
+	smscampaign "github.com/dugble/dugble/server/internal/campaigns/campaigns"
+	smsmodule "github.com/dugble/dugble/server/internal/messaging/sms"
 )
 
 type repository interface {

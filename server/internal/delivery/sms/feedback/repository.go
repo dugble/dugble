@@ -14,8 +14,8 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	smsmodule "github.com/dugble/dugble/server/internal/modules/sms"
-	smsapi "github.com/dugble/dugble/server/internal/platform/sms"
+	smsmodule "github.com/dugble/dugble/server/internal/messaging/sms"
+	smsapi "github.com/dugble/dugble/server/internal/messaging/sms/provider"
 )
 
 type PendingMessage struct {

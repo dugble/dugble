@@ -12,7 +12,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	dbsqlc "github.com/dugble/dugble/server/internal/database/sqlc"
-	"github.com/dugble/dugble/server/internal/platform/systemmail"
+	"github.com/dugble/dugble/server/internal/messaging/email/systemmail"
 )
 
 const claimDeliveriesSQL = `

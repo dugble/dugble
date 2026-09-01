@@ -18,6 +18,10 @@ Dugble is designed to give applications a consistent communication layer while k
 - [`docs/`](docs/) — customer dashboard API integration documentation.
 - [`.github/`](.github/) — CI, security, and dependency automation.
 
+The backend groups features by business area: identity, tenancy, messaging,
+audience, campaigns, and commercial. See the [backend structure guide](server/README.md)
+for package ownership, runtime wiring, and module conventions.
+
 ## Getting started
 
 ### Requirements

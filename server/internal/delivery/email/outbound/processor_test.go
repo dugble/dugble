@@ -8,7 +8,7 @@ import (
 
 	"github.com/google/uuid"
 
-	platformemail "github.com/dugble/dugble/server/internal/platform/awsses"
+	platformemail "github.com/dugble/dugble/server/internal/messaging/email/provider"
 )
 
 type processorClaimResult struct {

@@ -8,7 +8,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/dugble/dugble/server/internal/platform/systemmail"
+	"github.com/dugble/dugble/server/internal/messaging/email/systemmail"
 )
 
 type resultQueueStub struct {

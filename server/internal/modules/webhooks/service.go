@@ -12,9 +12,9 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/dugble/dugble/server/internal/authz"
-	"github.com/dugble/dugble/server/internal/platform/audit"
-	platformwebhook "github.com/dugble/dugble/server/internal/platform/webhook"
+	"github.com/dugble/dugble/server/internal/modules/audit"
+	platformwebhook "github.com/dugble/dugble/server/internal/modules/webhooks/events"
+	"github.com/dugble/dugble/server/internal/security/authz"
 	apperrors "github.com/dugble/dugble/server/pkg/errors"
 )
 
